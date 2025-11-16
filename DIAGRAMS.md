@@ -290,7 +290,7 @@ flowchart TD
     NEXT -->|Yes| LOOP
     NEXT -->|No| UPDATE[Update Umbrella<br/>Chart.yaml]
     
-    UPDATE --> DEPS[Set dependencies[]<br/>with all services]
+    UPDATE --> DEPS[Set dependencies<br/>with all services]
     
     DEPS --> HELMUPDATE[Run helm dependency<br/>update]
     
