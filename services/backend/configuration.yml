@@ -1,0 +1,78 @@
+# Backend Service Configuration
+service:
+  name: backend
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+deployment:
+  replicas: 2
+  image:
+    repository: localhost:5000/backend
+    tag: "latest"
+    pullPolicy: Always
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  livenessProbe:
+    enabled: true
+    path: /health
+    port: 8080
+    initialDelaySeconds: 30
+    periodSeconds: 10
+  readinessProbe:
+    enabled: true
+    path: /ready
+    port: 8080
+    initialDelaySeconds: 10
+    periodSeconds: 5
+  env:
+    - name: DB_HOST
+      value: "database"
+    - name: DB_PORT
+      value: "5432"
+    - name: DB_NAME
+      value: "k8s_metrics"
+    - name: DB_USER
+      value: "postgres"
+    - name: DB_PASSWORD
+      value: "postgres"
+    - name: NAMESPACE
+      value: "platform"
+
+ingress:
+  enabled: false
+  className: nginx
+  annotations: {}
+  hosts: []
+  tls: []
+
+mtls:
+  enabled: true
+  policy: STRICT
+
+certificate:
+  enabled: false
+  issuer: factory-self-ca
+  secretName: backend-tls
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 80
+
+version: "0.1.0"
+appVersion: "2.1.0"
+
+labels:
+  app.kubernetes.io/component: backend
+  app.kubernetes.io/part-of: platform
+
+annotations:
+  deployment.kubernetes.io/revision: "1"
+

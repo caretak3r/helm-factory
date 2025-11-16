@@ -1,0 +1,21 @@
+{{- define "platform.certificate" -}}
+{{- if .Values.certificate.enabled -}}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "platform.fullname" . }}-tls
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+spec:
+  secretName: {{ .Values.certificate.secretName | default (printf "%s-tls" (include "platform.fullname" .)) }}
+  issuerRef:
+    name: {{ .Values.certificate.issuer }}
+    kind: ClusterIssuer
+  dnsNames:
+    {{- range .Values.ingress.hosts }}
+    - {{ .host }}
+    {{- end }}
+{{- end }}
+{{- end }}
+

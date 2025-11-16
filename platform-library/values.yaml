@@ -1,0 +1,83 @@
+# Default values for platform library chart
+# These are overridden by service team configuration.yml
+
+global:
+  namespace: default
+  environment: production
+
+service:
+  name: ""
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+deployment:
+  replicas: 2
+  image:
+    repository: ""
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  livenessProbe:
+    enabled: true
+    path: /health
+    port: 8080
+    initialDelaySeconds: 30
+    periodSeconds: 10
+  readinessProbe:
+    enabled: true
+    path: /ready
+    port: 8080
+    initialDelaySeconds: 10
+    periodSeconds: 5
+
+ingress:
+  enabled: false
+  className: nginx
+  annotations: {}
+  hosts:
+    - host: ""
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+mtls:
+  enabled: false
+  policy: STRICT
+
+certificate:
+  enabled: false
+  issuer: factory-self-ca
+  secretName: ""
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+
+serviceAccount:
+  create: true
+  annotations: {}
+
+podSecurityContext:
+  fsGroup: 2000
+
+securityContext:
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: false
+  runAsNonRoot: true
+  runAsUser: 1000
+
+labels: {}
+annotations: {}
+

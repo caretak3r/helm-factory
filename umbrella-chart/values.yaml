@@ -1,0 +1,7 @@
+# Umbrella chart values
+# Service-specific values are stored in values-{service-name}.yaml files
+
+global:
+  namespace: default
+  environment: production
+

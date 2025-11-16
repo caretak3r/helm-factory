@@ -1,0 +1,108 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jenkins-config
+  namespace: jenkins
+data:
+  jenkins.yaml: |
+    jenkins:
+      securityRealm:
+        local:
+          allowsSignup: false
+          users:
+            - id: "admin"
+              password: "${JENKINS_ADMIN_PASSWORD}"
+      authorizationStrategy:
+        loggedInUsersCanDoAnything:
+          allowAnonymousRead: false
+      crumbIssuer:
+        standard:
+          excludeClientIPFromCrumb: false
+      mode: NORMAL
+      numExecutors: 2
+      scmCheckoutRetryCount: 3
+      clouds:
+        - kubernetes:
+            name: "kubernetes"
+            serverUrl: "https://kubernetes.default"
+            namespace: "jenkins"
+            jenkinsUrl: "http://jenkins:8080"
+            jenkinsTunnel: "jenkins:50000"
+            containerCap: 10
+            maxRequestsPerHost: 32
+            retentionTimeout: 5
+            connectTimeout: 10
+            readTimeout: 10
+            templates:
+              - name: "jenkins-agent"
+                label: "jenkins-agent"
+                nodeUsageMode: NORMAL
+                containers:
+                  - name: "jnlp"
+                    image: "jenkins/inbound-agent:latest"
+                    alwaysPullImage: true
+                    workingDir: "/home/jenkins/agent"
+                    command: ""
+                    args: ""
+                    resourceRequestCpu: "100m"
+                    resourceRequestMemory: "256Mi"
+                    resourceLimitCpu: "500m"
+                    resourceLimitMemory: "512Mi"
+                  - name: "helm"
+                    image: "alpine/helm:latest"
+                    command: "/bin/sh"
+                    args: "-c 'sleep 999999'"
+                    ttyEnabled: true
+                    resourceRequestCpu: "50m"
+                    resourceRequestMemory: "64Mi"
+                  - name: "kubectl"
+                    image: "bitnami/kubectl:latest"
+                    command: "/bin/sh"
+                    args: "-c 'sleep 999999'"
+                    ttyEnabled: true
+                    resourceRequestCpu: "50m"
+                    resourceRequestMemory: "64Mi"
+                  - name: "python"
+                    image: "python:3.11-slim"
+                    command: "/bin/sh"
+                    args: "-c 'sleep 999999'"
+                    ttyEnabled: true
+                    resourceRequestCpu: "100m"
+                    resourceRequestMemory: "256Mi"
+    unclassified:
+      location:
+        adminAddress: "admin@example.com"
+        url: "http://jenkins:8080/"
+      globalLibraries:
+        libraries:
+          - name: "pipeline-library"
+            defaultVersion: "main"
+            retriever:
+              modernSCM:
+                scm:
+                  git:
+                    remote: "https://github.com/jenkinsci/pipeline-library.git"
+      tools:
+        installations:
+          - name: "Helm"
+            properties:
+              - installSource:
+                  installers:
+                    - toolInstaller:
+                        name: "helm"
+                        label: "helm"
+          - name: "Kubectl"
+            properties:
+              - installSource:
+                  installers:
+                    - toolInstaller:
+                        name: "kubectl"
+                        label: "kubectl"
+          - name: "Python"
+            properties:
+              - installSource:
+                  installers:
+                    - toolInstaller:
+                        name: "python"
+                        label: "python"
+

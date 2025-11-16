@@ -1,0 +1,74 @@
+# Frontend Service Configuration
+service:
+  name: frontend
+  type: ClusterIP
+  port: 80
+  targetPort: 80
+
+deployment:
+  replicas: 2
+  image:
+    repository: localhost:5000/frontend
+    tag: "latest"
+    pullPolicy: Always
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  livenessProbe:
+    enabled: true
+    path: /health
+    port: 80
+    initialDelaySeconds: 30
+    periodSeconds: 10
+  readinessProbe:
+    enabled: true
+    path: /ready
+    port: 80
+    initialDelaySeconds: 10
+    periodSeconds: 5
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: factory-self-ca
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+  hosts:
+    - host: frontend.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: frontend-tls
+      hosts:
+        - frontend.local
+
+mtls:
+  enabled: true
+  policy: STRICT
+
+certificate:
+  enabled: true
+  issuer: factory-self-ca
+  secretName: frontend-tls
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 70
+
+version: "0.1.0"
+appVersion: "1.2.3"
+
+labels:
+  app.kubernetes.io/component: frontend
+  app.kubernetes.io/part-of: platform
+
+annotations:
+  deployment.kubernetes.io/revision: "1"
+

@@ -1,0 +1,4 @@
+{{- define "platform.hpa" -}}
+{{ include "platform.autoscaling" . }}
+{{- end }}
+

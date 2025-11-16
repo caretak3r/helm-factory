@@ -1,0 +1,69 @@
+# Database Service Configuration
+service:
+  name: database
+  type: ClusterIP
+  port: 5432
+  targetPort: 5432
+
+deployment:
+  replicas: 1
+  image:
+    repository: localhost:5000/database
+    tag: "latest"
+    pullPolicy: Always
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+  livenessProbe:
+    enabled: true
+    path: /
+    port: 5432
+    initialDelaySeconds: 60
+    periodSeconds: 30
+  readinessProbe:
+    enabled: true
+    path: /
+    port: 5432
+    initialDelaySeconds: 30
+    periodSeconds: 10
+
+ingress:
+  enabled: false
+
+mtls:
+  enabled: false
+
+certificate:
+  enabled: false
+
+autoscaling:
+  enabled: false
+
+version: "0.1.0"
+appVersion: "15"
+
+labels:
+  app.kubernetes.io/component: database
+  app.kubernetes.io/part-of: platform
+
+annotations:
+  deployment.kubernetes.io/revision: "1"
+
+# Database-specific configuration
+persistence:
+  enabled: true
+  size: 10Gi
+  storageClass: local-path
+
+env:
+  - name: POSTGRES_DB
+    value: "k8s_metrics"
+  - name: POSTGRES_USER
+    value: "postgres"
+  - name: POSTGRES_PASSWORD
+    value: "postgres"
+
