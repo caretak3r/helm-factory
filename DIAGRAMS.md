@@ -177,29 +177,32 @@ sequenceDiagram
     Generator->>Generator: 14. Create Chart.yaml
     Generator->>Generator: 15. Create values.yaml
     Generator->>Generator: 16. Create template files
-    Generator-->>Jenkins: 17. Charts generated
+    Generator->>Generator: 17. Create job templates (if enabled)
+    Generator-->>Jenkins: 18. Charts generated
     
-    Jenkins->>Jenkins: 18. Lint charts
-    Jenkins->>Jenkins: 19. Template charts
+    Jenkins->>Jenkins: 19. Lint charts
+    Jenkins->>Jenkins: 20. Template charts
     
-    Jenkins->>Umbrella: 20. Sync umbrella chart
-    Umbrella->>Umbrella: 21. Find all configs
-    Umbrella->>Umbrella: 22. Generate charts
-    Umbrella->>Umbrella: 23. Update Chart.yaml
-    Umbrella->>Umbrella: 24. Create values files
-    Umbrella-->>Jenkins: 25. Umbrella synced
+    Jenkins->>Umbrella: 21. Sync umbrella chart
+    Umbrella->>Umbrella: 22. Find all configs
+    Umbrella->>Umbrella: 23. Generate charts
+    Umbrella->>Umbrella: 24. Update Chart.yaml
+    Umbrella->>Umbrella: 25. Create values files
+    Umbrella-->>Jenkins: 26. Umbrella synced
     
-    Jenkins->>k3s: 26. Deploy umbrella chart
-    k3s->>k3s: 27. Create resources
-    k3s-->>Jenkins: 28. Deployment complete
+    Jenkins->>k3s: 27. Deploy umbrella chart
+    k3s->>k3s: 28. Run pre-install jobs (if enabled)
+    k3s->>k3s: 29. Create resources
+    k3s->>k3s: 30. Run post-install jobs (if enabled)
+    k3s-->>Jenkins: 31. Deployment complete
     
-    Jenkins->>k3s: 29. Verify deployment
-    k3s-->>Jenkins: 30. All pods ready
+    Jenkins->>k3s: 32. Verify deployment
+    k3s-->>Jenkins: 33. All pods ready
     
-    Jenkins->>k3s: 31. Run tests
-    k3s-->>Jenkins: 32. Tests passed
+    Jenkins->>k3s: 34. Run tests
+    k3s-->>Jenkins: 35. Tests passed
     
-    Jenkins-->>Dev: 33. Pipeline success notification
+    Jenkins-->>Dev: 36. Pipeline success notification
 ```
 
 ---
@@ -245,11 +248,19 @@ flowchart TD
     
     MTLS_TMPL --> HPA_CHECK{Autoscaling<br/>Enabled?}
     HPA_CHECK -->|Yes| HPA_TMPL[hpa.yaml<br/>calls platform.hpa]
-    HPA_CHECK -->|No| SA_TMPL
+    HPA_CHECK -->|No| JOB_CHECK
     
-    HPA_TMPL --> SA_TMPL[serviceaccount.yaml<br/>calls platform.serviceAccount]
+    HPA_TMPL --> JOB_CHECK{Jobs<br/>Enabled?}
+    JOB_CHECK -->|Pre-install| PREJOB_TMPL[job-preinstall.yaml<br/>calls platform.job.preinstall]
+    JOB_CHECK -->|Post-install| POSTJOB_TMPL[job-postinstall.yaml<br/>calls platform.job.postinstall]
+    JOB_CHECK -->|Both| PREJOB_TMPL
+    PREJOB_TMPL --> POSTJOB_TMPL
+    JOB_CHECK -->|None| SA_TMPL
+    POSTJOB_TMPL --> SA_TMPL
     
-    SA_TMPL --> COMPLETE([Chart Generated<br/>Successfully])
+    SA_TMPL --> SA_TMPL2[serviceaccount.yaml<br/>calls platform.serviceAccount]
+    
+    SA_TMPL2 --> COMPLETE([Chart Generated<br/>Successfully])
     
     ERROR1 --> END([End])
     COMPLETE --> END
@@ -394,12 +405,15 @@ sequenceDiagram
     
     Library->>Library: Render templates<br/>with values
     
+    Dep1->>k3s: Create Pre-install Job (if enabled)
+    Dep1->>k3s: Wait for Pre-install Job
     Dep1->>k3s: Create Frontend Deployment
     Dep1->>k3s: Create Frontend Service
     Dep1->>k3s: Create Frontend Ingress
     Dep1->>k3s: Create Certificate (if enabled)
     Dep1->>k3s: Create mTLS Policy (if enabled)
     Dep1->>k3s: Create HPA (if enabled)
+    Dep1->>k3s: Create Post-install Job (if enabled)
     
     Dep2->>k3s: Create Backend Deployment
     Dep2->>k3s: Create Backend Service
@@ -878,10 +892,14 @@ graph TD
     HELM --> AUTHZ[AuthorizationPolicy]
     HELM --> HPA[HorizontalPodAutoscaler]
     HELM --> SA[ServiceAccount]
+    HELM --> PREJOB[Pre-install Job]
+    HELM --> POSTJOB[Post-install Job]
     
+    PREJOB --> DEPLOY
     DEPLOY --> POD1[Pod 1]
     DEPLOY --> POD2[Pod 2]
     DEPLOY --> POD3[Pod N...]
+    DEPLOY --> POSTJOB
     
     POD1 --> CONTAINER1[Container<br/>App Image]
     POD2 --> CONTAINER2[Container<br/>App Image]
@@ -921,4 +939,279 @@ graph TD
 ---
 
 These diagrams provide a comprehensive view of how the Helm Chart Factory system works, covering all workflows, components, and interactions. Each diagram focuses on a specific aspect of the system to provide detailed understanding.
+
+---
+
+## Multi-Repository Architecture Diagram
+
+```mermaid
+graph TB
+    subgraph "GitHub Organization"
+        PLATFORM_REPO[platform-library<br/>Repository<br/>Maintains templates]
+        FE_REPO[frontend-service<br/>Repository<br/>Service code + config]
+        BE_REPO[backend-service<br/>Repository<br/>Service code + config]
+        DB_REPO[database-service<br/>Repository<br/>Service code + config]
+        UMBRELLA_REPO[umbrella-chart<br/>Repository<br/>Orchestration chart]
+        TOOLS_REPO[helm-chart-factory<br/>Repository<br/>Tools + docs]
+    end
+    
+    subgraph "Jenkins Pipelines"
+        FE_PIPELINE[frontend-service<br/>Pipeline]
+        BE_PIPELINE[backend-service<br/>Pipeline]
+        DB_PIPELINE[database-service<br/>Pipeline]
+        UMBRELLA_PIPELINE[umbrella-chart<br/>Pipeline]
+    end
+    
+    subgraph "k3s Cluster"
+        CLUSTER[Kubernetes<br/>Resources]
+    end
+    
+    FE_REPO -->|PR Merged| FE_PIPELINE
+    BE_REPO -->|PR Merged| BE_PIPELINE
+    DB_REPO -->|PR Merged| DB_PIPELINE
+    
+    FE_PIPELINE -->|Checkout| PLATFORM_REPO
+    FE_PIPELINE -->|Checkout| TOOLS_REPO
+    FE_PIPELINE -->|Create PR| UMBRELLA_REPO
+    
+    BE_PIPELINE -->|Checkout| PLATFORM_REPO
+    BE_PIPELINE -->|Checkout| TOOLS_REPO
+    BE_PIPELINE -->|Create PR| UMBRELLA_REPO
+    
+    DB_PIPELINE -->|Checkout| PLATFORM_REPO
+    DB_PIPELINE -->|Checkout| TOOLS_REPO
+    DB_PIPELINE -->|Create PR| UMBRELLA_REPO
+    
+    UMBRELLA_REPO -->|PR Created| UMBRELLA_PIPELINE
+    UMBRELLA_REPO -->|PR Merged| UMBRELLA_PIPELINE
+    
+    UMBRELLA_PIPELINE -->|Checkout| PLATFORM_REPO
+    UMBRELLA_PIPELINE -->|Checkout| TOOLS_REPO
+    UMBRELLA_PIPELINE -->|Deploy| CLUSTER
+    
+    style PLATFORM_REPO fill:#fff4e1
+    style FE_REPO fill:#e1f5ff
+    style BE_REPO fill:#e1f5ff
+    style DB_REPO fill:#e1f5ff
+    style UMBRELLA_REPO fill:#ffe1f5
+    style TOOLS_REPO fill:#e1ffe1
+    style CLUSTER fill:#e1ffe1
+```
+
+---
+
+## Pull Request Workflow Diagram
+
+```mermaid
+sequenceDiagram
+    participant Dev as Developer
+    participant ServiceRepo as Service Repository
+    participant ServicePR as Service PR
+    participant ServicePipeline as Service Pipeline
+    participant UmbrellaRepo as Umbrella Repository
+    participant UmbrellaPR as Umbrella PR
+    participant UmbrellaPipeline as Umbrella Pipeline
+    participant k3s as k3s Cluster
+    
+    Dev->>ServiceRepo: 1. Edit configuration.yml
+    Dev->>ServiceRepo: 2. Create PR
+    ServiceRepo->>ServicePR: 3. PR Created
+    
+    ServicePR->>ServicePR: 4. Review & Approve
+    ServicePR->>ServiceRepo: 5. Merge to main
+    
+    ServiceRepo->>ServicePipeline: 6. Webhook triggers pipeline
+    ServicePipeline->>ServicePipeline: 7. Build image
+    ServicePipeline->>ServicePipeline: 8. Generate chart
+    ServicePipeline->>UmbrellaRepo: 9. Create PR
+    
+    UmbrellaRepo->>UmbrellaPR: 10. PR Created
+    UmbrellaPR->>UmbrellaPR: 11. Validate (no deploy)
+    
+    UmbrellaPR->>UmbrellaPR: 12. Review & Approve
+    UmbrellaPR->>UmbrellaRepo: 13. Merge to main
+    
+    UmbrellaRepo->>UmbrellaPipeline: 14. Webhook triggers pipeline
+    UmbrellaPipeline->>UmbrellaPipeline: 15. Sync charts
+    UmbrellaPipeline->>k3s: 16. Deploy to k3s
+    k3s->>UmbrellaPipeline: 17. Deployment complete
+```
+
+---
+
+## Workload Type Selection Diagram
+
+```mermaid
+graph TB
+    subgraph "Service Configuration"
+        CFG[configuration.yml<br/>workload.type:<br/>Deployment/StatefulSet/DaemonSet]
+    end
+    
+    subgraph "Platform Library Templates"
+        HELPER[_helpers.tpl<br/>platform.workload function]
+        DEP_TMPL[_deployment.yaml<br/>platform.deployment]
+        STS_TMPL[_statefulset.yaml<br/>platform.statefulset]
+        DS_TMPL[_daemonset.yaml<br/>platform.daemonset]
+    end
+    
+    subgraph "Generated Chart"
+        WORKLOAD_TMPL[workload.yaml<br/>or deployment.yaml]
+    end
+    
+    CFG --> HELPER
+    HELPER --> CHECK{workload.type?}
+    
+    CHECK -->|Deployment| DEP_TMPL
+    CHECK -->|StatefulSet| STS_TMPL
+    CHECK -->|DaemonSet| DS_TMPL
+    
+    DEP_TMPL --> WORKLOAD_TMPL
+    STS_TMPL --> WORKLOAD_TMPL
+    DS_TMPL --> WORKLOAD_TMPL
+    
+    style CFG fill:#ffcccc
+    style HELPER fill:#ffe1f5
+    style DEP_TMPL fill:#e1f5ff
+    style STS_TMPL fill:#fff4e1
+    style DS_TMPL fill:#e1ffe1
+    style WORKLOAD_TMPL fill:#ffffcc
+```
+
+---
+
+## Stage Toggle Control Flow
+
+```mermaid
+graph LR
+    subgraph "Environment Variables"
+        E1[ENABLE_CHECKOUT]
+        E2[ENABLE_SETUP]
+        E3[ENABLE_VALIDATE]
+        E4[ENABLE_BUILD]
+        E5[ENABLE_GENERATE]
+        E6[ENABLE_LINT]
+        E7[ENABLE_DEPLOY]
+        E8[ENABLE_VERIFY]
+    end
+    
+    subgraph "Pipeline Stages"
+        S1[Checkout Stage]
+        S2[Setup Stage]
+        S3[Validate Stage]
+        S4[Build Stage]
+        S5[Generate Stage]
+        S6[Lint Stage]
+        S7[Deploy Stage]
+        S8[Verify Stage]
+    end
+    
+    E1 -->|true/false| S1
+    E2 -->|true/false| S2
+    E3 -->|true/false| S3
+    E4 -->|true/false| S4
+    E5 -->|true/false| S5
+    E6 -->|true/false| S6
+    E7 -->|true/false| S7
+    E8 -->|true/false| S8
+    
+    style E7 fill:#FFB6C1
+    style E8 fill:#FFB6C1
+    style S7 fill:#FFB6C1
+    style S8 fill:#FFB6C1
+```
+
+---
+
+## Umbrella Chart Sync Process
+
+```mermaid
+flowchart TD
+    START([Service Configs Updated]) --> SCAN[Scan services/<br/>directory]
+    
+    SCAN --> LOOP[For Each Config]
+    
+    LOOP --> LOAD[Load configuration.yml]
+    LOAD --> EXTRACT[Extract service.name]
+    
+    EXTRACT --> VALID{Valid<br/>service.name?}
+    VALID -->|No| SKIP[Skip Config]
+    VALID -->|Yes| GEN[Generate Chart<br/>via Chart Generator]
+    
+    GEN --> CHARTDIR[Create charts/<br/>service-name/]
+    
+    CHARTDIR --> DEPEND[Add Dependency<br/>to Umbrella Chart.yaml]
+    
+    DEPEND --> VALUESFILE[Create values-<br/>service-name.yaml]
+    
+    VALUESFILE --> NEXT{More<br/>Configs?}
+    NEXT -->|Yes| LOOP
+    NEXT -->|No| UPDATE[Update Umbrella<br/>Chart.yaml<br/>with all dependencies]
+    
+    UPDATE --> HELMUPDATE[Run helm dependency<br/>update]
+    
+    HELMUPDATE --> SUMMARY[Display Summary<br/>Table]
+    
+    SUMMARY --> COMPLETE([Umbrella Synced])
+    
+    SKIP --> NEXT
+    COMPLETE --> END([End])
+    
+    style START fill:#90EE90
+    style COMPLETE fill:#90EE90
+    style SKIP fill:#FFD700
+    style END fill:#FFB6C1
+```
+
+---
+
+## Local Development Environment
+
+```mermaid
+graph TB
+    subgraph "Local Machine"
+        DEV[Developer]
+        JENKINS[Jenkins Pipeline<br/>Running Locally]
+        K3S[k3s Cluster<br/>Lightweight K8s]
+        REGISTRY[Local Docker Registry<br/>localhost:5000]
+    end
+    
+    subgraph "k3s Cluster Components"
+        API[k3s API Server]
+        ETCD[etcd<br/>Storage]
+        KUBELET[kubelet<br/>Node Agent]
+        PODS[Application Pods]
+        SVC[Services]
+        ING[Ingress Controller]
+    end
+    
+    subgraph "External"
+        GH[GitHub<br/>Repositories]
+    end
+    
+    DEV -->|Push Code| GH
+    GH -->|Webhook| JENKINS
+    
+    JENKINS -->|Build Images| REGISTRY
+    JENKINS -->|Deploy Charts| K3S
+    
+    K3S --> API
+    API --> ETCD
+    API --> KUBELET
+    KUBELET --> PODS
+    
+    PODS -->|Pull Images| REGISTRY
+    PODS --> SVC
+    SVC --> ING
+    
+    style K3S fill:#e1ffe1
+    style REGISTRY fill:#fff4e1
+    style JENKINS fill:#ffe1f5
+    style GH fill:#e1f5ff
+```
+
+---
+
+These diagrams provide a comprehensive view of how the Helm Chart Factory system works, covering all workflows, components, and interactions. Each diagram focuses on a specific aspect of the system to provide detailed understanding.
+
+For Architecture Decision Records (ADRs) documenting the rationale behind these design decisions, see [ADR.md](ADR.md).
 

@@ -80,3 +80,45 @@ env:
   - name: POSTGRES_PASSWORD
     value: "postgres"
 
+# Job configuration (optional)
+job:
+  preInstall:
+    enabled: false
+    # Example pre-install job for database migrations:
+    # enabled: true
+    # image:
+    #   repository: localhost:5000/migration-tool
+    #   tag: "latest"
+    # command:
+    #   - /bin/migrate
+    # args:
+    #   - up
+    # env:
+    #   - name: DATABASE_URL
+    #     value: "postgresql://postgres:postgres@database:5432/k8s_metrics"
+    # resources:
+    #   requests:
+    #     cpu: 200m
+    #     memory: 256Mi
+    #   limits:
+    #     cpu: 500m
+    #     memory: 512Mi
+  
+  postInstall:
+    enabled: false
+    # Example post-install job for database verification:
+    # enabled: true
+    # image:
+    #   repository: postgres
+    #   tag: "15-alpine"
+    # command:
+    #   - /bin/sh
+    #   - -c
+    # args:
+    #   - |
+    #     psql -h database -U postgres -d k8s_metrics -c "SELECT 1;" || exit 1
+    #     echo "Database connection verified"
+    # env:
+    #   - name: PGPASSWORD
+    #     value: "postgres"
+

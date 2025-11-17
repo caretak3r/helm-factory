@@ -210,6 +210,12 @@ The `platform-library` chart provides:
 
 - **ServiceAccount** with configurable annotations
 
+- **Jobs** with Helm hooks:
+  - Pre-install jobs (run before deployment)
+  - Post-install jobs (run after deployment)
+  - Configurable hook weights for ordering
+  - Automatic cleanup after completion
+
 ## Umbrella Chart
 
 The umbrella chart automatically includes all services as dependencies:
@@ -270,13 +276,16 @@ The library chart enforces:
 - ✅ Horizontal Pod Autoscaling (Deployment and StatefulSet)
 - ✅ Service account best practices
 - ✅ Multiple workload types (Deployment, StatefulSet, DaemonSet)
+- ✅ Pre-install and Post-install Jobs (Helm hooks)
 
 ## Examples
 
 See `services/` directory for example configurations:
 - `frontend/configuration.yml` - Web frontend with ingress, mTLS, certificates (Deployment)
 - `backend/configuration.yml` - API backend (Deployment)
-- `database/configuration.yml` - Database service with StatefulSet and persistent storage
+- `database/configuration.yml` - Database service with StatefulSet and persistent storage (includes job examples)
+
+For detailed job configuration examples, see [JOBS.md](JOBS.md).
 
 ## Development
 
@@ -354,10 +363,23 @@ make jenkins-password
 
 See [JENKINS.md](JENKINS.md) and [INTEGRATION.md](INTEGRATION.md) for detailed documentation.
 
+### Architecture Decision Records
+
+Documentation of key architectural decisions and their rationale:
+- **[ADR.md](ADR.md)** - Architecture Decision Records covering:
+  - Library chart pattern for standardization
+  - Multi-repository architecture
+  - Configuration-driven chart generation
+  - Pull request-based workflow
+  - Multiple workload types support
+  - Stage toggles for pipeline flexibility
+  - Umbrella chart orchestration
+  - Local development with k3s
+
 ### Visual Diagrams
 
 Comprehensive mermaid diagrams explaining all workflows and system architecture:
-- **[DIAGRAMS.md](DIAGRAMS.md)** - Complete visual documentation with 12+ diagrams covering:
+- **[DIAGRAMS.md](DIAGRAMS.md)** - Complete visual documentation with 15+ diagrams covering:
   - System architecture
   - Developer workflows
   - Chart generation process

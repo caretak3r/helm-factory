@@ -1,0 +1,30 @@
+{{- define "platform.configmap.script" -}}
+{{- if or .Values.job.script .Values.job.scriptFile }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "platform.fullname" . }}-{{ .Values.job.type }}-script
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+    {{- with .Values.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    app.kubernetes.io/component: job-{{ .Values.job.type }}-script
+data:
+  {{- if .Values.job.script }}
+  script.sh: |
+{{- if kindIs "string" .Values.job.script }}
+{{ .Values.job.script | indent 4 }}
+{{- else if kindIs "slice" .Values.job.script }}
+{{- range .Values.job.script }}
+    {{ . }}
+{{- end }}
+{{- end }}
+  {{- else if .Values.job.scriptFile }}
+  script.sh: |
+{{ .Files.Get .Values.job.scriptFile | indent 4 }}
+  {{- end }}
+{{- end }}
+{{- end }}
+

@@ -201,6 +201,18 @@ def generate_chart(
 """
         (templates_path / "hpa.yaml").write_text(hpa_template)
 
+    # Pre-install job template (conditional)
+    if merged_values.get("job", {}).get("preInstall", {}).get("enabled"):
+        preinstall_job_template = """{{- include "platform.job.preinstall" . }}
+"""
+        (templates_path / "job-preinstall.yaml").write_text(preinstall_job_template)
+
+    # Post-install job template (conditional)
+    if merged_values.get("job", {}).get("postInstall", {}).get("enabled"):
+        postinstall_job_template = """{{- include "platform.job.postinstall" . }}
+"""
+        (templates_path / "job-postinstall.yaml").write_text(postinstall_job_template)
+
     console.print(f"\n[bold green]✓ Chart generated successfully![/bold green]")
     console.print(f"Output directory: [cyan]{output_path}[/cyan]")
 

@@ -110,3 +110,70 @@ daemonset:
   #     operator: Exists
   #     effect: NoSchedule
 
+# Job configuration for pre-install and post-install hooks
+job:
+  # Common job settings (used by both preInstall and postInstall)
+  image:
+    repository: ""
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  backoffLimit: 3
+  completions: 1
+  parallelism: 1
+  restartPolicy: Never
+  activeDeadlineSeconds: 300
+  command: []
+  args: []
+  env: []
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  volumeMounts: []
+  volumes: []
+  
+  # Pre-install job (runs before deployment)
+  preInstall:
+    enabled: false
+    hookWeight: -5  # Lower weight = runs earlier
+    # Override common job settings if needed
+    # image:
+    #   repository: myregistry/pre-install-job
+    #   tag: "v1.0.0"
+    # command:
+    #   - /bin/sh
+    #   - -c
+    # args:
+    #   - echo "Running pre-install job"
+    # env:
+    #   - name: ENV_VAR
+    #     value: "value"
+    # resources:
+    #   requests:
+    #     cpu: 200m
+    #     memory: 256Mi
+  
+  # Post-install job (runs after deployment)
+  postInstall:
+    enabled: false
+    hookWeight: 5  # Higher weight = runs later
+    # Override common job settings if needed
+    # image:
+    #   repository: myregistry/post-install-job
+    #   tag: "v1.0.0"
+    # command:
+    #   - /bin/sh
+    #   - -c
+    # args:
+    #   - echo "Running post-install job"
+    # env:
+    #   - name: ENV_VAR
+    #     value: "value"
+    # resources:
+    #   requests:
+    #     cpu: 200m
+    #     memory: 256Mi
+

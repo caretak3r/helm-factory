@@ -1,0 +1,43 @@
+{{- if .Values.job.preInstall.enabled }}
+{{- $jobValues := .Values }}
+{{- $_ := set $jobValues.job "type" "preinstall" }}
+{{- $_ := set $jobValues.job "hookAnnotations" (dict "helm.sh/hook" "pre-install,pre-upgrade" "helm.sh/hook-weight" (toString (.Values.job.preInstall.hookWeight | default "-5")) "helm.sh/hook-delete-policy" "before-hook-creation,hook-succeeded") }}
+{{- if .Values.job.preInstall.image }}
+{{- $_ := set $jobValues.job "image" .Values.job.preInstall.image }}
+{{- end }}
+{{- if .Values.job.preInstall.command }}
+{{- $_ := set $jobValues.job "command" .Values.job.preInstall.command }}
+{{- end }}
+{{- if .Values.job.preInstall.args }}
+{{- $_ := set $jobValues.job "args" .Values.job.preInstall.args }}
+{{- end }}
+{{- if .Values.job.preInstall.env }}
+{{- $_ := set $jobValues.job "env" .Values.job.preInstall.env }}
+{{- end }}
+{{- if .Values.job.preInstall.resources }}
+{{- $_ := set $jobValues.job "resources" .Values.job.preInstall.resources }}
+{{- end }}
+{{- if .Values.job.preInstall.backoffLimit }}
+{{- $_ := set $jobValues.job "backoffLimit" .Values.job.preInstall.backoffLimit }}
+{{- end }}
+{{- if .Values.job.preInstall.completions }}
+{{- $_ := set $jobValues.job "completions" .Values.job.preInstall.completions }}
+{{- end }}
+{{- if .Values.job.preInstall.parallelism }}
+{{- $_ := set $jobValues.job "parallelism" .Values.job.preInstall.parallelism }}
+{{- end }}
+{{- if .Values.job.preInstall.restartPolicy }}
+{{- $_ := set $jobValues.job "restartPolicy" .Values.job.preInstall.restartPolicy }}
+{{- end }}
+{{- if .Values.job.preInstall.activeDeadlineSeconds }}
+{{- $_ := set $jobValues.job "activeDeadlineSeconds" .Values.job.preInstall.activeDeadlineSeconds }}
+{{- end }}
+{{- if .Values.job.preInstall.volumeMounts }}
+{{- $_ := set $jobValues.job "volumeMounts" .Values.job.preInstall.volumeMounts }}
+{{- end }}
+{{- if .Values.job.preInstall.volumes }}
+{{- $_ := set $jobValues.job "volumes" .Values.job.preInstall.volumes }}
+{{- end }}
+{{- include "platform.job" $jobValues }}
+{{- end }}
+

@@ -1,0 +1,143 @@
+{{- define "platform.job" -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "platform.fullname" . }}-{{ .Values.job.type }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+    {{- with .Values.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    app.kubernetes.io/component: job-{{ .Values.job.type }}
+  annotations:
+    {{- with .Values.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- if .Values.job.hookAnnotations }}
+    {{- toYaml .Values.job.hookAnnotations | nindent 4 }}
+    {{- end }}
+spec:
+  {{- if .Values.job.backoffLimit }}
+  backoffLimit: {{ .Values.job.backoffLimit }}
+  {{- end }}
+  {{- if .Values.job.completions }}
+  completions: {{ .Values.job.completions }}
+  {{- end }}
+  {{- if .Values.job.parallelism }}
+  parallelism: {{ .Values.job.parallelism }}
+  {{- end }}
+  {{- if .Values.job.activeDeadlineSeconds }}
+  activeDeadlineSeconds: {{ .Values.job.activeDeadlineSeconds }}
+  {{- end }}
+  template:
+    metadata:
+      labels:
+        {{- include "platform.selectorLabels" . | nindent 8 }}
+        {{- with .Values.labels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        app.kubernetes.io/component: job-{{ .Values.job.type }}
+    spec:
+      {{- if .Values.job.restartPolicy }}
+      restartPolicy: {{ .Values.job.restartPolicy }}
+      {{- else }}
+      restartPolicy: Never
+      {{- end }}
+      {{- with .Values.serviceAccount }}
+      {{- if .create }}
+      serviceAccountName: {{ include "platform.serviceAccountName" $ }}
+      {{- end }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+      - name: {{ .Chart.Name }}-{{ .Values.job.type }}
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 10 }}
+        image: "{{ .Values.job.image.repository }}:{{ .Values.job.image.tag }}"
+        imagePullPolicy: {{ .Values.job.image.pullPolicy }}
+        {{- if or .Values.job.script .Values.job.scriptFile }}
+        {{- if .Values.job.command }}
+        command:
+          {{- range .Values.job.command }}
+          - {{ . | quote }}
+          {{- end }}
+        {{- else }}
+        command:
+          - /bin/sh
+          - -c
+        {{- end }}
+        {{- if .Values.job.args }}
+        args:
+          {{- range .Values.job.args }}
+          - {{ . | quote }}
+          {{- end }}
+        {{- else }}
+        args:
+          - /scripts/script.sh
+        {{- end }}
+        {{- else }}
+        {{- if .Values.job.command }}
+        command:
+          {{- range .Values.job.command }}
+          - {{ . | quote }}
+          {{- end }}
+        {{- end }}
+        {{- if .Values.job.args }}
+        args:
+          {{- range .Values.job.args }}
+          - {{ . | quote }}
+          {{- end }}
+        {{- end }}
+        {{- end }}
+        {{- if .Values.job.env }}
+        env:
+          {{- range .Values.job.env }}
+          - name: {{ .name }}
+            {{- if .value }}
+            value: {{ .value | quote }}
+            {{- end }}
+            {{- if .valueFrom }}
+            valueFrom:
+              {{- toYaml .valueFrom | nindent 14 }}
+            {{- end }}
+          {{- end }}
+        {{- end }}
+        {{- if .Values.job.resources }}
+        resources:
+          {{- toYaml .Values.job.resources | nindent 10 }}
+        {{- else if .Values.deployment.resources }}
+        resources:
+          {{- toYaml .Values.deployment.resources | nindent 10 }}
+        {{- end }}
+        {{- if or .Values.job.script .Values.job.scriptFile }}
+        volumeMounts:
+          - name: script
+            mountPath: /scripts
+            readOnly: true
+          {{- if .Values.job.volumeMounts }}
+          {{- toYaml .Values.job.volumeMounts | nindent 10 }}
+          {{- end }}
+        {{- else if .Values.job.volumeMounts }}
+        volumeMounts:
+          {{- toYaml .Values.job.volumeMounts | nindent 10 }}
+        {{- end }}
+      {{- end }}
+      {{- if or .Values.job.script .Values.job.scriptFile }}
+      volumes:
+        - name: script
+          configMap:
+            name: {{ include "platform.fullname" . }}-{{ .Values.job.type }}-script
+            defaultMode: 0755
+        {{- if .Values.job.volumes }}
+        {{- toYaml .Values.job.volumes | nindent 8 }}
+        {{- end }}
+      {{- else if .Values.job.volumes }}
+      volumes:
+        {{- toYaml .Values.job.volumes | nindent 8 }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+

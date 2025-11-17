@@ -322,6 +322,8 @@ daemonset:
 
 7. **Service configuration** - StatefulSets often need headless services for stable DNS
 
+8. **Use Jobs for setup tasks** - Pre-install jobs for migrations, post-install jobs for verification
+
 ## Troubleshooting
 
 ### StatefulSet pods not starting

@@ -283,6 +283,58 @@ daemonset:
       effect: NoSchedule
 ```
 
+#### Pre-install and Post-install Jobs
+```yaml
+job:
+  # Common settings for both jobs
+  image:
+    repository: myregistry/job-image
+    tag: "v1.0.0"
+    pullPolicy: IfNotPresent
+  backoffLimit: 3
+  completions: 1
+  parallelism: 1
+  restartPolicy: Never
+  activeDeadlineSeconds: 300
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  
+  # Pre-install job (runs before deployment)
+  preInstall:
+    enabled: true
+    hookWeight: -5  # Lower = runs earlier
+    command:
+      - /bin/sh
+      - -c
+    args:
+      - echo "Running pre-install setup"
+    env:
+      - name: NAMESPACE
+        value: "platform"
+  
+  # Post-install job (runs after deployment)
+  postInstall:
+    enabled: true
+    hookWeight: 5  # Higher = runs later
+    command:
+      - /bin/sh
+      - -c
+    args:
+      - echo "Running post-install verification"
+    env:
+      - name: SERVICE_NAME
+        value: "my-service"
+```
+
+**Use Cases:**
+- **Pre-install**: Database migrations, schema setup, pre-deployment checks
+- **Post-install**: Health checks, smoke tests, post-deployment verification
+
 ## Troubleshooting
 
 ### Chart Generation Fails

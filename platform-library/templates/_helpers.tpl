@@ -120,3 +120,99 @@ Workload template selector
 {{- end }}
 {{- end }}
 
+{{/*
+Pre-install job template
+*/}}
+{{- define "platform.job.preinstall" -}}
+{{- if .Values.job.preInstall.enabled }}
+{{- $jobValues := .Values }}
+{{- $_ := set $jobValues.job "type" "preinstall" }}
+{{- $_ := set $jobValues.job "hookAnnotations" (dict "helm.sh/hook" "pre-install,pre-upgrade" "helm.sh/hook-weight" (toString (.Values.job.preInstall.hookWeight | default "-5")) "helm.sh/hook-delete-policy" "before-hook-creation,hook-succeeded") }}
+{{- if .Values.job.preInstall.image }}
+{{- $_ := set $jobValues.job "image" .Values.job.preInstall.image }}
+{{- end }}
+{{- if .Values.job.preInstall.command }}
+{{- $_ := set $jobValues.job "command" .Values.job.preInstall.command }}
+{{- end }}
+{{- if .Values.job.preInstall.args }}
+{{- $_ := set $jobValues.job "args" .Values.job.preInstall.args }}
+{{- end }}
+{{- if .Values.job.preInstall.env }}
+{{- $_ := set $jobValues.job "env" .Values.job.preInstall.env }}
+{{- end }}
+{{- if .Values.job.preInstall.resources }}
+{{- $_ := set $jobValues.job "resources" .Values.job.preInstall.resources }}
+{{- end }}
+{{- if .Values.job.preInstall.backoffLimit }}
+{{- $_ := set $jobValues.job "backoffLimit" .Values.job.preInstall.backoffLimit }}
+{{- end }}
+{{- if .Values.job.preInstall.completions }}
+{{- $_ := set $jobValues.job "completions" .Values.job.preInstall.completions }}
+{{- end }}
+{{- if .Values.job.preInstall.parallelism }}
+{{- $_ := set $jobValues.job "parallelism" .Values.job.preInstall.parallelism }}
+{{- end }}
+{{- if .Values.job.preInstall.restartPolicy }}
+{{- $_ := set $jobValues.job "restartPolicy" .Values.job.preInstall.restartPolicy }}
+{{- end }}
+{{- if .Values.job.preInstall.activeDeadlineSeconds }}
+{{- $_ := set $jobValues.job "activeDeadlineSeconds" .Values.job.preInstall.activeDeadlineSeconds }}
+{{- end }}
+{{- if .Values.job.preInstall.volumeMounts }}
+{{- $_ := set $jobValues.job "volumeMounts" .Values.job.preInstall.volumeMounts }}
+{{- end }}
+{{- if .Values.job.preInstall.volumes }}
+{{- $_ := set $jobValues.job "volumes" .Values.job.preInstall.volumes }}
+{{- end }}
+{{- include "platform.job" $jobValues }}
+{{- end }}
+{{- end }}
+
+{{/*
+Post-install job template
+*/}}
+{{- define "platform.job.postinstall" -}}
+{{- if .Values.job.postInstall.enabled }}
+{{- $jobValues := .Values }}
+{{- $_ := set $jobValues.job "type" "postinstall" }}
+{{- $_ := set $jobValues.job "hookAnnotations" (dict "helm.sh/hook" "post-install,post-upgrade" "helm.sh/hook-weight" (toString (.Values.job.postInstall.hookWeight | default "5")) "helm.sh/hook-delete-policy" "before-hook-creation,hook-succeeded") }}
+{{- if .Values.job.postInstall.image }}
+{{- $_ := set $jobValues.job "image" .Values.job.postInstall.image }}
+{{- end }}
+{{- if .Values.job.postInstall.command }}
+{{- $_ := set $jobValues.job "command" .Values.job.postInstall.command }}
+{{- end }}
+{{- if .Values.job.postInstall.args }}
+{{- $_ := set $jobValues.job "args" .Values.job.postInstall.args }}
+{{- end }}
+{{- if .Values.job.postInstall.env }}
+{{- $_ := set $jobValues.job "env" .Values.job.postInstall.env }}
+{{- end }}
+{{- if .Values.job.postInstall.resources }}
+{{- $_ := set $jobValues.job "resources" .Values.job.postInstall.resources }}
+{{- end }}
+{{- if .Values.job.postInstall.backoffLimit }}
+{{- $_ := set $jobValues.job "backoffLimit" .Values.job.postInstall.backoffLimit }}
+{{- end }}
+{{- if .Values.job.postInstall.completions }}
+{{- $_ := set $jobValues.job "completions" .Values.job.postInstall.completions }}
+{{- end }}
+{{- if .Values.job.postInstall.parallelism }}
+{{- $_ := set $jobValues.job "parallelism" .Values.job.postInstall.parallelism }}
+{{- end }}
+{{- if .Values.job.postInstall.restartPolicy }}
+{{- $_ := set $jobValues.job "restartPolicy" .Values.job.postInstall.restartPolicy }}
+{{- end }}
+{{- if .Values.job.postInstall.activeDeadlineSeconds }}
+{{- $_ := set $jobValues.job "activeDeadlineSeconds" .Values.job.postInstall.activeDeadlineSeconds }}
+{{- end }}
+{{- if .Values.job.postInstall.volumeMounts }}
+{{- $_ := set $jobValues.job "volumeMounts" .Values.job.postInstall.volumeMounts }}
+{{- end }}
+{{- if .Values.job.postInstall.volumes }}
+{{- $_ := set $jobValues.job "volumes" .Values.job.postInstall.volumes }}
+{{- end }}
+{{- include "platform.job" $jobValues }}
+{{- end }}
+{{- end }}
+

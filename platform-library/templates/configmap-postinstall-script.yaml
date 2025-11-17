@@ -1,0 +1,14 @@
+{{- if .Values.job.postInstall.enabled }}
+{{- if or .Values.job.postInstall.script .Values.job.postInstall.scriptFile }}
+{{- $jobValues := .Values }}
+{{- $_ := set $jobValues.job "type" "postinstall" }}
+{{- if .Values.job.postInstall.script }}
+{{- $_ := set $jobValues.job "script" .Values.job.postInstall.script }}
+{{- end }}
+{{- if .Values.job.postInstall.scriptFile }}
+{{- $_ := set $jobValues.job "scriptFile" .Values.job.postInstall.scriptFile }}
+{{- end }}
+{{- include "platform.configmap.script" $jobValues }}
+{{- end }}
+{{- end }}
+
