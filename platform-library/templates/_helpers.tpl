@@ -93,7 +93,7 @@ metadata:
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
-    kind: Deployment
+    kind: {{ .Values.workload.type }}
     name: {{ include "platform.fullname" . }}
   minReplicas: {{ .Values.autoscaling.minReplicas }}
   maxReplicas: {{ .Values.autoscaling.maxReplicas }}
@@ -104,6 +104,19 @@ spec:
       target:
         type: Utilization
         averageUtilization: {{ .Values.autoscaling.targetCPUUtilizationPercentage }}
+{{- end }}
+{{- end }}
+
+{{/*
+Workload template selector
+*/}}
+{{- define "platform.workload" -}}
+{{- if eq .Values.workload.type "StatefulSet" }}
+{{- include "platform.statefulset" . }}
+{{- else if eq .Values.workload.type "DaemonSet" }}
+{{- include "platform.daemonset" . }}
+{{- else }}
+{{- include "platform.deployment" . }}
 {{- end }}
 {{- end }}
 

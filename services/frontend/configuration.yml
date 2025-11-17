@@ -5,6 +5,10 @@ service:
   port: 80
   targetPort: 80
 
+# Use Deployment (default) for stateless frontend
+workload:
+  type: Deployment
+
 deployment:
   replicas: 2
   image:
@@ -71,4 +75,3 @@ labels:
 
 annotations:
   deployment.kubernetes.io/revision: "1"
-

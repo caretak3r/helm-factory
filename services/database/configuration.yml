@@ -5,6 +5,10 @@ service:
   port: 5432
   targetPort: 5432
 
+# Use StatefulSet for database (persistent storage, ordered deployment)
+workload:
+  type: StatefulSet
+
 deployment:
   replicas: 1
   image:
@@ -58,6 +62,15 @@ persistence:
   enabled: true
   size: 10Gi
   storageClass: local-path
+
+# StatefulSet volume claim templates
+statefulset:
+  volumeClaimTemplates:
+    - name: data
+      storageClassName: local-path
+      accessModes:
+        - ReadWriteOnce
+      storage: 10Gi
 
 env:
   - name: POSTGRES_DB

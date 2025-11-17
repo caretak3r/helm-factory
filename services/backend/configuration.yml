@@ -5,6 +5,10 @@ service:
   port: 80
   targetPort: 8080
 
+# Use Deployment (default) for stateless backend
+workload:
+  type: Deployment
+
 deployment:
   replicas: 2
   image:
@@ -75,4 +79,3 @@ labels:
 
 annotations:
   deployment.kubernetes.io/revision: "1"
-

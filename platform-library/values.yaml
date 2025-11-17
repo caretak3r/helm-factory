@@ -11,6 +11,11 @@ service:
   port: 80
   targetPort: 8080
 
+# Workload type: Deployment, StatefulSet, or DaemonSet
+# Default is Deployment
+workload:
+  type: Deployment
+
 deployment:
   replicas: 2
   image:
@@ -80,4 +85,28 @@ securityContext:
 
 labels: {}
 annotations: {}
+
+# StatefulSet specific configuration
+statefulset:
+  volumeClaimTemplates: []
+  # Example:
+  # volumeClaimTemplates:
+  #   - name: data
+  #     storageClassName: fast-ssd
+  #     accessModes:
+  #       - ReadWriteOnce
+  #     storage: 10Gi
+
+# DaemonSet specific configuration
+daemonset:
+  nodeSelector: {}
+  # Example:
+  # nodeSelector:
+  #   kubernetes.io/os: linux
+  tolerations: []
+  # Example:
+  # tolerations:
+  #   - key: node-role.kubernetes.io/master
+  #     operator: Exists
+  #     effect: NoSchedule
 

@@ -1,0 +1,101 @@
+pipeline {
+    agent any
+    
+    environment {
+        PIPELINE_WORKSPACE = "${WORKSPACE}"
+        LOCAL_REGISTRY = "localhost:5000"
+    }
+    
+    parameters {
+        choice(name: "SERVICE_NAME", choices: ["frontend", "backend", "database"], description: "Which service to update")
+        string(name: "NEW_VERSION", defaultValue: "latest", description: "New image version")
+    }
+    
+    stages {
+        stage("Detect Changes") {
+            steps {
+                script {
+                    echo "🔍 Detecting configuration changes for ${params.SERVICE_NAME}"
+                    sh """
+                        echo "Simulating detected changes in services/${params.SERVICE_NAME}/configuration.yml"
+                        echo "New version: ${params.NEW_VERSION}"
+                    """
+                }
+            }
+        }
+        
+        stage("Generate Charts") {
+            steps {
+                script {
+                    echo "🏗️ Generating Helm charts for ${params.SERVICE_NAME}"
+                    sh """
+                        export PATH=$HOME/.local/bin:$PATH
+                        cd chart-generator
+                        source .venv/bin/activate
+                        python main.py \\
+                            --config ../services/${params.SERVICE_NAME}/configuration.yml \\
+                            --library ../platform-library \\
+                            --output ../generated-charts/${params.SERVICE_NAME} \\
+                            --name ${params.SERVICE_NAME}
+                    """
+                }
+            }
+        }
+        
+        stage("Sync Umbrella") {
+            steps {
+                script {
+                    echo "🔄 Syncing umbrella chart dependencies"
+                    sh """
+                        export PATH=$HOME/.local/bin:$PATH
+                        cd umbrella-sync
+                        source .venv/bin/activate
+                        python main.py \\
+                            --umbrella ../umbrella-chart \\
+                            --services ../services \\
+                            --library ../platform-library
+                    """
+                }
+            }
+        }
+        
+        stage("Validate Charts") {
+            steps {
+                script {
+                    echo "✅ Validating generated charts"
+                    sh """
+                        helm lint generated-charts/${params.SERVICE_NAME}/ || exit 1
+                        helm template ${params.SERVICE_NAME}-${params.NEW_VERSION} generated-charts/${params.SERVICE_NAME}/ | head -20
+                    """
+                }
+            }
+        }
+        
+        stage("Mock Deploy") {
+            steps {
+                script {
+                    echo "🚢 Mock deployment to k3s cluster"
+                    echo "In production, this would:"
+                    echo "1. Login to container registry"
+                    echo "2. Build and push service images"  
+                    echo "3. Deploy charts to k3s cluster"
+                    echo "4. Run smoke tests"
+                    echo ""
+                    echo "Current charts ready for deployment:"
+                    sh "ls -la generated-charts/"
+                    sh "ls -la umbrella-chart/charts/"
+                }
+            }
+        }
+    }
+    
+    post {
+        success {
+            echo "✅ Pipeline completed successfully!"
+            archiveArtifacts artifacts: "generated-charts/**/*,umbrella-chart/charts/**/*"
+        }
+        failure {
+            echo "❌ Pipeline failed!"
+        }
+    }
+}

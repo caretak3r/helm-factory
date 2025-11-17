@@ -17,7 +17,6 @@ from rich.table import Table
 
 console = Console()
 
-
 def load_yaml_file(file_path: Path) -> Dict[str, Any]:
     """Load and parse a YAML file."""
     try:

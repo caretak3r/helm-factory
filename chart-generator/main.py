@@ -151,8 +151,18 @@ def generate_chart(
     # Create templates that reference library chart
     templates_path = output_path / "templates"
 
-    # Deployment template
-    deployment_template = """{{- include "platform.deployment" . }}
+    # Workload template (Deployment, StatefulSet, or DaemonSet)
+    # Determine workload type from config
+    workload_type = merged_values.get("workload", {}).get("type", "Deployment")
+    
+    # Create workload.yaml that selects the appropriate template
+    workload_template = """{{- include "platform.workload" . }}
+"""
+    (templates_path / "workload.yaml").write_text(workload_template)
+    
+    # Also create deployment.yaml for backwards compatibility
+    # It will use the workload template which handles the type selection
+    deployment_template = """{{- include "platform.workload" . }}
 """
     (templates_path / "deployment.yaml").write_text(deployment_template)
 
@@ -184,8 +194,9 @@ def generate_chart(
 """
     (templates_path / "serviceaccount.yaml").write_text(sa_template)
 
-    # HPA template (conditional)
-    if merged_values.get("autoscaling", {}).get("enabled"):
+    # HPA template (conditional - only for Deployment and StatefulSet)
+    workload_type = merged_values.get("workload", {}).get("type", "Deployment")
+    if merged_values.get("autoscaling", {}).get("enabled") and workload_type in ["Deployment", "StatefulSet"]:
         hpa_template = """{{- include "platform.hpa" . }}
 """
         (templates_path / "hpa.yaml").write_text(hpa_template)

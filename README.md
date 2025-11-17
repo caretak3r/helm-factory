@@ -137,6 +137,10 @@ service:
   port: 80
   targetPort: 8080
 
+# Workload type: Deployment (default), StatefulSet, or DaemonSet
+workload:
+  type: Deployment
+
 deployment:
   replicas: 2
   image:
@@ -182,6 +186,11 @@ appVersion: "1.0.0"
 ## Library Chart Features
 
 The `platform-library` chart provides:
+
+- **Multiple Workload Types**:
+  - **Deployment** (default) - For stateless applications
+  - **StatefulSet** - For stateful applications with persistent storage
+  - **DaemonSet** - For node-level agents
 
 - **Deployment** with best practices:
   - Security contexts (non-root, read-only filesystem)
@@ -258,15 +267,16 @@ The library chart enforces:
 - ✅ Proper labeling and annotations
 - ✅ mTLS for service-to-service communication
 - ✅ TLS certificates via cert-manager
-- ✅ Horizontal Pod Autoscaling
+- ✅ Horizontal Pod Autoscaling (Deployment and StatefulSet)
 - ✅ Service account best practices
+- ✅ Multiple workload types (Deployment, StatefulSet, DaemonSet)
 
 ## Examples
 
 See `services/` directory for example configurations:
-- `frontend/configuration.yml` - Web frontend with ingress, mTLS, certificates
-- `backend/configuration.yml` - API backend with autoscaling
-- `database/configuration.yml` - Database service without ingress
+- `frontend/configuration.yml` - Web frontend with ingress, mTLS, certificates (Deployment)
+- `backend/configuration.yml` - API backend (Deployment)
+- `database/configuration.yml` - Database service with StatefulSet and persistent storage
 
 ## Development
 
@@ -276,6 +286,14 @@ See `services/` directory for example configurations:
 2. Update `platform-library/values.yaml` with defaults
 3. Update `_helpers.tpl` if needed
 4. Test with example service configurations
+
+### Workload Types
+
+See [WORKLOAD_TYPES.md](WORKLOAD_TYPES.md) for detailed information about:
+- When to use each workload type (Deployment, StatefulSet, DaemonSet)
+- Configuration examples
+- Migration guides
+- Best practices
 
 ### Testing
 

@@ -17,6 +17,10 @@ service:
   port: 80
   targetPort: 8080
 
+# Workload type: Deployment (default), StatefulSet, or DaemonSet
+workload:
+  type: Deployment
+
 deployment:
   replicas: 2
   image:
@@ -30,24 +34,6 @@ deployment:
     limits:
       cpu: 500m
       memory: 512Mi
-
-ingress:
-  enabled: true
-  className: nginx
-  hosts:
-    - host: my-service.example.com
-      paths:
-        - path: /
-          pathType: Prefix
-
-mtls:
-  enabled: true
-  policy: STRICT
-
-certificate:
-  enabled: true
-  issuer: letsencrypt-prod
-  secretName: my-service-tls
 
 version: "0.1.0"
 appVersion: "1.0.0"
@@ -68,6 +54,69 @@ git push
 ### Updating Service Configuration
 
 Simply edit `services/my-service/configuration.yml` and push. The system will automatically regenerate your chart and update the umbrella chart.
+
+## Workload Types
+
+### Deployment (Default)
+
+Use for stateless applications that can scale horizontally:
+
+```yaml
+workload:
+  type: Deployment
+
+deployment:
+  replicas: 3
+  # ... rest of config
+```
+
+### StatefulSet
+
+Use for stateful applications that need:
+- Stable network identities
+- Ordered deployment/scaling
+- Persistent storage per pod
+
+```yaml
+workload:
+  type: StatefulSet
+
+deployment:
+  replicas: 3
+  # ... rest of config
+
+statefulset:
+  volumeClaimTemplates:
+    - name: data
+      storageClassName: fast-ssd
+      accessModes:
+        - ReadWriteOnce
+      storage: 10Gi
+```
+
+### DaemonSet
+
+Use for node-level agents that should run on every node:
+
+```yaml
+workload:
+  type: DaemonSet
+
+# Note: replicas is ignored for DaemonSet
+deployment:
+  image:
+    repository: myregistry/node-agent
+    tag: "v1.0.0"
+  # ... rest of config
+
+daemonset:
+  nodeSelector:
+    kubernetes.io/os: linux
+  tolerations:
+    - key: node-role.kubernetes.io/master
+      operator: Exists
+      effect: NoSchedule
+```
 
 ## For Platform Team
 
@@ -91,8 +140,7 @@ cd umbrella-sync
 python main.py \
   --umbrella ../umbrella-chart \
   --services ../services \
-  --library ../platform-library \
-  --generate-charts
+  --library ../platform-library
 ```
 
 ### Deploying Umbrella Chart
@@ -137,6 +185,12 @@ helm template generated-charts/frontend \
 
 ### Optional Fields
 
+#### Workload Type
+```yaml
+workload:
+  type: Deployment  # Deployment, StatefulSet, or DaemonSet
+```
+
 #### Ingress
 ```yaml
 ingress:
@@ -165,11 +219,11 @@ mtls:
 ```yaml
 certificate:
   enabled: true
-  issuer: letsencrypt-prod
+  issuer: factory-self-ca
   secretName: my-service-tls
 ```
 
-#### Autoscaling
+#### Autoscaling (Deployment only)
 ```yaml
 autoscaling:
   enabled: true
@@ -207,6 +261,28 @@ deployment:
     periodSeconds: 5
 ```
 
+#### StatefulSet Volume Claims
+```yaml
+statefulset:
+  volumeClaimTemplates:
+    - name: data
+      storageClassName: fast-ssd
+      accessModes:
+        - ReadWriteOnce
+      storage: 10Gi
+```
+
+#### DaemonSet Configuration
+```yaml
+daemonset:
+  nodeSelector:
+    kubernetes.io/os: linux
+  tolerations:
+    - key: node-role.kubernetes.io/master
+      operator: Exists
+      effect: NoSchedule
+```
+
 ## Troubleshooting
 
 ### Chart Generation Fails
@@ -238,6 +314,16 @@ deployment:
 - Verify ingress controller is installed
 - Check ingress annotations are correct
 - Validate certificate issuer exists
+
+**StatefulSet not starting**
+- Check volume claim templates are configured correctly
+- Verify storage class exists
+- Check pod security contexts
+
+**DaemonSet not scheduling**
+- Verify node selectors match available nodes
+- Check tolerations are correct
+- Review pod security contexts
 
 ## Advanced Usage
 
@@ -274,4 +360,3 @@ serviceAccount:
   annotations:
     eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/my-role
 ```
-
