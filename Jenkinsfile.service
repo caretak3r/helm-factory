@@ -1,0 +1,476 @@
+pipeline {
+    agent any
+    
+    environment {
+        KUBECONFIG = "${WORKSPACE}/kubeconfig"
+        HELM_HOME = "${WORKSPACE}/.helm"
+        K3S_CLUSTER_NAME = "helm-factory-cluster"
+        NAMESPACE = "platform"
+        SERVICE_NAME = "${env.JOB_NAME.split('/')[0]}" // Extract service name from job name
+        PLATFORM_LIBRARY_REPO = "https://github.com/companyinfo/platform-library.git"
+        UMBRELLA_CHART_REPO = "https://github.com/companyinfo/umbrella-chart.git"
+    }
+    
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        timeout(time: 30, unit: 'MINUTES')
+        timestamps()
+    }
+    
+    stages {
+        stage('Checkout Service Repository') {
+            steps {
+                script {
+                    echo "📦 Checking out service repository..."
+                    checkout scm // This is the service repository
+                    sh '''
+                        mkdir -p service-repo
+                        cp -r . service-repo/
+                    '''
+                }
+            }
+        }
+        
+        stage('Checkout Platform Library') {
+            steps {
+                script {
+                    echo "📚 Checking out platform library..."
+                    dir('platform-library') {
+                        checkout([
+                            $class: 'GitSCM',
+                            branches: [[name: '*/main']],
+                            userRemoteConfigs: [[url: env.PLATFORM_LIBRARY_REPO]],
+                            extensions: [[$class: 'CleanBeforeCheckout']]
+                        ])
+                    }
+                }
+            }
+        }
+        
+        stage('Checkout Tools') {
+            steps {
+                script {
+                    echo "🛠️ Checking out chart factory tools..."
+                    dir('tools') {
+                        checkout([
+                            $class: 'GitSCM',
+                            branches: [[name: '*/main']],
+                            userRemoteConfigs: [[
+                                url: env.TOOLS_REPO,
+                                credentialsId: 'github-credentials'
+                            ]],
+                            extensions: [[
+                                $class: 'SparseCheckoutPaths',
+                                sparseCheckoutPaths: [[
+                                    path: 'factory/chart-generator'
+                                ], [
+                                    path: 'factory/umbrella-sync'
+                                ]]
+                            ]]
+                        ])
+                    }
+                }
+            }
+        }
+        
+        stage('Setup Environment') {
+            steps {
+                script {
+                    echo "🔧 Setting up environment..."
+                    sh '''
+                        # Install Python dependencies
+                        cd tools/factory/chart-generator && uv pip install -r requirements.txt
+                        cd ../umbrella-sync && uv pip install -r requirements.txt
+                        cd ../../..
+                        
+                        # Setup Helm
+                        helm version || echo "Helm not installed, will use k3s bundled version"
+                        
+                        # Ensure local registry is running
+                        if ! docker ps | grep -q local-registry; then
+                            echo "Starting local registry..."
+                            docker run -d --name local-registry --restart=always -p 5000:5000 registry:2 || true
+                            sleep 2
+                        fi
+                    '''
+                }
+            }
+        }
+        
+        stage('Validate Configuration') {
+            steps {
+                script {
+                    echo "✅ Validating service configuration..."
+                    sh '''
+                        python3 -c "
+                        import yaml
+                        import sys
+                        from pathlib import Path
+                        
+                        config_file = Path('service-repo/configuration.yml')
+                        if not config_file.exists():
+                            print(f'Error: configuration.yml not found in service repository')
+                            sys.exit(1)
+                        
+                        with open(config_file) as f:
+                            config = yaml.safe_load(f)
+                            if not config.get('service', {}).get('name'):
+                                print('Error: Missing service.name')
+                                sys.exit(1)
+                            if not config.get('deployment', {}).get('image', {}).get('repository'):
+                                print('Error: Missing deployment.image.repository')
+                                sys.exit(1)
+                        print('Configuration valid!')
+                        "
+                    '''
+                }
+            }
+        }
+        
+        stage('Build Image') {
+            steps {
+                script {
+                    echo "🏗️ Building service image..."
+                    sh '''
+                        REGISTRY="localhost:5000"
+                        SERVICE_NAME=$(python3 -c "
+                        import yaml
+                        with open('service-repo/configuration.yml') as f:
+                            config = yaml.safe_load(f)
+                            print(config.get('service', {}).get('name', 'service'))
+                        ")
+                        
+                        # Build and push image
+                        cd service-repo
+                        docker build -t $REGISTRY/$SERVICE_NAME:latest .
+                        docker push $REGISTRY/$SERVICE_NAME:latest
+                        cd ..
+                    '''
+                }
+            }
+        }
+        
+        stage('Generate Chart') {
+            steps {
+                script {
+                    echo "📊 Generating Helm chart..."
+                    sh '''
+                        SERVICE_NAME=$(python3 -c "
+                        import yaml
+                        with open('service-repo/configuration.yml') as f:
+                            config = yaml.safe_load(f)
+                            print(config.get('service', {}).get('name', 'service'))
+                        ")
+                        
+                        cd tools/factory/chart-generator
+                        python main.py \
+                            --config ../../service-repo/configuration.yml \
+                            --library ../../platform-library \
+                            --output ../../generated-charts/$SERVICE_NAME \
+                            --name $SERVICE_NAME
+                        cd ../../..
+                    '''
+                }
+            }
+        }
+        
+        stage('Lint Chart') {
+            steps {
+                script {
+                    echo "🔍 Linting generated chart..."
+                    sh '''
+                        SERVICE_NAME=$(python3 -c "
+                        import yaml
+                        with open('service-repo/configuration.yml') as f:
+                            config = yaml.safe_load(f)
+                            print(config.get('service', {}).get('name', 'service'))
+                        ")
+                        
+                        helm lint generated-charts/$SERVICE_NAME || exit 1
+                    '''
+                }
+            }
+        }
+        
+        stage('Template Chart') {
+            steps {
+                script {
+                    echo "📄 Rendering chart templates..."
+                    sh '''
+                        SERVICE_NAME=$(python3 -c "
+                        import yaml
+                        with open('service-repo/configuration.yml') as f:
+                            config = yaml.safe_load(f)
+                            print(config.get('service', {}).get('name', 'service'))
+                        ")
+                        
+                        mkdir -p rendered-manifests
+                        helm template $SERVICE_NAME generated-charts/$SERVICE_NAME \
+                            --output-dir "rendered-manifests/$SERVICE_NAME" \
+                            --namespace "$NAMESPACE" || exit 1
+                    '''
+                }
+            }
+        }
+        
+        stage('Update Umbrella Chart') {
+            steps {
+                script {
+                    echo "🔄 Updating umbrella chart..."
+                    script {
+                        dir('umbrella-chart') {
+                            checkout([
+                                $class: 'GitSCM',
+                                branches: [[name: '*/main']],
+                                userRemoteConfigs: [[url: env.UMBRELLA_CHART_REPO]],
+                                extensions: [[$class: 'CleanBeforeCheckout']]
+                            ])
+                        }
+                        
+                        sh '''
+                            SERVICE_NAME=$(python3 -c "
+                            import yaml
+                            with open('service-repo/configuration.yml') as f:
+                                config = yaml.safe_load(f)
+                                print(config.get('service', {}).get('name', 'service'))
+                            ")
+                            
+                            # Copy service config to umbrella chart services directory
+                            mkdir -p umbrella-chart/services/$SERVICE_NAME
+                            cp service-repo/configuration.yml umbrella-chart/services/$SERVICE_NAME/
+                            
+                            # Sync umbrella chart
+                            cd tools/factory/umbrella-sync
+                            python main.py \
+                                --umbrella ../../umbrella-chart \
+                                --services ../../umbrella-chart/services \
+                                --library ../../platform-library
+                            cd ../../..
+                            
+                            # Update umbrella chart dependencies
+                            cd umbrella-chart
+                            helm dependency update
+                            cd ..
+                        '''
+                    }
+                }
+            }
+        }
+        
+        stage('Create Umbrella Chart PR') {
+            steps {
+                script {
+                    echo "📝 Creating PR to umbrella chart repository..."
+                    script {
+                        dir('umbrella-chart') {
+                            withCredentials([usernamePassword(credentialsId: 'github-credentials', usernameVariable: 'GIT_USERNAME', passwordVariable: 'GIT_PASSWORD')]) {
+                                sh '''
+                                    SERVICE_NAME=$(python3 -c "
+                                    import yaml
+                                    with open('../service-repo/configuration.yml') as f:
+                                        config = yaml.safe_load(f)
+                                        print(config.get('service', {}).get('name', 'service'))
+                                    ")
+                                    
+                                    git config user.name "Jenkins"
+                                    git config user.email "jenkins@example.com"
+                                    
+                                    # Check if there are changes
+                                    if git diff --quiet && git diff --cached --quiet; then
+                                        echo "No changes to commit, skipping PR creation"
+                                        exit 0
+                                    fi
+                                    
+                                    # Create branch and commit
+                                    BRANCH_NAME="update-$SERVICE_NAME-${BUILD_NUMBER}"
+                                    git checkout -b $BRANCH_NAME || git checkout $BRANCH_NAME
+                                    git add .
+                                    git commit -m "chore: update $SERVICE_NAME configuration
+
+                                    - Updated configuration.yml from $SERVICE_NAME-service repository
+                                    - Build: ${BUILD_NUMBER}
+                                    - Job: ${JOB_NAME}
+                                    "
+                                    
+                                    # Push branch
+                                    git push origin $BRANCH_NAME
+                                    
+                                    # Create PR using GitHub API
+                                    PR_TITLE="Update $SERVICE_NAME configuration"
+                                    PR_BODY="This PR updates the $SERVICE_NAME service configuration.
+
+                                    **Source:** ${BUILD_URL}
+                                    **Service Repository:** ${GIT_URL}
+                                    **Branch:** ${BRANCH_NAME}
+                                    **Build Number:** ${BUILD_NUMBER}
+
+                                    Changes:
+                                    - Updated \`services/$SERVICE_NAME/configuration.yml\`
+                                    - Regenerated Helm chart dependencies
+
+                                    Please review and merge when ready.
+                                    "
+                                    
+                                    # Extract repo owner and name from URL
+                                    REPO_URL=$(git remote get-url origin)
+                                    REPO_PATH=$(echo $REPO_URL | sed 's/.*github.com[:/]\(.*\)\.git/\1/')
+                                    
+                                    # Create PR using curl
+                                    PR_RESPONSE=$(curl -s -X POST \
+                                        -H "Accept: application/vnd.github.v3+json" \
+                                        -H "Authorization: token ${GIT_PASSWORD}" \
+                                        https://api.github.com/repos/$REPO_PATH/pulls \
+                                        -d "{
+                                            \"title\": \"$PR_TITLE\",
+                                            \"body\": \"$PR_BODY\",
+                                            \"head\": \"$BRANCH_NAME\",
+                                            \"base\": \"main\"
+                                        }")
+                                    
+                                    PR_URL=$(echo $PR_RESPONSE | python3 -c "import sys, json; print(json.load(sys.stdin).get('html_url', ''))" 2>/dev/null || echo "")
+                                    
+                                    if [ -n "$PR_URL" ] && [ "$PR_URL" != "None" ]; then
+                                        echo "✅ Created PR: $PR_URL"
+                                    else
+                                        # Check if PR already exists
+                                        EXISTING_PR=$(curl -s \
+                                            -H "Accept: application/vnd.github.v3+json" \
+                                            -H "Authorization: token ${GIT_PASSWORD}" \
+                                            "https://api.github.com/repos/$REPO_PATH/pulls?head=$REPO_PATH:$BRANCH_NAME&state=open" | \
+                                            python3 -c "import sys, json; prs = json.load(sys.stdin); print(prs[0]['html_url'] if prs else '')" 2>/dev/null || echo "")
+                                        
+                                        if [ -n "$EXISTING_PR" ] && [ "$EXISTING_PR" != "None" ]; then
+                                            echo "ℹ️ PR already exists: $EXISTING_PR"
+                                        else
+                                            echo "⚠️ Failed to create PR, but branch was pushed: $BRANCH_NAME"
+                                        fi
+                                    fi
+                                '''
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        stage('Deploy to k3s (Optional)') {
+            when {
+                // Only deploy on merge to main branch
+                anyOf {
+                    branch 'main'
+                    branch 'master'
+                }
+            }
+            steps {
+                script {
+                    echo "🚢 Deploying to k3s cluster..."
+                    sh '''
+                        # Setup k3s if needed
+                        if ! kubectl cluster-info &>/dev/null; then
+                            ./scripts/setup-k3s.sh
+                        fi
+                        
+                        # Install dependencies
+                        if ! kubectl get namespace cert-manager &>/dev/null; then
+                            kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.yaml
+                            kubectl wait --for=condition=Ready pods -l app.kubernetes.io/instance=cert-manager -n cert-manager --timeout=300s
+                        fi
+                        
+                        kubectl apply -f cert-manager/cluster-issuer.yaml || true
+                        
+                        if ! kubectl get namespace ingress-nginx &>/dev/null; then
+                            kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/cloud/deploy.yaml
+                            kubectl wait --for=condition=Ready pods -l app.kubernetes.io/component=controller -n ingress-nginx --timeout=300s
+                        fi
+                        
+                        # Configure k3s registry
+                        if ! grep -q "localhost:5000" /etc/rancher/k3s/registries.yaml 2>/dev/null; then
+                            sudo mkdir -p /etc/rancher/k3s
+                            echo "mirrors:
+  localhost:5000:
+    endpoint:
+      - \"http://localhost:5000\"" | sudo tee /etc/rancher/k3s/registries.yaml
+                            sudo systemctl restart k3s || true
+                            sleep 5
+                        fi
+                        
+                        # Deploy umbrella chart
+                        cd umbrella-chart
+                        helm upgrade --install platform . \
+                            --namespace "$NAMESPACE" \
+                            --create-namespace \
+                            --wait \
+                            --timeout 10m \
+                            --atomic || exit 1
+                        cd ..
+                    '''
+                }
+            }
+        }
+        
+        stage('Verify Deployment') {
+            when {
+                expression { env.BRANCH_NAME == 'main' || env.BRANCH_NAME == 'master' }
+            }
+            steps {
+                script {
+                    echo "✅ Verifying deployment..."
+                    sh '''
+                        SERVICE_NAME=$(python3 -c "
+                        import yaml
+                        with open('service-repo/configuration.yml') as f:
+                            config = yaml.safe_load(f)
+                            print(config.get('service', {}).get('name', 'service'))
+                        ")
+                        
+                        # Wait for workload to be ready
+                        WORKLOAD_TYPE=$(python3 -c "
+                        import yaml
+                        with open('service-repo/configuration.yml') as f:
+                            config = yaml.safe_load(f)
+                            print(config.get('workload', {}).get('type', 'Deployment'))
+                        ")
+                        
+                        kubectl wait --for=condition=available \
+                            --timeout=300s \
+                            $WORKLOAD_TYPE/$SERVICE_NAME \
+                            -n "$NAMESPACE" || exit 1
+                        
+                        kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/name=$SERVICE_NAME
+                    '''
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            script {
+                echo "📊 Pipeline completed"
+            }
+        }
+        success {
+            echo "✅ Pipeline succeeded!"
+            archiveArtifacts artifacts: 'rendered-manifests/**/*', allowEmptyArchive: true
+            archiveArtifacts artifacts: 'generated-charts/**/*', allowEmptyArchive: true
+        }
+        failure {
+            echo "❌ Pipeline failed!"
+            sh '''
+                SERVICE_NAME=$(python3 -c "
+                import yaml
+                with open('service-repo/configuration.yml') as f:
+                    config = yaml.safe_load(f)
+                    print(config.get('service', {}).get('name', 'service'))
+                ")
+                
+                kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/name=$SERVICE_NAME || true
+                kubectl logs -n "$NAMESPACE" --tail=50 -l app.kubernetes.io/name=$SERVICE_NAME || true
+            '''
+        }
+        cleanup {
+            cleanWs()
+        }
+    }
+}
+

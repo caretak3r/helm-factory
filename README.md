@@ -314,10 +314,30 @@ helm template /tmp/test-frontend
 
 This project includes complete Jenkins pipeline integration for automated CI/CD:
 
-- **Jenkinsfile** - Complete pipeline definition
+- **Jenkinsfile.service** - Pipeline for individual service repositories
+- **Jenkinsfile.umbrella** - Pipeline for umbrella chart repository
 - **Jenkins on k3s** - Run Jenkins on the same k3s cluster
 - **Automated testing** - Charts are deployed and tested automatically
 - **Webhook support** - Automatic pipeline triggers on git push
+- **Multi-repository support** - Works with separate GitHub repositories
+
+### Repository Structure
+
+The system uses multiple GitHub repositories:
+- **platform-library** - Platform team's library chart
+- **service repositories** - Each service has its own repo (frontend-service, backend-service, etc.)
+- **umbrella-chart** - Umbrella chart repository
+- **helm-chart-factory** - This repository with tools and documentation
+
+### Pull Request Workflow
+
+The system uses a PR-based workflow:
+1. **Service Changes**: Developer updates `configuration.yml` and creates PR in service repo
+2. **Service PR Merged**: Triggers service pipeline which creates PR to umbrella-chart repo
+3. **Umbrella PR Created**: Triggers umbrella pipeline for validation (no deployment)
+4. **Umbrella PR Merged**: Triggers umbrella pipeline for deployment to k3s
+
+See [REPOSITORY_STRUCTURE.md](REPOSITORY_STRUCTURE.md), [REPOSITORY_SETUP.md](REPOSITORY_SETUP.md), and [PR_WORKFLOW.md](PR_WORKFLOW.md) for detailed setup instructions and workflow documentation.
 
 ### Quick Start with Jenkins
 
