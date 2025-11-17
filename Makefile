@@ -13,19 +13,19 @@ setup: ## Install dependencies
 	@echo "✅ Setup complete!"
 
 generate-frontend: ## Generate frontend service chart
-	cd chart-generator && python main.py \
+	cd chart-generator && python3 main.py \
 		--config ../services/frontend/configuration.yml \
 		--library ../platform-library \
 		--output ../generated-charts/frontend
 
 generate-backend: ## Generate backend service chart
-	cd chart-generator && python main.py \
+	cd chart-generator && python3 main.py \
 		--config ../services/backend/configuration.yml \
 		--library ../platform-library \
 		--output ../generated-charts/backend
 
 generate-database: ## Generate database service chart
-	cd chart-generator && python main.py \
+	cd chart-generator && python3 main.py \
 		--config ../services/database/configuration.yml \
 		--library ../platform-library \
 		--output ../generated-charts/database
@@ -33,7 +33,7 @@ generate-database: ## Generate database service chart
 generate-all: generate-frontend generate-backend generate-database ## Generate all service charts
 
 sync: ## Sync all services to umbrella chart
-	cd umbrella-sync && python main.py \
+	cd umbrella-sync && python3 main.py \
 		--umbrella ../umbrella-chart \
 		--services ../services \
 		--library ../platform-library
