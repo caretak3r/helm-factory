@@ -7,8 +7,23 @@ pipeline {
         K3S_CLUSTER_NAME = "helm-factory-cluster"
         NAMESPACE = "platform"
         SERVICE_NAME = "${env.JOB_NAME.split('/')[0]}" // Extract service name from job name
-        PLATFORM_LIBRARY_REPO = "https://github.com/companyinfo/platform-library.git"
-        UMBRELLA_CHART_REPO = "https://github.com/companyinfo/umbrella-chart.git"
+        PLATFORM_LIBRARY_REPO = "${env.PLATFORM_LIBRARY_REPO ?: 'https://github.com/companyinfo/platform-library.git'}"
+        UMBRELLA_CHART_REPO = "${env.UMBRELLA_CHART_REPO ?: 'https://github.com/companyinfo/umbrella-chart.git'}"
+        
+        // Stage toggles - set to 'true' to enable, 'false' to disable
+        ENABLE_CHECKOUT_SERVICE = "${env.ENABLE_CHECKOUT_SERVICE ?: 'true'}"
+        ENABLE_CHECKOUT_PLATFORM = "${env.ENABLE_CHECKOUT_PLATFORM ?: 'true'}"
+        ENABLE_CHECKOUT_TOOLS = "${env.ENABLE_CHECKOUT_TOOLS ?: 'true'}"
+        ENABLE_SETUP_ENV = "${env.ENABLE_SETUP_ENV ?: 'true'}"
+        ENABLE_VALIDATE_CONFIG = "${env.ENABLE_VALIDATE_CONFIG ?: 'true'}"
+        ENABLE_BUILD_IMAGE = "${env.ENABLE_BUILD_IMAGE ?: 'true'}"
+        ENABLE_GENERATE_CHART = "${env.ENABLE_GENERATE_CHART ?: 'true'}"
+        ENABLE_LINT_CHART = "${env.ENABLE_LINT_CHART ?: 'true'}"
+        ENABLE_TEMPLATE_CHART = "${env.ENABLE_TEMPLATE_CHART ?: 'true'}"
+        ENABLE_UPDATE_UMBRELLA = "${env.ENABLE_UPDATE_UMBRELLA ?: 'true'}"
+        ENABLE_CREATE_PR = "${env.ENABLE_CREATE_PR ?: 'true'}"
+        ENABLE_DEPLOY = "${env.ENABLE_DEPLOY ?: 'false'}" // Disabled for POC
+        ENABLE_VERIFY_DEPLOYMENT = "${env.ENABLE_VERIFY_DEPLOYMENT ?: 'false'}" // Disabled for POC
     }
     
     options {
@@ -19,6 +34,9 @@ pipeline {
     
     stages {
         stage('Checkout Service Repository') {
+            when {
+                expression { env.ENABLE_CHECKOUT_SERVICE == 'true' }
+            }
             steps {
                 script {
                     echo "📦 Checking out service repository..."
@@ -32,6 +50,9 @@ pipeline {
         }
         
         stage('Checkout Platform Library') {
+            when {
+                expression { env.ENABLE_CHECKOUT_PLATFORM == 'true' }
+            }
             steps {
                 script {
                     echo "📚 Checking out platform library..."
@@ -48,6 +69,9 @@ pipeline {
         }
         
         stage('Checkout Tools') {
+            when {
+                expression { env.ENABLE_CHECKOUT_TOOLS == 'true' }
+            }
             steps {
                 script {
                     echo "🛠️ Checking out chart factory tools..."
@@ -74,6 +98,9 @@ pipeline {
         }
         
         stage('Setup Environment') {
+            when {
+                expression { env.ENABLE_SETUP_ENV == 'true' }
+            }
             steps {
                 script {
                     echo "🔧 Setting up environment..."
@@ -98,6 +125,9 @@ pipeline {
         }
         
         stage('Validate Configuration') {
+            when {
+                expression { env.ENABLE_VALIDATE_CONFIG == 'true' }
+            }
             steps {
                 script {
                     echo "✅ Validating service configuration..."
@@ -128,6 +158,9 @@ pipeline {
         }
         
         stage('Build Image') {
+            when {
+                expression { env.ENABLE_BUILD_IMAGE == 'true' }
+            }
             steps {
                 script {
                     echo "🏗️ Building service image..."
@@ -151,6 +184,9 @@ pipeline {
         }
         
         stage('Generate Chart') {
+            when {
+                expression { env.ENABLE_GENERATE_CHART == 'true' }
+            }
             steps {
                 script {
                     echo "📊 Generating Helm chart..."
@@ -175,6 +211,9 @@ pipeline {
         }
         
         stage('Lint Chart') {
+            when {
+                expression { env.ENABLE_LINT_CHART == 'true' }
+            }
             steps {
                 script {
                     echo "🔍 Linting generated chart..."
@@ -193,6 +232,9 @@ pipeline {
         }
         
         stage('Template Chart') {
+            when {
+                expression { env.ENABLE_TEMPLATE_CHART == 'true' }
+            }
             steps {
                 script {
                     echo "📄 Rendering chart templates..."
@@ -214,6 +256,9 @@ pipeline {
         }
         
         stage('Update Umbrella Chart') {
+            when {
+                expression { env.ENABLE_UPDATE_UMBRELLA == 'true' }
+            }
             steps {
                 script {
                     echo "🔄 Updating umbrella chart..."
@@ -258,6 +303,9 @@ pipeline {
         }
         
         stage('Create Umbrella Chart PR') {
+            when {
+                expression { env.ENABLE_CREATE_PR == 'true' }
+            }
             steps {
                 script {
                     echo "📝 Creating PR to umbrella chart repository..."
@@ -355,10 +403,13 @@ pipeline {
         
         stage('Deploy to k3s (Optional)') {
             when {
-                // Only deploy on merge to main branch
-                anyOf {
-                    branch 'main'
-                    branch 'master'
+                allOf {
+                    expression { env.ENABLE_DEPLOY == 'true' }
+                    // Only deploy on merge to main branch
+                    anyOf {
+                        branch 'main'
+                        branch 'master'
+                    }
                 }
             }
             steps {
@@ -410,7 +461,14 @@ pipeline {
         
         stage('Verify Deployment') {
             when {
-                expression { env.BRANCH_NAME == 'main' || env.BRANCH_NAME == 'master' }
+                allOf {
+                    expression { env.ENABLE_VERIFY_DEPLOYMENT == 'true' }
+                    // Only verify on merge to main branch
+                    anyOf {
+                        branch 'main'
+                        branch 'master'
+                    }
+                }
             }
             steps {
                 script {

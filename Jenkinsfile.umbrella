@@ -8,6 +8,19 @@ pipeline {
         NAMESPACE = "platform"
         PLATFORM_LIBRARY_REPO = "${env.PLATFORM_LIBRARY_REPO ?: 'https://github.com/companyinfo/platform-library.git'}"
         TOOLS_REPO = "${env.TOOLS_REPO ?: 'https://github.com/companyinfo/helm-chart-factory.git'}"
+        
+        // Stage toggles - set to 'true' to enable, 'false' to disable
+        ENABLE_CHECKOUT_UMBRELLA = "${env.ENABLE_CHECKOUT_UMBRELLA ?: 'true'}"
+        ENABLE_CHECKOUT_PLATFORM = "${env.ENABLE_CHECKOUT_PLATFORM ?: 'true'}"
+        ENABLE_CHECKOUT_TOOLS = "${env.ENABLE_CHECKOUT_TOOLS ?: 'true'}"
+        ENABLE_SETUP_ENV = "${env.ENABLE_SETUP_ENV ?: 'true'}"
+        ENABLE_SYNC_UMBRELLA = "${env.ENABLE_SYNC_UMBRELLA ?: 'true'}"
+        ENABLE_LINT_CHARTS = "${env.ENABLE_LINT_CHARTS ?: 'true'}"
+        ENABLE_TEMPLATE_CHARTS = "${env.ENABLE_TEMPLATE_CHARTS ?: 'true'}"
+        ENABLE_DEPLOY = "${env.ENABLE_DEPLOY ?: 'false'}" // Disabled for POC
+        ENABLE_VALIDATE_PR = "${env.ENABLE_VALIDATE_PR ?: 'true'}"
+        ENABLE_VERIFY_DEPLOYMENT = "${env.ENABLE_VERIFY_DEPLOYMENT ?: 'false'}" // Disabled for POC
+        ENABLE_RUN_TESTS = "${env.ENABLE_RUN_TESTS ?: 'true'}"
     }
     
     options {
@@ -23,6 +36,9 @@ pipeline {
     
     stages {
         stage('Checkout Umbrella Chart') {
+            when {
+                expression { env.ENABLE_CHECKOUT_UMBRELLA == 'true' }
+            }
             steps {
                 script {
                     echo "📦 Checking out umbrella chart repository..."
@@ -32,6 +48,9 @@ pipeline {
         }
         
         stage('Checkout Platform Library') {
+            when {
+                expression { env.ENABLE_CHECKOUT_PLATFORM == 'true' }
+            }
             steps {
                 script {
                     echo "📚 Checking out platform library..."
@@ -48,6 +67,9 @@ pipeline {
         }
         
         stage('Checkout Tools') {
+            when {
+                expression { env.ENABLE_CHECKOUT_TOOLS == 'true' }
+            }
             steps {
                 script {
                     echo "🛠️ Checking out chart factory tools..."
@@ -72,6 +94,9 @@ pipeline {
         }
         
         stage('Setup Environment') {
+            when {
+                expression { env.ENABLE_SETUP_ENV == 'true' }
+            }
             steps {
                 script {
                     echo "🔧 Setting up environment..."
@@ -88,6 +113,9 @@ pipeline {
         }
         
         stage('Sync Umbrella Chart') {
+            when {
+                expression { env.ENABLE_SYNC_UMBRELLA == 'true' }
+            }
             steps {
                 script {
                     echo "🔄 Syncing umbrella chart..."
@@ -107,6 +135,9 @@ pipeline {
         }
         
         stage('Lint Charts') {
+            when {
+                expression { env.ENABLE_LINT_CHARTS == 'true' }
+            }
             steps {
                 script {
                     echo "🔍 Linting charts..."
@@ -125,6 +156,9 @@ pipeline {
         }
         
         stage('Template Charts') {
+            when {
+                expression { env.ENABLE_TEMPLATE_CHARTS == 'true' }
+            }
             steps {
                 script {
                     echo "📄 Rendering chart templates..."
@@ -140,10 +174,13 @@ pipeline {
         
         stage('Deploy to k3s') {
             when {
-                // Only deploy on merge to main branch, not on PRs
-                anyOf {
-                    branch 'main'
-                    branch 'master'
+                allOf {
+                    expression { env.ENABLE_DEPLOY == 'true' }
+                    // Only deploy on merge to main branch, not on PRs
+                    anyOf {
+                        branch 'main'
+                        branch 'master'
+                    }
                 }
             }
             steps {
@@ -182,11 +219,14 @@ pipeline {
         
         stage('Validate PR Changes') {
             when {
-                // Only run on PRs, not on main branch
-                not {
-                    anyOf {
-                        branch 'main'
-                        branch 'master'
+                allOf {
+                    expression { env.ENABLE_VALIDATE_PR == 'true' }
+                    // Only run on PRs, not on main branch
+                    not {
+                        anyOf {
+                            branch 'main'
+                            branch 'master'
+                        }
                     }
                 }
             }
@@ -213,6 +253,16 @@ pipeline {
         }
         
         stage('Verify Deployment') {
+            when {
+                allOf {
+                    expression { env.ENABLE_VERIFY_DEPLOYMENT == 'true' }
+                    // Only verify on merge to main branch
+                    anyOf {
+                        branch 'main'
+                        branch 'master'
+                    }
+                }
+            }
             steps {
                 script {
                     echo "✅ Verifying deployment..."
@@ -231,6 +281,9 @@ pipeline {
         }
         
         stage('Run Tests') {
+            when {
+                expression { env.ENABLE_RUN_TESTS == 'true' }
+            }
             steps {
                 script {
                     echo "🧪 Running tests..."
