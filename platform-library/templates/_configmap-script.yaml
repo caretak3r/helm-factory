@@ -23,7 +23,19 @@ data:
 {{- end }}
   {{- else if .Values.job.scriptFile }}
   script.sh: |
-{{ .Files.Get .Values.job.scriptFile | indent 4 }}
+{{- $scriptPath := .Values.job.scriptFile }}
+{{- $scriptFile := $scriptPath }}
+{{- if not (hasPrefix "scripts/" $scriptFile) }}
+{{- $scriptFile = printf "scripts/%s" $scriptFile }}
+{{- end }}
+{{- if .Files.Get $scriptFile }}
+{{ .Files.Get $scriptFile | indent 4 }}
+{{- else if .Files.Get $scriptPath }}
+{{ .Files.Get $scriptPath | indent 4 }}
+{{- else }}
+    # Script file not found: {{ $scriptPath }}
+    # Please ensure the script file exists in the chart's scripts/ directory
+{{- end }}
   {{- end }}
 {{- end }}
 {{- end }}

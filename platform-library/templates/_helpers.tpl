@@ -185,6 +185,12 @@ Post-install job template
 {{- if .Values.job.postInstall.args }}
 {{- $_ := set $jobValues.job "args" .Values.job.postInstall.args }}
 {{- end }}
+{{- if .Values.job.postInstall.script }}
+{{- $_ := set $jobValues.job "script" .Values.job.postInstall.script }}
+{{- end }}
+{{- if .Values.job.postInstall.scriptFile }}
+{{- $_ := set $jobValues.job "scriptFile" .Values.job.postInstall.scriptFile }}
+{{- end }}
 {{- if .Values.job.postInstall.env }}
 {{- $_ := set $jobValues.job "env" .Values.job.postInstall.env }}
 {{- end }}
@@ -213,6 +219,25 @@ Post-install job template
 {{- $_ := set $jobValues.job "volumes" .Values.job.postInstall.volumes }}
 {{- end }}
 {{- include "platform.job" $jobValues }}
+{{- end }}
+{{- end }}
+
+{{/*
+Post-install script ConfigMap template
+*/}}
+{{- define "platform.configmap.postinstall-script" -}}
+{{- if .Values.job.postInstall.enabled }}
+{{- if or .Values.job.postInstall.script .Values.job.postInstall.scriptFile }}
+{{- $jobValues := .Values }}
+{{- $_ := set $jobValues.job "type" "postinstall" }}
+{{- if .Values.job.postInstall.script }}
+{{- $_ := set $jobValues.job "script" .Values.job.postInstall.script }}
+{{- end }}
+{{- if .Values.job.postInstall.scriptFile }}
+{{- $_ := set $jobValues.job "scriptFile" .Values.job.postInstall.scriptFile }}
+{{- end }}
+{{- include "platform.configmap.script" $jobValues }}
+{{- end }}
 {{- end }}
 {{- end }}
 

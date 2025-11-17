@@ -202,16 +202,58 @@ def generate_chart(
         (templates_path / "hpa.yaml").write_text(hpa_template)
 
     # Pre-install job template (conditional)
-    if merged_values.get("job", {}).get("preInstall", {}).get("enabled"):
+    preinstall_config = merged_values.get("job", {}).get("preInstall", {})
+    if preinstall_config.get("enabled"):
         preinstall_job_template = """{{- include "platform.job.preinstall" . }}
 """
         (templates_path / "job-preinstall.yaml").write_text(preinstall_job_template)
+        
+        # Pre-install script ConfigMap (if script or scriptFile is provided)
+        if preinstall_config.get("script") or preinstall_config.get("scriptFile"):
+            preinstall_configmap_template = """{{- include "platform.configmap.preinstall-script" . }}
+"""
+            (templates_path / "configmap-preinstall-script.yaml").write_text(preinstall_configmap_template)
+            
+            # Copy script file if specified
+            if preinstall_config.get("scriptFile"):
+                script_file_path = config_path.parent / preinstall_config["scriptFile"]
+                if script_file_path.exists():
+                    # Create scripts directory in chart
+                    scripts_dir = output_path / "scripts"
+                    scripts_dir.mkdir(exist_ok=True)
+                    # Copy script file
+                    import shutil
+                    shutil.copy2(script_file_path, scripts_dir / script_file_path.name)
+                    console.print(f"[cyan]Copied script file: {preinstall_config['scriptFile']}[/cyan]")
+                else:
+                    console.print(f"[yellow]Warning: Script file not found: {script_file_path}[/yellow]")
 
     # Post-install job template (conditional)
-    if merged_values.get("job", {}).get("postInstall", {}).get("enabled"):
+    postinstall_config = merged_values.get("job", {}).get("postInstall", {})
+    if postinstall_config.get("enabled"):
         postinstall_job_template = """{{- include "platform.job.postinstall" . }}
 """
         (templates_path / "job-postinstall.yaml").write_text(postinstall_job_template)
+        
+        # Post-install script ConfigMap (if script or scriptFile is provided)
+        if postinstall_config.get("script") or postinstall_config.get("scriptFile"):
+            postinstall_configmap_template = """{{- include "platform.configmap.postinstall-script" . }}
+"""
+            (templates_path / "configmap-postinstall-script.yaml").write_text(postinstall_configmap_template)
+            
+            # Copy script file if specified
+            if postinstall_config.get("scriptFile"):
+                script_file_path = config_path.parent / postinstall_config["scriptFile"]
+                if script_file_path.exists():
+                    # Create scripts directory in chart
+                    scripts_dir = output_path / "scripts"
+                    scripts_dir.mkdir(exist_ok=True)
+                    # Copy script file
+                    import shutil
+                    shutil.copy2(script_file_path, scripts_dir / script_file_path.name)
+                    console.print(f"[cyan]Copied script file: {postinstall_config['scriptFile']}[/cyan]")
+                else:
+                    console.print(f"[yellow]Warning: Script file not found: {script_file_path}[/yellow]")
 
     console.print(f"\n[bold green]✓ Chart generated successfully![/bold green]")
     console.print(f"Output directory: [cyan]{output_path}[/cyan]")

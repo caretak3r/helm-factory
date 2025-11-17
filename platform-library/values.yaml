@@ -139,15 +139,29 @@ job:
   preInstall:
     enabled: false
     hookWeight: -5  # Lower weight = runs earlier
-    # Override common job settings if needed
-    # image:
-    #   repository: myregistry/pre-install-job
-    #   tag: "v1.0.0"
+    # Option 1: Inline script (creates ConfigMap automatically)
+    # script: |
+    #   #!/bin/sh
+    #   echo "Running pre-install setup"
+    #   # Add your script commands here
+    #   exit 0
+    # Or as array:
+    # script:
+    #   - "#!/bin/sh"
+    #   - "echo 'Running pre-install setup'"
+    #   - "exit 0"
+    # Option 2: Script file from repository (relative to chart root)
+    # scriptFile: scripts/pre-install.sh
+    # Option 3: Custom command and args (if neither script nor scriptFile is set)
     # command:
     #   - /bin/sh
     #   - -c
     # args:
     #   - echo "Running pre-install job"
+    # Override common job settings if needed
+    # image:
+    #   repository: myregistry/pre-install-job
+    #   tag: "v1.0.0"
     # env:
     #   - name: ENV_VAR
     #     value: "value"
@@ -160,15 +174,29 @@ job:
   postInstall:
     enabled: false
     hookWeight: 5  # Higher weight = runs later
-    # Override common job settings if needed
-    # image:
-    #   repository: myregistry/post-install-job
-    #   tag: "v1.0.0"
+    # Option 1: Inline script (creates ConfigMap automatically)
+    # script: |
+    #   #!/bin/sh
+    #   echo "Running post-install verification"
+    #   # Add your script commands here
+    #   exit 0
+    # Or as array:
+    # script:
+    #   - "#!/bin/sh"
+    #   - "echo 'Running post-install verification'"
+    #   - "exit 0"
+    # Option 2: Script file from repository (relative to chart root)
+    # scriptFile: scripts/post-install.sh
+    # Option 3: Custom command and args (if neither script nor scriptFile is set)
     # command:
     #   - /bin/sh
     #   - -c
     # args:
     #   - echo "Running post-install job"
+    # Override common job settings if needed
+    # image:
+    #   repository: myregistry/post-install-job
+    #   tag: "v1.0.0"
     # env:
     #   - name: ENV_VAR
     #     value: "value"

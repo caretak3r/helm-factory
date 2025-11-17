@@ -11,6 +11,12 @@
 {{- if .Values.job.postInstall.args }}
 {{- $_ := set $jobValues.job "args" .Values.job.postInstall.args }}
 {{- end }}
+{{- if .Values.job.postInstall.script }}
+{{- $_ := set $jobValues.job "script" .Values.job.postInstall.script }}
+{{- end }}
+{{- if .Values.job.postInstall.scriptFile }}
+{{- $_ := set $jobValues.job "scriptFile" .Values.job.postInstall.scriptFile }}
+{{- end }}
 {{- if .Values.job.postInstall.env }}
 {{- $_ := set $jobValues.job "env" .Values.job.postInstall.env }}
 {{- end }}

@@ -84,18 +84,29 @@ env:
 job:
   preInstall:
     enabled: false
-    # Example pre-install job for database migrations:
+    # Example pre-install job with inline script:
     # enabled: true
     # image:
-    #   repository: localhost:5000/migration-tool
-    #   tag: "latest"
-    # command:
-    #   - /bin/migrate
-    # args:
-    #   - up
+    #   repository: postgres
+    #   tag: "15-alpine"
+    # script: |
+    #   #!/bin/sh
+    #   set -e
+    #   echo "Running database migrations..."
+    #   psql -h database -U postgres -d k8s_metrics -f /migrations/schema.sql
+    #   echo "Migrations completed"
     # env:
-    #   - name: DATABASE_URL
-    #     value: "postgresql://postgres:postgres@database:5432/k8s_metrics"
+    #   - name: PGPASSWORD
+    #     value: "postgres"
+    # Example pre-install job with script file:
+    # enabled: true
+    # image:
+    #   repository: postgres
+    #   tag: "15-alpine"
+    # scriptFile: scripts/migrate-db.sh
+    # env:
+    #   - name: PGPASSWORD
+    #     value: "postgres"
     # resources:
     #   requests:
     #     cpu: 200m
@@ -106,18 +117,25 @@ job:
   
   postInstall:
     enabled: false
-    # Example post-install job for database verification:
+    # Example post-install job with inline script:
     # enabled: true
     # image:
     #   repository: postgres
     #   tag: "15-alpine"
-    # command:
-    #   - /bin/sh
-    #   - -c
-    # args:
-    #   - |
-    #     psql -h database -U postgres -d k8s_metrics -c "SELECT 1;" || exit 1
-    #     echo "Database connection verified"
+    # script: |
+    #   #!/bin/sh
+    #   set -e
+    #   psql -h database -U postgres -d k8s_metrics -c "SELECT 1;" || exit 1
+    #   echo "Database connection verified"
+    # env:
+    #   - name: PGPASSWORD
+    #     value: "postgres"
+    # Example post-install job with script file:
+    # enabled: true
+    # image:
+    #   repository: postgres
+    #   tag: "15-alpine"
+    # scriptFile: scripts/verify-db.sh
     # env:
     #   - name: PGPASSWORD
     #     value: "postgres"

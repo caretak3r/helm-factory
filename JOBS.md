@@ -32,7 +32,76 @@ Use post-install jobs for:
 
 ## Configuration
 
-### Basic Configuration
+### Option 1: Inline Script (Recommended for Simple Scripts)
+
+```yaml
+job:
+  # Pre-install job with inline script
+  preInstall:
+    enabled: true
+    image:
+      repository: busybox
+      tag: "latest"
+    script: |
+      #!/bin/sh
+      echo "Running pre-install setup"
+      # Add your script commands here
+      exit 0
+  
+  # Post-install job with inline script
+  postInstall:
+    enabled: true
+    image:
+      repository: busybox
+      tag: "latest"
+    script: |
+      #!/bin/sh
+      echo "Running post-install verification"
+      # Add your script commands here
+      exit 0
+```
+
+**Or as an array:**
+```yaml
+job:
+  preInstall:
+    enabled: true
+    image:
+      repository: busybox
+      tag: "latest"
+    script:
+      - "#!/bin/sh"
+      - "echo 'Running pre-install setup'"
+      - "exit 0"
+```
+
+### Option 2: Script File from Repository (Recommended for Complex Scripts)
+
+```yaml
+job:
+  # Pre-install job using script file
+  preInstall:
+    enabled: true
+    image:
+      repository: busybox
+      tag: "latest"
+    scriptFile: scripts/pre-install.sh  # Relative to repository root
+  
+  # Post-install job using script file
+  postInstall:
+    enabled: true
+    image:
+      repository: busybox
+      tag: "latest"
+    scriptFile: scripts/post-install.sh  # Relative to repository root
+```
+
+**Script file location:**
+- Place script files in your repository (e.g., `scripts/pre-install.sh`)
+- The chart generator will copy them to the generated chart
+- Scripts are automatically mounted as ConfigMaps and executed
+
+### Option 3: Custom Command and Args (Legacy)
 
 ```yaml
 job:
@@ -152,8 +221,10 @@ job:
 | `parallelism` | int | `1` | Number of pods to run in parallel |
 | `restartPolicy` | string | `"Never"` | Pod restart policy (Never or OnFailure) |
 | `activeDeadlineSeconds` | int | `300` | Maximum time job can run (seconds) |
-| `command` | array | `[]` | Container command |
-| `args` | array | `[]` | Container arguments |
+| `command` | array | `[]` | Container command (ignored if script/scriptFile is set) |
+| `args` | array | `[]` | Container arguments (ignored if script/scriptFile is set) |
+| `script` | string/array | `null` | Inline script content (creates ConfigMap) |
+| `scriptFile` | string | `null` | Path to script file in repository (relative to repo root) |
 | `env` | array | `[]` | Environment variables |
 | `resources` | object | See defaults | Resource requests and limits |
 | `volumeMounts` | array | `[]` | Volume mounts |
@@ -175,19 +246,21 @@ job:
 
 ## Examples
 
-### Database Migration (Pre-install)
+### Database Migration (Pre-install) - Using Inline Script
 
 ```yaml
 job:
   preInstall:
     enabled: true
     image:
-      repository: myregistry/migration-tool
-      tag: "v1.0.0"
-    command:
-      - /bin/migrate
-    args:
-      - up
+      repository: postgres
+      tag: "15-alpine"
+    script: |
+      #!/bin/sh
+      set -e
+      echo "Running database migrations..."
+      psql $DATABASE_URL -f /migrations/schema.sql
+      echo "Migrations completed successfully"
     env:
       - name: DATABASE_URL
         valueFrom:
@@ -201,6 +274,34 @@ job:
       limits:
         cpu: 500m
         memory: 512Mi
+```
+
+### Database Migration (Pre-install) - Using Script File
+
+**configuration.yml:**
+```yaml
+job:
+  preInstall:
+    enabled: true
+    image:
+      repository: postgres
+      tag: "15-alpine"
+    scriptFile: scripts/migrate-db.sh
+    env:
+      - name: DATABASE_URL
+        valueFrom:
+          secretKeyRef:
+            name: db-secret
+            key: url
+```
+
+**scripts/migrate-db.sh:**
+```bash
+#!/bin/sh
+set -e
+echo "Running database migrations..."
+psql $DATABASE_URL -f /migrations/schema.sql
+echo "Migrations completed successfully"
 ```
 
 ### Health Check Verification (Post-install)
@@ -232,7 +333,7 @@ job:
         memory: 128Mi
 ```
 
-### Both Pre-install and Post-install
+### Both Pre-install and Post-install - Using Scripts
 
 ```yaml
 job:
@@ -241,22 +342,41 @@ job:
     image:
       repository: busybox
       tag: "latest"
-    command:
-      - /bin/sh
-      - -c
-    args:
-      - echo "Pre-install: Setting up resources"
+    script: |
+      #!/bin/sh
+      echo "Pre-install: Setting up resources"
+      # Add setup logic here
   
   postInstall:
     enabled: true
     image:
       repository: busybox
       tag: "latest"
-    command:
-      - /bin/sh
-      - -c
-    args:
-      - echo "Post-install: Verifying deployment"
+    script: |
+      #!/bin/sh
+      echo "Post-install: Verifying deployment"
+      # Add verification logic here
+```
+
+### Mixed: Inline Script + Script File
+
+```yaml
+job:
+  preInstall:
+    enabled: true
+    image:
+      repository: busybox
+      tag: "latest"
+    script: |
+      #!/bin/sh
+      echo "Quick pre-install check"
+  
+  postInstall:
+    enabled: true
+    image:
+      repository: busybox
+      tag: "latest"
+    scriptFile: scripts/complex-verification.sh  # Use file for complex logic
 ```
 
 ### Using Volumes
