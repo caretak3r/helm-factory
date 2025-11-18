@@ -48,13 +48,13 @@ This document contains Architecture Decision Records (ADRs) for the Helm Chart F
     - [Architecture](#architecture-6)
     - [Consequences](#consequences-6)
     - [Alternatives Considered](#alternatives-considered-6)
-  - [ADR-008: Local Development Environment with k3s](#adr-008-local-development-environment-with-k3s)
+  - [ADR-008: Kubernetes Cluster for Deployment](#adr-008-kubernetes-cluster-for-deployment)
     - [Context](#context-7)
     - [Decision](#decision-7)
     - [Architecture](#architecture-7)
     - [Consequences](#consequences-7)
     - [Alternatives Considered](#alternatives-considered-7)
-  - [ADR-009: Centralized Chart Generation in Umbrella Repository](#adr-009-centralized-chart-generation-in-umbrella-repository)
+  - [ADR-009: Chart Generation in Service Repositories](#adr-009-chart-generation-in-service-repositories)
     - [Context](#context-8)
     - [Decision](#decision-8)
     - [Architecture](#architecture-8)
@@ -281,43 +281,65 @@ Service teams need Helm charts but shouldn't need to:
 We will use a **configuration-driven approach** where:
 1. Service teams create a `configuration.yml` file (similar to `values.yaml`)
 2. Configuration specifies features like `ingress: enable`, `mtls: enable`, `certificate: enable`
-3. Chart generation (generic process) merges configuration with library chart defaults
-4. Chart generation occurs in service repositories
-5. Generated charts reference common-library as dependency
-6. Configuration supports workload types (Deployment, StatefulSet, DaemonSet)
-7. Configuration supports pre-install and post-install Jobs with inline scripts or script files
-8. Generated charts are included in PRs to umbrella-chart repository
+3. When `configuration.yml` changes, service pipeline parses it to create `Chart.yaml` and `values.yaml`
+4. `common-library` is added as a dependency to the generated `Chart.yaml`
+5. `helm dependency update` is run to resolve dependencies
+6. App template (workload.yaml) is included referencing common-library templates
+7. Chart validation: `helm lint` and `helm template` are executed
+8. Chart is packaged using `helm package`
+9. Packaged chart is pushed to ECR (OCI registry)
+10. PR is opened against umbrella-chart repository with the generated chart
+11. Configuration supports workload types (Deployment, StatefulSet, DaemonSet)
+12. Configuration supports pre-install and post-install Jobs with inline scripts or script files
 
 ### Architecture
 
 ```mermaid
-graph LR
+graph TB
     subgraph "Service Repository"
-        CFG[configuration.yml<br/>service:<br/>  name: frontend<br/>workload:<br/>  type: Deployment<br/>ingress:<br/>  enabled: true<br/>job:<br/>  preInstall:<br/>    enabled: true<br/>    script: ...]
+        CFG[configuration.yml<br/>CHANGED]
     end
     
-    subgraph "Chart Generation"
-        GEN[Chart Generation<br/>Process]
-        MERGE[Merge Config<br/>with Library<br/>Defaults]
+    subgraph "Service Pipeline"
+        PARSE[Parse configuration.yml]
+        CREATE_CHART[Create Chart.yaml]
+        CREATE_VALUES[Create values.yaml]
+        ADD_DEP[Add common-library<br/>dependency]
+        DEP_UPDATE[helm dependency<br/>update]
+        INCLUDE_TEMPLATE[Include app.yml<br/>template]
+        VALIDATE[VALIDATION<br/>helm lint<br/>helm template]
+        PACKAGE[helm package]
+        PUSH_ECR[Push to ECR]
+        CREATE_PR[Create PR to<br/>umbrella-chart]
     end
     
     subgraph "Common Library"
-        LIB[common-library/<br/>values.yaml<br/>templates/]
+        LIB[common-library<br/>templates]
     end
     
     subgraph "Generated Chart"
-        CHART[charts/frontend/<br/>Chart.yaml<br/>values.yaml<br/>templates/]
+        CHART[Chart.yaml<br/>values.yaml<br/>templates/<br/>app.yml]
     end
     
-    CFG --> GEN
-    LIB --> MERGE
-    GEN --> MERGE
-    MERGE --> CHART
+    CFG --> PARSE
+    PARSE --> CREATE_CHART
+    PARSE --> CREATE_VALUES
+    CREATE_CHART --> ADD_DEP
+    ADD_DEP --> DEP_UPDATE
+    DEP_UPDATE --> LIB
+    DEP_UPDATE --> INCLUDE_TEMPLATE
+    INCLUDE_TEMPLATE --> CHART
+    CHART --> VALIDATE
+    VALIDATE --> PACKAGE
+    PACKAGE --> PUSH_ECR
+    PUSH_ECR --> CREATE_PR
     
     style CFG fill:#ffcccc
-    style GEN fill:#fff4e1
+    style PARSE fill:#fff4e1
+    style VALIDATE fill:#ffe1f5
     style LIB fill:#e1f5ff
     style CHART fill:#e1ffe1
+    style PUSH_ECR fill:#fff4e1
 ```
 
 ### Consequences
@@ -394,22 +416,27 @@ sequenceDiagram
     ServiceRepo->>ServiceRepo: 3. Merge to main
     
     ServiceRepo->>ServicePipeline: 4. Trigger pipeline
-    ServicePipeline->>ServicePipeline: 5. Validate config
-    ServicePipeline->>ServicePipeline: 6. Build image
-    ServicePipeline->>ServicePipeline: 7. Generate chart
-    ServicePipeline->>ServicePipeline: 8. Validate chart
-    ServicePipeline->>UmbrellaRepo: 9. Create PR with chart
+    ServicePipeline->>ServicePipeline: 5. Parse configuration.yml
+    ServicePipeline->>ServicePipeline: 6. Create Chart.yaml + values.yaml
+    ServicePipeline->>ServicePipeline: 7. Add common-library dependency
+    ServicePipeline->>ServicePipeline: 8. helm dependency update
+    ServicePipeline->>ServicePipeline: 9. Include app.yml template
+    ServicePipeline->>ServicePipeline: 10. VALIDATION: helm lint
+    ServicePipeline->>ServicePipeline: 11. VALIDATION: helm template
+    ServicePipeline->>ServicePipeline: 12. helm package
+    ServicePipeline->>ServicePipeline: 13. Push chart to ECR
+    ServicePipeline->>UmbrellaRepo: 14. Create PR with chart
     
-    UmbrellaRepo->>UmbrellaPipeline: 10. Trigger on PR
-    UmbrellaPipeline->>UmbrellaPipeline: 11. Build dependencies
-    UmbrellaPipeline->>UmbrellaPipeline: 12. Lint charts
+    UmbrellaRepo->>UmbrellaPipeline: 15. Trigger on PR
+    UmbrellaPipeline->>UmbrellaPipeline: 16. Build dependencies
+    UmbrellaPipeline->>UmbrellaPipeline: 17. Lint charts
     
-    UmbrellaRepo->>UmbrellaRepo: 13. Merge PR
-    UmbrellaRepo->>UmbrellaPipeline: 14. Trigger on merge
-    UmbrellaPipeline->>UmbrellaPipeline: 15. Build dependencies
-    UmbrellaPipeline->>UmbrellaPipeline: 16. Check release condition
-    UmbrellaPipeline->>SaaS: 17. Deploy to SaaS Provider
-    SaaS->>UmbrellaPipeline: 18. Verify deployment
+    UmbrellaRepo->>UmbrellaRepo: 18. Merge PR
+    UmbrellaRepo->>UmbrellaPipeline: 19. Trigger on merge
+    UmbrellaPipeline->>UmbrellaPipeline: 20. Build dependencies
+    UmbrellaPipeline->>UmbrellaPipeline: 21. Check release condition
+    UmbrellaPipeline->>SaaS: 22. Deploy to SaaS Provider
+    SaaS->>UmbrellaPipeline: 23. Verify deployment
 ```
 
 ### Consequences
@@ -862,12 +889,17 @@ Each approach has trade-offs in terms of complexity, maintainability, and servic
 
 We will perform chart generation in **individual service repositories**:
 1. Service repositories contain `configuration.yml`, application code, and chart generation capability
-2. Service pipelines generate Helm charts locally
-3. Service pipelines create PRs to umbrella-chart repository with generated charts
-4. Umbrella chart repository receives PRs and builds Helm dependencies
-5. If release condition is met, umbrella chart deploys to replicated SaaS provider
-6. Common-library is a static dependency in umbrella Chart.yaml
-7. Generated charts are included in PRs to umbrella repository
+2. When `configuration.yml` changes, service pipeline parses it to create `Chart.yaml` and `values.yaml`
+3. `common-library` is added as a dependency to the generated `Chart.yaml`
+4. `helm dependency update` is executed to resolve dependencies
+5. `app.yml` template (workload.yaml) is included, referencing common-library templates
+6. Chart validation: `helm lint` and `helm template` are executed
+7. Chart is packaged using `helm package`
+8. Packaged chart is pushed to ECR (OCI registry)
+9. Service pipeline creates PR to umbrella-chart repository with generated chart and updated configuration.yml
+10. Umbrella chart repository receives PRs and validates changes
+11. If release condition is met, umbrella chart deploys to replicated SaaS provider
+12. Common-library is a static dependency in both service charts and umbrella Chart.yaml
 
 ### Architecture
 
@@ -881,10 +913,14 @@ graph TB
     end
     
     subgraph "Service Pipeline"
-        VALIDATE[Validate Config]
-        BUILD[Build Image]
-        GEN_CHART[Chart Generation]
-        VALIDATE_CHART[Validate Chart]
+        PARSE[Parse configuration.yml]
+        CREATE_CHART[Create Chart.yaml<br/>+ values.yaml]
+        ADD_DEP[Add common-library<br/>dependency]
+        DEP_UPDATE[helm dependency<br/>update]
+        INCLUDE_TEMPLATE[Include app.yml<br/>template]
+        VALIDATE[VALIDATION<br/>helm lint<br/>helm template]
+        PACKAGE[helm package]
+        PUSH_ECR[Push to ECR]
         CREATE_PR[Create PR to<br/>Umbrella Chart]
     end
     
@@ -902,11 +938,15 @@ graph TB
         DEPLOY[Deploy to<br/>SaaS Provider]
     end
     
-    CFG --> VALIDATE
-    VALIDATE --> BUILD
-    BUILD --> GEN_CHART
-    GEN_CHART --> VALIDATE_CHART
-    VALIDATE_CHART --> CREATE_PR
+    CFG --> PARSE
+    PARSE --> CREATE_CHART
+    CREATE_CHART --> ADD_DEP
+    ADD_DEP --> DEP_UPDATE
+    DEP_UPDATE --> INCLUDE_TEMPLATE
+    INCLUDE_TEMPLATE --> VALIDATE
+    VALIDATE --> PACKAGE
+    PACKAGE --> PUSH_ECR
+    PUSH_ECR --> CREATE_PR
     CREATE_PR --> SERVICES
     CREATE_PR --> CHARTS
     
@@ -1038,15 +1078,21 @@ graph TB
 
 **Service Pipeline Stages:**
 1. **Checkout Code** - Checkout service repository
-2. **Install Tools** - Install uv (via pip3), yq, and other required tools
+2. **Install Tools** - Install uv (via pip3), yq, Helm, and other required tools
 3. **Build Docker Image** - Build image using `dockerTasks` groovy function
 4. **Push Image to QA ECR** - Push image to QA ECR registry
-5. **Chart Generation** - Generate Helm chart (generic chart generation process)
-6. **Validate Helm Chart** - Validate generated chart using `helm lint` and `helm template`
-7. **Push Helm Chart to QA ECR** - Push chart to QA ECR OCI registry
-8. **Push Image to PROD ECR** - Conditional on main branch and `withApprovals`
-9. **Push Helm Chart to PROD ECR** - Conditional on main branch and `withApprovals`
-10. **Create PR to Umbrella Chart** - Create PR with generated chart and configuration.yml
+5. **Parse Configuration** - Parse changed `configuration.yml` file
+6. **Create Chart Files** - Generate `Chart.yaml` and `values.yaml` from configuration
+7. **Add Dependency** - Add `common-library` as dependency to `Chart.yaml`
+8. **Update Dependencies** - Run `helm dependency update` to resolve dependencies
+9. **Include Template** - Include `app.yml` template (workload.yaml) referencing common-library
+10. **VALIDATION: Lint Chart** - Run `helm lint` to validate chart structure
+11. **VALIDATION: Template Chart** - Run `helm template` to validate templates render correctly
+12. **Package Chart** - Run `helm package` to create chart tarball
+13. **Push Chart to QA ECR** - Push packaged chart to QA ECR OCI registry
+14. **Push Image to PROD ECR** - Conditional on main branch and `withApprovals`
+15. **Push Chart to PROD ECR** - Conditional on main branch and `withApprovals`
+16. **Create PR to Umbrella Chart** - Create PR with generated chart and updated configuration.yml
 
 **Umbrella Pipeline Stages:**
 1. **Checkout Code** - Checkout umbrella-chart repository
