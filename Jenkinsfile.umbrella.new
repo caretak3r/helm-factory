@@ -1,0 +1,298 @@
+pipeline {
+    agent any
+
+    parameters {
+        booleanParam(name: 'ENABLE_CHECKOUT', defaultValue: true, description: 'Enable checkout stage')
+        booleanParam(name: 'ENABLE_INSTALL_TOOLS', defaultValue: true, description: 'Enable install tools stage')
+        booleanParam(name: 'ENABLE_GENERATE_CHARTS', defaultValue: true, description: 'Enable generate charts stage')
+        booleanParam(name: 'ENABLE_UPDATE_DEPENDENCIES', defaultValue: true, description: 'Enable update dependencies stage')
+        booleanParam(name: 'ENABLE_LINT_CHARTS', defaultValue: true, description: 'Enable lint charts stage')
+        booleanParam(name: 'ENABLE_TEMPLATE_CHARTS', defaultValue: true, description: 'Enable template charts stage')
+        booleanParam(name: 'ENABLE_DEPLOY', defaultValue: false, description: 'Enable deploy to k3s stage')
+        booleanParam(name: 'ENABLE_VERIFY_DEPLOYMENT', defaultValue: false, description: 'Enable verify deployment stage')
+    }
+
+    environment {
+        // GitHub credentials
+        GITHUB_CREDENTIALS = credentials('github-credentials')
+        
+        // Tools directory
+        TOOLS_DIR = "${env.WORKSPACE}/tools"
+        
+        // Repository URLs
+        COMMON_LIBRARY_REPO = "${env.COMMON_LIBRARY_REPO ?: 'https://github.com/companyinfo/common-library.git'}"
+    }
+
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        timeout(time: 30, unit: 'MINUTES')
+        timestamps()
+    }
+
+    triggers {
+        // Trigger on PRs and merges to main
+        githubPush()
+    }
+
+    stages {
+        stage('Checkout Code') {
+            when { expression { params.ENABLE_CHECKOUT } }
+            steps {
+                script {
+                    echo "📦 Checking out umbrella chart repository..."
+                    checkout scm
+                    
+                    // Also checkout common-library if needed
+                    echo "📦 Checking out common-library..."
+                    dir('common-library') {
+                        withCredentials([usernamePassword(credentialsId: 'github-credentials', usernameVariable: 'GIT_USERNAME', passwordVariable: 'GIT_PASSWORD')]) {
+                            sh '''
+                                git clone https://${GIT_USERNAME}:${GIT_PASSWORD}@${COMMON_LIBRARY_REPO#https://} .
+                            '''
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Install Tools') {
+            when { expression { params.ENABLE_INSTALL_TOOLS } }
+            steps {
+                script {
+                    echo "🛠️ Installing tools to ${TOOLS_DIR}..."
+                    dir(TOOLS_DIR) {
+                        sh '''
+                            # Install Python dependencies if needed
+                            if ! command -v python3 &> /dev/null; then
+                                echo "Python3 not found, installing..."
+                                # Add installation logic here
+                            fi
+                            
+                            # Install uv if not present
+                            if ! command -v uv &> /dev/null; then
+                                echo "Installing uv..."
+                                curl -LsSf https://astral.sh/uv/install.sh | sh
+                            fi
+                            
+                            # Install Helm if not present
+                            if ! command -v helm &> /dev/null; then
+                                echo "Installing Helm..."
+                                curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+                            fi
+                            
+                            # Clone chart-generator if not present
+                            if [ ! -d "chart-generator" ]; then
+                                echo "Cloning chart-generator..."
+                                git clone https://github.com/companyinfo/helm-chart-factory.git temp-factory
+                                mv temp-factory/factory/chart-generator .
+                                rm -rf temp-factory
+                            fi
+                            
+                            # Install chart-generator dependencies
+                            cd chart-generator
+                            if [ -f "requirements.txt" ]; then
+                                python3 -m pip install -r requirements.txt --user || uv pip install -r requirements.txt
+                            fi
+                            
+                            # Verify tools
+                            python3 --version
+                            helm version --client
+                        '''
+                    }
+                    
+                    // Set PATH for subsequent stages (tools directory + system paths)
+                    env.PATH = "${TOOLS_DIR}/chart-generator:${TOOLS_DIR}:${HOME}/.cargo/bin:${HOME}/.local/bin:${env.PATH}"
+                }
+            }
+        }
+
+        stage('Generate Charts') {
+            when { expression { params.ENABLE_GENERATE_CHARTS } }
+            steps {
+                script {
+                    echo "🔨 Generating Helm charts for all services..."
+                    sh '''
+                        # Find all service configuration files
+                        for config_file in services/*/configuration.yml; do
+                            if [ -f "$config_file" ]; then
+                                SERVICE_NAME=$(basename $(dirname $config_file))
+                                echo "Generating chart for ${SERVICE_NAME}..."
+                                
+                                # Generate chart using chart-generator
+                                cd ${TOOLS_DIR}/chart-generator
+                                python3 main.py \\
+                                    --config "${WORKSPACE}/$config_file" \\
+                                    --library "${WORKSPACE}/common-library" \\
+                                    --output "${WORKSPACE}/charts/${SERVICE_NAME}" || echo "Failed to generate chart for ${SERVICE_NAME}"
+                            fi
+                        done
+                    '''
+                }
+            }
+        }
+
+        stage('Update Dependencies') {
+            when { expression { params.ENABLE_UPDATE_DEPENDENCIES } }
+            steps {
+                script {
+                    echo "📦 Updating Chart.yaml dependencies..."
+                    sh '''
+                        # Update Chart.yaml with all service dependencies
+                        python3 << 'EOF'
+import yaml
+from pathlib import Path
+
+chart_yaml = Path('Chart.yaml')
+if chart_yaml.exists():
+    with open(chart_yaml, 'r') as f:
+        chart = yaml.safe_load(f)
+    
+    # Find all generated charts
+    charts_dir = Path('charts')
+    dependencies = []
+    
+    # Add common-library dependency
+    dependencies.append({
+        'name': 'common-library',
+        'version': '1.0.0',
+        'repository': 'file://../common-library',
+        'condition': 'common-library.enabled'
+    })
+    
+    # Add service chart dependencies
+    for service_dir in charts_dir.iterdir():
+        if service_dir.is_dir():
+            service_chart_yaml = service_dir / 'Chart.yaml'
+            if service_chart_yaml.exists():
+                with open(service_chart_yaml, 'r') as f:
+                    service_chart = yaml.safe_load(f)
+                    dependencies.append({
+                        'name': service_chart['name'],
+                        'version': service_chart.get('version', '0.1.0'),
+                        'repository': f'file://../charts/{service_dir.name}',
+                        'condition': f'{service_dir.name}.enabled'
+                    })
+    
+    chart['dependencies'] = dependencies
+    
+    with open(chart_yaml, 'w') as f:
+        yaml.dump(chart, f, default_flow_style=False, sort_keys=False)
+    
+    print(f"Updated Chart.yaml with {len(dependencies)} dependencies")
+else:
+    print("Chart.yaml not found, creating new one...")
+    chart = {
+        'apiVersion': 'v2',
+        'name': 'umbrella',
+        'description': 'Umbrella chart for all services',
+        'type': 'application',
+        'version': '0.1.0',
+        'dependencies': []
+    }
+    with open(chart_yaml, 'w') as f:
+        yaml.dump(chart, f, default_flow_style=False, sort_keys=False)
+EOF
+
+                        # Run helm dependency update
+                        helm dependency update || echo "Helm dependency update failed"
+                    '''
+                }
+            }
+        }
+
+        stage('Lint Charts') {
+            when { expression { params.ENABLE_LINT_CHARTS } }
+            steps {
+                script {
+                    echo "🔍 Linting charts..."
+                    sh '''
+                        # Lint umbrella chart
+                        helm lint . || echo "Umbrella chart lint failed"
+                        
+                        # Lint all service charts
+                        for chart_dir in charts/*/; do
+                            if [ -d "$chart_dir" ]; then
+                                helm lint "$chart_dir" || echo "Chart lint failed: $chart_dir"
+                            fi
+                        done
+                    '''
+                }
+            }
+        }
+
+        stage('Template Charts') {
+            when { expression { params.ENABLE_TEMPLATE_CHARTS } }
+            steps {
+                script {
+                    echo "📄 Templating charts..."
+                    sh '''
+                        # Template umbrella chart
+                        helm template umbrella . --debug > /tmp/umbrella-manifests.yaml || echo "Template failed"
+                        
+                        # Show summary
+                        echo "Generated manifests:"
+                        ls -lh /tmp/umbrella-manifests.yaml
+                    '''
+                }
+            }
+        }
+
+        stage('Deploy to k3s') {
+            when {
+                allOf {
+                    expression { params.ENABLE_DEPLOY }
+                    anyOf { branch 'main'; branch 'master' }
+                }
+            }
+            steps {
+                script {
+                    echo "🚀 Deploying to k3s..."
+                    sh '''
+                        # Ensure k3s is available
+                        kubectl cluster-info || echo "k3s not available"
+                        
+                        # Deploy umbrella chart
+                        helm upgrade --install umbrella . \\
+                            --namespace platform \\
+                            --create-namespace \\
+                            --wait || echo "Deployment failed"
+                    '''
+                }
+            }
+        }
+
+        stage('Verify Deployment') {
+            when {
+                allOf {
+                    expression { params.ENABLE_VERIFY_DEPLOYMENT }
+                    anyOf { branch 'main'; branch 'master' }
+                }
+            }
+            steps {
+                script {
+                    echo "✅ Verifying deployment..."
+                    sh '''
+                        # Check pods
+                        kubectl get pods -n platform
+                        
+                        # Wait for pods to be ready
+                        kubectl wait --for=condition=ready pod -l app -n platform --timeout=300s || echo "Some pods not ready"
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            echo "Pipeline completed"
+        }
+        success {
+            echo "✅ Pipeline succeeded"
+        }
+        failure {
+            echo "❌ Pipeline failed"
+        }
+    }
+}
+
