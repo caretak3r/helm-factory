@@ -10,23 +10,24 @@ This document describes the multi-repository structure and how files should be o
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
 │  ┌──────────────────────────────────────────────────────────┐  │
-│  │  platform-library Repository                              │  │
-│  │  https://github.com/companyinfo/platform-library          │  │
+│  │  common-library Repository                                │  │
+│  │  https://github.com/companyinfo/common-library            │  │
 │  ├──────────────────────────────────────────────────────────┤  │
-│  │  platform-library/                                       │  │
+│  │  common-library/                                         │  │
 │  │  ├── Chart.yaml                                          │  │
 │  │  ├── values.yaml                                         │  │
-│  │  └── templates/                                          │  │
-│  │      ├── _helpers.tpl                                   │  │
+│  │  └── templates/                                           │  │
+│  │      ├── _helpers.tpl                                    │  │
 │  │      ├── _deployment.yaml                               │  │
 │  │      ├── _statefulset.yaml                               │  │
 │  │      ├── _daemonset.yaml                                 │  │
-│  │      ├── _service.yaml                                   │  │
-│  │      ├── _ingress.yaml                                   │  │
-│  │      ├── _certificate.yaml                               │  │
-│  │      ├── _mtls.yaml                                      │  │
-│  │      ├── _hpa.yaml                                       │  │
-│  │      └── ...                                             │  │
+│  │      ├── _service.yaml                                    │  │
+│  │      ├── _ingress.yaml                                    │  │
+│  │      ├── _certificate.yaml                                │  │
+│  │      ├── _mtls.yaml                                       │  │
+│  │      ├── _hpa.yaml                                        │  │
+│  │      ├── _job.yaml                                        │  │
+│  │      └── ...                                              │  │
 │  └──────────────────────────────────────────────────────────┘  │
 │                                                                 │
 │  ┌──────────────────────────────────────────────────────────┐  │
@@ -34,14 +35,15 @@ This document describes the multi-repository structure and how files should be o
 │  │  https://github.com/companyinfo/frontend-service         │  │
 │  ├──────────────────────────────────────────────────────────┤  │
 │  │  frontend-service/                                       │  │
-│  │  ├── configuration.yml  ← Jenkins triggers on change    │  │
+│  │  ├── configuration.yml  ← Jenkins triggers on change   │  │
 │  │  ├── Dockerfile                                         │  │
 │  │  ├── nginx.conf                                         │  │
 │  │  ├── package.json                                       │  │
 │  │  ├── src/                                               │  │
 │  │  │   ├── App.js                                         │  │
 │  │  │   └── ...                                            │  │
-│  │  └── Jenkinsfile.service  ← Service-specific pipeline   │  │
+│  │  ├── public/                                            │  │
+│  │  └── Jenkinsfile  ← Service pipeline                    │  │
 │  └──────────────────────────────────────────────────────────┘  │
 │                                                                 │
 │  ┌──────────────────────────────────────────────────────────┐  │
@@ -49,41 +51,47 @@ This document describes the multi-repository structure and how files should be o
 │  │  https://github.com/companyinfo/backend-service          │  │
 │  ├──────────────────────────────────────────────────────────┤  │
 │  │  backend-service/                                       │  │
-│  │  ├── configuration.yml  ← Jenkins triggers on change    │  │
+│  │  ├── configuration.yml  ← Jenkins triggers on change   │  │
 │  │  ├── Dockerfile                                         │  │
 │  │  ├── main.py                                            │  │
 │  │  ├── requirements.txt                                   │  │
-│  │  └── Jenkinsfile.service                                │  │
+│  │  └── Jenkinsfile                                        │  │
 │  └──────────────────────────────────────────────────────────┘  │
 │                                                                 │
 │  ┌──────────────────────────────────────────────────────────┐  │
 │  │  database-service Repository                             │  │
-│  │  https://github.com/companyinfo/database-service        │  │
+│  │  https://github.com/companyinfo/database-service         │  │
 │  ├──────────────────────────────────────────────────────────┤  │
 │  │  database-service/                                      │  │
-│  │  ├── configuration.yml  ← Jenkins triggers on change    │  │
+│  │  ├── configuration.yml  ← Jenkins triggers on change   │  │
 │  │  ├── Dockerfile                                         │  │
 │  │  ├── init.sql                                           │  │
-│  │  └── Jenkinsfile.service                                │  │
+│  │  └── Jenkinsfile                                        │  │
 │  └──────────────────────────────────────────────────────────┘  │
 │                                                                 │
 │  ┌──────────────────────────────────────────────────────────┐  │
-│  │  umbrella-chart Repository                               │  │
+│  │  umbrella-chart Repository                              │  │
 │  │  https://github.com/companyinfo/umbrella-chart          │  │
 │  ├──────────────────────────────────────────────────────────┤  │
 │  │  umbrella-chart/                                        │  │
-│  │  ├── Chart.yaml                                        │  │
+│  │  ├── Chart.yaml  ← Static dependency on common-library │  │
 │  │  ├── values.yaml                                       │  │
 │  │  ├── services/                                         │  │
-│  │  │   ├── frontend/                                    │  │
+│  │  │   ├── frontend/                                     │  │
 │  │  │   │   └── configuration.yml  ← Copied from service │  │
-│  │  │   ├── backend/                                     │  │
+│  │  │   ├── backend/                                      │  │
 │  │  │   │   └── configuration.yml                        │  │
-│  │  │   └── database/                                    │  │
+│  │  │   └── database/                                     │  │
 │  │  │       └── configuration.yml                        │  │
+│  │  ├── src/  ← Chart generation and validation tools    │  │
+│  │  │   └── chart-generator/                              │  │
+│  │  │       ├── main.py                                   │  │
+│  │  │       └── requirements.txt                          │  │
 │  │  ├── charts/  ← Generated charts (gitignored)        │  │
-│  │  ├── values-*.yaml  ← Generated values files          │  │
-│  │  └── Jenkinsfile.umbrella  ← Umbrella pipeline        │  │
+│  │  │   ├── frontend/                                     │  │
+│  │  │   ├── backend/                                      │  │
+│  │  │   └── database/                                     │  │
+│  │  └── Jenkinsfile  ← Umbrella pipeline                  │  │
 │  └──────────────────────────────────────────────────────────┘  │
 │                                                                 │
 │  ┌──────────────────────────────────────────────────────────┐  │
@@ -91,13 +99,12 @@ This document describes the multi-repository structure and how files should be o
 │  │  https://github.com/companyinfo/helm-chart-factory     │  │
 │  ├──────────────────────────────────────────────────────────┤  │
 │  │  factory/                                               │  │
-│  │  ├── chart-generator/  ← Tools for generating charts  │  │
-│  │  ├── umbrella-sync/     ← Tools for syncing umbrella   │  │
-│  │  ├── scripts/          ← Setup and utility scripts     │  │
-│  │  ├── cert-manager/     ← Cert-manager configs         │  │
-│  │  ├── jenkins/          ← Jenkins manifests             │  │
-│  │  ├── Jenkinsfile.service  ← Template for services     │  │
-│  │  ├── Jenkinsfile.umbrella  ← Template for umbrella    │  │
+│  │  ├── chart-generator/  ← Source code (copy to umbrella) │  │
+│  │  ├── common-library/   ← Source code (copy to repo)     │  │
+│  │  ├── services/         ← Example service configs        │  │
+│  │  ├── scripts/          ← Setup and utility scripts      │  │
+│  │  ├── Jenkinsfile.service.new  ← Template for services  │  │
+│  │  ├── Jenkinsfile.umbrella.new  ← Template for umbrella │  │
 │  │  └── Documentation                                     │  │
 │  └──────────────────────────────────────────────────────────┘  │
 │                                                                 │
@@ -106,7 +113,7 @@ This document describes the multi-repository structure and how files should be o
 
 ## File Distribution Across Repositories
 
-### platform-library Repository
+### common-library Repository
 **Purpose:** Platform team maintains best practices templates
 
 **Files:**
@@ -123,10 +130,10 @@ This document describes the multi-repository structure and how files should be o
   - `_mtls.yaml`
   - `_hpa.yaml`
   - `_serviceaccount.yaml`
-  - `workload.yaml`
-  - `deployment.yaml`
-  - `service.yaml`
+  - `_job.yaml`
   - etc.
+
+**Copy from:** `factory/common-library/` → `common-library/`
 
 **CI/CD:** 
 - Platform team updates templates
@@ -139,52 +146,72 @@ This document describes the multi-repository structure and how files should be o
 - `configuration.yml` - Service Helm chart configuration
 - `Dockerfile` - Container image definition
 - Application source code (React, Python, etc.)
-- `Jenkinsfile.service` - Service-specific CI/CD pipeline
+- `Jenkinsfile` - Service-specific CI/CD pipeline (from `Jenkinsfile.service.new`)
 - `.dockerignore`
 - `.gitignore`
 - `README.md` - Service-specific documentation
 
+**Copy from:**
+- `factory/services/{service}/` → `{service}-service/`
+- `factory/Jenkinsfile.service.new` → `{service}-service/Jenkinsfile`
+
 **CI/CD:**
-- Webhook triggers on `configuration.yml` changes
+- Webhook triggers on `configuration.yml` changes merged to main
 - Jenkins pipeline:
-  1. Builds Docker image
-  2. Pushes to local registry
-  3. Generates Helm chart
-  4. Updates umbrella chart repository
+  1. Checks out service repository
+  2. Installs tools (uv, yq)
+  3. Builds Docker image using `dockerTasks` function
+  4. Pushes image to QA ECR
+  5. Generates Helm chart using chart-generator (cloned from helm-chart-factory)
+  6. Validates Helm chart
+  7. Pushes Helm chart to QA ECR (OCI)
+  8. Conditionally pushes image/chart to PROD ECR (if main branch + withApprovals)
+  9. Creates PR to umbrella-chart repository with updated `configuration.yml`
 
 ### umbrella-chart Repository
-**Purpose:** Central repository for all service configurations and umbrella chart
+**Purpose:** Central repository for all service configurations, chart generation, and umbrella chart
 
 **Files:**
-- `Chart.yaml` - Umbrella chart metadata
+- `Chart.yaml` - Umbrella chart metadata (static dependency on common-library)
 - `values.yaml` - Umbrella chart default values
 - `services/` - Directory containing service configurations
   - `frontend/configuration.yml` - Copied from frontend-service repo
   - `backend/configuration.yml` - Copied from backend-service repo
   - `database/configuration.yml` - Copied from database-service repo
+- `src/chart-generator/` - Chart generation and validation tools
+  - `main.py` - Chart generator script
+  - `requirements.txt` - Python dependencies
 - `charts/` - Generated service charts (gitignored)
-- `values-*.yaml` - Generated values files
-- `Jenkinsfile.umbrella` - Umbrella chart CI/CD pipeline
+- `Jenkinsfile` - Umbrella chart CI/CD pipeline (from `Jenkinsfile.umbrella.new`)
+
+**Copy from:**
+- `factory/chart-generator/` → `umbrella-chart/src/chart-generator/`
+- `factory/Jenkinsfile.umbrella.new` → `umbrella-chart/Jenkinsfile`
 
 **CI/CD:**
-- Receives updates from service pipelines
-- Jenkins pipeline:
-  1. Syncs all service configurations
-  2. Generates charts
-  3. Updates dependencies
-  4. Deploys to k3s
+- Receives PRs from service pipelines with updated configurations
+- On PR: Validates changes (generates charts, lints, templates)
+- On merge to main: Jenkins pipeline:
+  1. Checks out umbrella-chart repository
+  2. Checks out common-library repository
+  3. Installs tools (Python, uv, Helm)
+  4. Generates charts for all services in `services/` directory
+  5. Updates dependencies in `Chart.yaml`
+  6. Lints all charts
+  7. Templates charts for validation
+  8. Deploys to Kubernetes (if enabled)
+  9. Verifies deployment (if enabled)
 
 ### helm-chart-factory Repository (This Repository)
-**Purpose:** Tools, scripts, and documentation for the chart factory system
+**Purpose:** Source code, templates, and documentation for the chart factory system
 
 **Files:**
-- `chart-generator/` - Chart generation tool
-- `umbrella-sync/` - Umbrella sync tool
+- `chart-generator/` - Chart generation tool source code
+- `common-library/` - Common library chart source code
+- `services/` - Example service configurations
 - `scripts/` - Setup and utility scripts
-- `cert-manager/` - Cert-manager configurations
-- `jenkins/` - Jenkins Kubernetes manifests
-- `Jenkinsfile.service` - Template Jenkinsfile for services
-- `Jenkinsfile.umbrella` - Template Jenkinsfile for umbrella
+- `Jenkinsfile.service.new` - Template Jenkinsfile for services
+- `Jenkinsfile.umbrella.new` - Template Jenkinsfile for umbrella
 - Documentation files
 
 ## CI/CD Flow Diagram
@@ -197,8 +224,8 @@ graph TB
         DB_REPO[database-service<br/>Repo]
     end
     
-    subgraph "Platform Repository"
-        PLATFORM_REPO[platform-library<br/>Repo]
+    subgraph "Common Library Repository"
+        COMMON_REPO[common-library<br/>Repo]
     end
     
     subgraph "Umbrella Repository"
@@ -214,30 +241,29 @@ graph TB
         UMBRELLA_JOB_MAIN[umbrella-chart<br/>Pipeline Main]
     end
     
-    subgraph "k3s Cluster"
-        CLUSTER[Kubernetes<br/>Resources]
+    subgraph "ECR & Kubernetes"
+        QA_ECR[QA ECR Registry]
+        PROD_ECR[PROD ECR Registry]
+        K8S[Kubernetes<br/>Cluster]
     end
     
     FE_REPO -->|PR Merged to main| FE_JOB
     BE_REPO -->|PR Merged to main| BE_JOB
     DB_REPO -->|PR Merged to main| DB_JOB
     
-    FE_JOB -->|Checkout| FE_REPO
-    FE_JOB -->|Checkout| PLATFORM_REPO
-    FE_JOB -->|Build Image| REGISTRY[Local Registry]
+    FE_JOB -->|Build & Push| QA_ECR
     FE_JOB -->|Generate Chart| CHART1[frontend Chart]
+    FE_JOB -->|Push Chart| QA_ECR
     FE_JOB -->|Create PR| UMBRELLA_PR
     
-    BE_JOB -->|Checkout| BE_REPO
-    BE_JOB -->|Checkout| PLATFORM_REPO
-    BE_JOB -->|Build Image| REGISTRY
+    BE_JOB -->|Build & Push| QA_ECR
     BE_JOB -->|Generate Chart| CHART2[backend Chart]
+    BE_JOB -->|Push Chart| QA_ECR
     BE_JOB -->|Create PR| UMBRELLA_PR
     
-    DB_JOB -->|Checkout| DB_REPO
-    DB_JOB -->|Checkout| PLATFORM_REPO
-    DB_JOB -->|Build Image| REGISTRY
+    DB_JOB -->|Build & Push| QA_ECR
     DB_JOB -->|Generate Chart| CHART3[database Chart]
+    DB_JOB -->|Push Chart| QA_ECR
     DB_JOB -->|Create PR| UMBRELLA_PR
     
     UMBRELLA_PR -->|Webhook: PR created| UMBRELLA_JOB_PR
@@ -245,23 +271,25 @@ graph TB
     
     UMBRELLA_PR -->|PR Merged to main| UMBRELLA_JOB_MAIN
     UMBRELLA_JOB_MAIN -->|Checkout| UMBRELLA_REPO
-    UMBRELLA_JOB_MAIN -->|Checkout| PLATFORM_REPO
-    UMBRELLA_JOB_MAIN -->|Sync| UMBRELLA_REPO
-    UMBRELLA_JOB_MAIN -->|Deploy| CLUSTER
+    UMBRELLA_JOB_MAIN -->|Checkout| COMMON_REPO
+    UMBRELLA_JOB_MAIN -->|Generate Charts| UMBRELLA_REPO
+    UMBRELLA_JOB_MAIN -->|Deploy| K8S
     
-    PLATFORM_REPO -.->|Used by| FE_JOB
-    PLATFORM_REPO -.->|Used by| BE_JOB
-    PLATFORM_REPO -.->|Used by| DB_JOB
-    PLATFORM_REPO -.->|Used by| UMBRELLA_JOB_PR
-    PLATFORM_REPO -.->|Used by| UMBRELLA_JOB_MAIN
+    FE_JOB -.->|withApprovals| PROD_ECR
+    BE_JOB -.->|withApprovals| PROD_ECR
+    DB_JOB -.->|withApprovals| PROD_ECR
+    
+    COMMON_REPO -.->|Static dependency| UMBRELLA_REPO
     
     style FE_REPO fill:#e1f5ff
     style BE_REPO fill:#e1f5ff
     style DB_REPO fill:#e1f5ff
-    style PLATFORM_REPO fill:#fff4e1
+    style COMMON_REPO fill:#fff4e1
     style UMBRELLA_REPO fill:#ffe1f5
     style UMBRELLA_PR fill:#fff9e1
-    style CLUSTER fill:#e1ffe1
+    style K8S fill:#e1ffe1
+    style QA_ECR fill:#fff4e1
+    style PROD_ECR fill:#ffe1f5
 ```
 
 ## Setup Instructions
@@ -269,13 +297,13 @@ graph TB
 ### 1. Create GitHub Repositories
 
 ```bash
-# Platform library
-gh repo create companyinfo/platform-library --public
-git clone https://github.com/companyinfo/platform-library.git
-cd platform-library
-# Copy platform-library/ contents from this repo
+# Common library
+gh repo create companyinfo/common-library --public
+git clone https://github.com/companyinfo/common-library.git
+cd common-library
+# Copy factory/common-library/ contents from this repo
 git add .
-git commit -m "Initial platform library chart"
+git commit -m "Initial common library chart"
 git push
 
 # Service repositories
@@ -287,8 +315,10 @@ gh repo create companyinfo/database-service --public
 gh repo create companyinfo/umbrella-chart --public
 git clone https://github.com/companyinfo/umbrella-chart.git
 cd umbrella-chart
-# Copy umbrella-chart/ contents and create services/ directory
-mkdir -p services
+# Copy chart-generator to src/ and create services/ directory
+mkdir -p src/chart-generator
+cp -r ../factory/chart-generator/* src/chart-generator/
+mkdir -p services/{frontend,backend,database}
 git add .
 git commit -m "Initial umbrella chart"
 git push
@@ -304,17 +334,49 @@ git clone https://github.com/companyinfo/frontend-service.git
 cd frontend-service
 
 # Copy service files
-# - configuration.yml
-# - Dockerfile
-# - Application code
-# - Jenkinsfile.service (from this repo)
+cp ../factory/services/frontend/configuration.yml .
+cp ../factory/services/frontend/Dockerfile .
+# ... copy other service files ...
+
+# Copy Jenkinsfile (use the new version)
+cp ../factory/Jenkinsfile.service.new ./Jenkinsfile
 
 git add .
 git commit -m "Initial service configuration"
 git push
 ```
 
-### 3. Configure Jenkins
+### 3. Setup Umbrella Chart Repository
+
+```bash
+git clone https://github.com/companyinfo/umbrella-chart.git
+cd umbrella-chart
+
+# Copy chart generator to src/
+mkdir -p src
+cp -r ../factory/chart-generator src/
+
+# Copy Jenkinsfile (use the new version)
+cp ../factory/Jenkinsfile.umbrella.new ./Jenkinsfile
+
+# Create services directory structure
+mkdir -p services/{frontend,backend,database}
+
+# Copy initial service configs
+cp ../factory/services/frontend/configuration.yml services/frontend/
+cp ../factory/services/backend/configuration.yml services/backend/
+cp ../factory/services/database/configuration.yml services/database/
+
+# Create Chart.yaml with common-library dependency
+# Create values.yaml
+# Create .gitignore
+
+git add .
+git commit -m "Initial umbrella chart with chart generator"
+git push
+```
+
+### 4. Configure Jenkins
 
 #### Create Service Pipeline Jobs
 
@@ -324,7 +386,7 @@ For each service (frontend, backend, database):
 2. **Pipeline definition**: Pipeline script from SCM
 3. **SCM**: Git
 4. **Repository URL**: `https://github.com/companyinfo/frontend-service.git`
-5. **Script Path**: `Jenkinsfile.service`
+5. **Script Path**: `Jenkinsfile`
 6. **Branches**: `*/main`
 
 #### Create Umbrella Pipeline Job
@@ -333,81 +395,85 @@ For each service (frontend, backend, database):
 2. **Pipeline definition**: Pipeline script from SCM
 3. **SCM**: Git
 4. **Repository URL**: `https://github.com/companyinfo/umbrella-chart.git`
-5. **Script Path**: `Jenkinsfile.umbrella`
+5. **Script Path**: `Jenkinsfile`
 6. **Branches**: `*/main`
 
-### 4. Configure Webhooks
+### 5. Configure Webhooks
 
 #### Service Repository Webhooks
 
 For each service repository, add webhook:
 - **URL**: `http://jenkins-url:30080/github-webhook/`
 - **Events**: Push events
-- **Path filter**: `configuration.yml`
+- **Branch filter**: `main`
 
 #### Umbrella Repository Webhook
 
 - **URL**: `http://jenkins-url:30080/github-webhook/`
-- **Events**: Push events
-- **Path filter**: `Chart.yaml` or `services/**/configuration.yml`
+- **Events**: Push events and Pull request events
+- **Branch filter**: All branches
 
-### 5. Configure GitHub Credentials in Jenkins
+### 6. Configure Credentials in Jenkins
 
-1. **Manage Jenkins** → **Credentials**
-2. Add GitHub credentials:
-   - **Kind**: Username with password
+1. **GitHub Credentials**: Username with password (token)
    - **ID**: `github-credentials`
-   - **Username**: GitHub username
-   - **Password**: GitHub personal access token
+
+2. **AWS Credentials**: AWS credentials for ECR
+   - **ID**: `aws-credentials`
 
 ## Workflow Examples
 
 ### Developer Updates Service Configuration
 
 1. Developer edits `configuration.yml` in `frontend-service` repo
-2. Commits and pushes: `git commit -m "Update frontend config" && git push`
+2. Commits and pushes to main: `git commit -m "Update frontend config" && git push`
 3. Webhook triggers `frontend-service` Jenkins pipeline
 4. Pipeline:
    - Checks out frontend-service repo
-   - Checks out platform-library repo
+   - Installs tools (uv, yq)
    - Builds Docker image
+   - Pushes image to QA ECR
    - Generates Helm chart
-   - Updates umbrella-chart repo (creates PR branch)
-5. Umbrella chart repo receives update
-6. Webhook triggers umbrella-chart pipeline
-7. Umbrella pipeline deploys to k3s
+   - Validates Helm chart
+   - Pushes chart to QA ECR
+   - Creates PR to umbrella-chart repo with updated `configuration.yml`
+5. Umbrella chart repo receives PR
+6. Webhook triggers umbrella-chart pipeline (PR validation)
+7. PR merged to main
+8. Webhook triggers umbrella-chart pipeline (main branch)
+9. Umbrella pipeline generates charts and deploys to Kubernetes
 
 ### Platform Team Updates Library Chart
 
-1. Platform team edits templates in `platform-library` repo
+1. Platform team edits templates in `common-library` repo
 2. Commits and pushes
-3. All service pipelines regenerate charts (if triggered)
-4. Umbrella chart pipeline redeploys with new templates
+3. Umbrella chart pipeline regenerates charts with new templates
+4. Deployment uses updated templates
 
 ## File Mapping Reference
 
-| File/Directory | Repository | Purpose |
-|---------------|-----------|---------|
-| `platform-library/` | `platform-library` | Platform templates |
-| `services/*/configuration.yml` | `*-service` | Service configs |
-| `services/*/Dockerfile` | `*-service` | Container images |
-| `services/*/src/` | `*-service` | Application code |
-| `umbrella-chart/Chart.yaml` | `umbrella-chart` | Umbrella metadata |
-| `umbrella-chart/services/` | `umbrella-chart` | Service configs (copied) |
-| `umbrella-chart/charts/` | `umbrella-chart` | Generated charts |
-| `chart-generator/` | `helm-chart-factory` | Tools |
-| `umbrella-sync/` | `helm-chart-factory` | Tools |
-| `scripts/` | `helm-chart-factory` | Utilities |
-| `Jenkinsfile.service` | `*-service` | Service pipeline |
-| `Jenkinsfile.umbrella` | `umbrella-chart` | Umbrella pipeline |
+| File/Directory | Repository | Copy From | Purpose |
+|---------------|-----------|-----------|---------|
+| `common-library/` | `common-library` | `factory/common-library/` | Platform templates |
+| `services/*/configuration.yml` | `*-service` | `factory/services/*/configuration.yml` | Service configs |
+| `services/*/Dockerfile` | `*-service` | `factory/services/*/Dockerfile` | Container images |
+| `services/*/src/` | `*-service` | `factory/services/*/src/` | Application code |
+| `Jenkinsfile` | `*-service` | `factory/Jenkinsfile.service.new` | Service pipeline |
+| `umbrella-chart/Chart.yaml` | `umbrella-chart` | Create manually | Umbrella metadata |
+| `umbrella-chart/services/` | `umbrella-chart` | Copied by pipelines | Service configs (copied) |
+| `umbrella-chart/src/chart-generator/` | `umbrella-chart` | `factory/chart-generator/` | Chart generation tools |
+| `umbrella-chart/charts/` | `umbrella-chart` | Generated | Generated charts |
+| `umbrella-chart/Jenkinsfile` | `umbrella-chart` | `factory/Jenkinsfile.umbrella.new` | Umbrella pipeline |
+| `chart-generator/` | `helm-chart-factory` | Source code | Tools source |
+| `common-library/` | `helm-chart-factory` | Source code | Library source |
 
 ## Best Practices
 
-1. **Service Repos**: Keep only service-specific files
-2. **Platform Repo**: Only platform team can modify
+1. **Service Repos**: Keep only service-specific files (config, code, Dockerfile)
+2. **Common Library Repo**: Only platform team can modify
 3. **Umbrella Repo**: Auto-updated by pipelines, manual PR review
-4. **Tools Repo**: Contains reusable tools and documentation
+4. **Chart Generator**: Lives in `umbrella-chart/src/chart-generator/`
 5. **Webhooks**: Configure path filters to avoid unnecessary builds
-6. **Credentials**: Use GitHub tokens with minimal required permissions
+6. **Credentials**: Use GitHub tokens and AWS credentials with minimal required permissions
 7. **Branch Strategy**: Use PR branches for umbrella chart updates
-
+8. **Production Deployments**: Require `withApprovals` parameter

@@ -6,20 +6,20 @@ This guide explains how to set up the multi-repository structure for the Helm Ch
 
 The system uses 5+ GitHub repositories:
 
-1. **platform-library** - Platform team's library chart
+1. **common-library** - Platform team's library chart (renamed from platform-library)
 2. **frontend-service** - Frontend service code and config
 3. **backend-service** - Backend service code and config
 4. **database-service** - Database service code and config
-5. **umbrella-chart** - Umbrella chart with all services
-6. **helm-chart-factory** (this repo) - Tools and documentation
+5. **umbrella-chart** - Umbrella chart with all services (contains chart generation tools)
+6. **helm-chart-factory** (this repo) - Source code, templates, and documentation
 
 ## Step-by-Step Setup
 
 ### 1. Create GitHub Repositories
 
 ```bash
-# Platform library
-gh repo create companyinfo/platform-library --public --description "Platform library Helm chart"
+# Common library (renamed from platform-library)
+gh repo create companyinfo/common-library --public --description "Common library Helm chart"
 
 # Service repositories
 gh repo create companyinfo/frontend-service --public --description "Frontend service"
@@ -30,19 +30,28 @@ gh repo create companyinfo/database-service --public --description "Database ser
 gh repo create companyinfo/umbrella-chart --public --description "Umbrella Helm chart"
 ```
 
-### 2. Setup Platform Library Repository
+### 2. Setup Common Library Repository
 
 ```bash
-git clone https://github.com/companyinfo/platform-library.git
-cd platform-library
+git clone https://github.com/companyinfo/common-library.git
+cd common-library
 
-# Copy platform-library directory contents from this repo
-cp -r ../factory/platform-library/* .
+# Copy common-library directory contents from this repo
+# If factory/common-library/ exists:
+cp -r ../factory/common-library/* .
+
+# Or create from templates if needed
+# (See factory/common-library/ for structure)
 
 git add .
-git commit -m "Initial platform library chart"
+git commit -m "Initial common library chart"
 git push origin main
 ```
+
+**Files to copy:**
+- `factory/common-library/Chart.yaml` → `common-library/Chart.yaml`
+- `factory/common-library/values.yaml` → `common-library/values.yaml`
+- `factory/common-library/templates/` → `common-library/templates/`
 
 ### 3. Setup Service Repositories
 
@@ -60,8 +69,8 @@ cp ../factory/services/frontend/package.json .
 cp -r ../factory/services/frontend/public .
 cp -r ../factory/services/frontend/src .
 
-# Copy Jenkinsfile
-cp ../factory/Jenkinsfile.service ./Jenkinsfile
+# Copy Jenkinsfile (use the new version)
+cp ../factory/Jenkinsfile.service.new ./Jenkinsfile
 
 # Copy .gitignore, .dockerignore
 cp ../factory/services/frontend/.gitignore .
@@ -71,6 +80,17 @@ git add .
 git commit -m "Initial frontend service"
 git push origin main
 ```
+
+**Files to copy:**
+- `factory/services/frontend/configuration.yml` → `frontend-service/configuration.yml`
+- `factory/services/frontend/Dockerfile` → `frontend-service/Dockerfile`
+- `factory/services/frontend/nginx.conf` → `frontend-service/nginx.conf`
+- `factory/services/frontend/package.json` → `frontend-service/package.json`
+- `factory/services/frontend/public/` → `frontend-service/public/`
+- `factory/services/frontend/src/` → `frontend-service/src/`
+- `factory/Jenkinsfile.service.new` → `frontend-service/Jenkinsfile`
+- `factory/services/frontend/.gitignore` → `frontend-service/.gitignore`
+- `factory/services/frontend/.dockerignore` → `frontend-service/.dockerignore`
 
 #### Backend Service
 
@@ -82,13 +102,21 @@ cp ../factory/services/backend/configuration.yml .
 cp ../factory/services/backend/Dockerfile .
 cp ../factory/services/backend/main.py .
 cp ../factory/services/backend/requirements.txt .
-cp ../factory/Jenkinsfile.service ./Jenkinsfile
+cp ../factory/Jenkinsfile.service.new ./Jenkinsfile
 cp ../factory/services/backend/.dockerignore .
 
 git add .
 git commit -m "Initial backend service"
 git push origin main
 ```
+
+**Files to copy:**
+- `factory/services/backend/configuration.yml` → `backend-service/configuration.yml`
+- `factory/services/backend/Dockerfile` → `backend-service/Dockerfile`
+- `factory/services/backend/main.py` → `backend-service/main.py`
+- `factory/services/backend/requirements.txt` → `backend-service/requirements.txt`
+- `factory/Jenkinsfile.service.new` → `backend-service/Jenkinsfile`
+- `factory/services/backend/.dockerignore` → `backend-service/.dockerignore`
 
 #### Database Service
 
@@ -99,12 +127,18 @@ cd database-service
 cp ../factory/services/database/configuration.yml .
 cp ../factory/services/database/Dockerfile .
 cp ../factory/services/database/init.sql .
-cp ../factory/Jenkinsfile.service ./Jenkinsfile
+cp ../factory/Jenkinsfile.service.new ./Jenkinsfile
 
 git add .
 git commit -m "Initial database service"
 git push origin main
 ```
+
+**Files to copy:**
+- `factory/services/database/configuration.yml` → `database-service/configuration.yml`
+- `factory/services/database/Dockerfile` → `database-service/Dockerfile`
+- `factory/services/database/init.sql` → `database-service/init.sql`
+- `factory/Jenkinsfile.service.new` → `database-service/Jenkinsfile`
 
 ### 4. Setup Umbrella Chart Repository
 
@@ -112,9 +146,12 @@ git push origin main
 git clone https://github.com/companyinfo/umbrella-chart.git
 cd umbrella-chart
 
-# Copy umbrella chart files
-cp ../factory/umbrella-chart/Chart.yaml .
-cp ../factory/umbrella-chart/values.yaml .
+# Copy chart generator to src/
+mkdir -p src
+cp -r ../factory/chart-generator src/
+
+# Copy Jenkinsfile (use the new version)
+cp ../factory/Jenkinsfile.umbrella.new ./Jenkinsfile
 
 # Create services directory structure
 mkdir -p services/frontend
@@ -126,8 +163,29 @@ cp ../factory/services/frontend/configuration.yml services/frontend/
 cp ../factory/services/backend/configuration.yml services/backend/
 cp ../factory/services/database/configuration.yml services/database/
 
-# Copy Jenkinsfile
-cp ../factory/Jenkinsfile.umbrella ./Jenkinsfile
+# Create Chart.yaml with common-library dependency
+cat > Chart.yaml <<EOF
+apiVersion: v2
+name: umbrella
+description: Umbrella chart for all services
+type: application
+version: 0.1.0
+
+dependencies:
+  - name: common-library
+    version: 1.0.0
+    repository: file://../common-library
+    condition: common-library.enabled
+EOF
+
+# Create values.yaml
+cat > values.yaml <<EOF
+global:
+  namespace: default
+
+common-library:
+  enabled: true
+EOF
 
 # Create .gitignore
 cat > .gitignore <<EOF
@@ -142,6 +200,16 @@ git commit -m "Initial umbrella chart"
 git push origin main
 ```
 
+**Files to copy:**
+- `factory/chart-generator/` → `umbrella-chart/src/chart-generator/`
+- `factory/Jenkinsfile.umbrella.new` → `umbrella-chart/Jenkinsfile`
+- `factory/services/*/configuration.yml` → `umbrella-chart/services/*/configuration.yml` (initial state)
+
+**Files to create:**
+- `umbrella-chart/Chart.yaml` (with common-library dependency)
+- `umbrella-chart/values.yaml`
+- `umbrella-chart/.gitignore`
+
 ### 5. Configure Jenkins
 
 #### Install Required Plugins
@@ -150,6 +218,7 @@ git push origin main
 - Pipeline plugin
 - Git plugin
 - Credentials Binding plugin
+- AWS Credentials plugin (for ECR)
 
 #### Configure GitHub Credentials
 
@@ -161,6 +230,17 @@ git push origin main
    - **Password**: GitHub personal access token (with repo permissions)
    - **ID**: `github-credentials`
    - **Description**: GitHub credentials for repos
+
+#### Configure AWS Credentials (for ECR)
+
+1. **Manage Jenkins** → **Credentials** → **System** → **Global credentials**
+2. **Add Credentials**:
+   - **Kind**: AWS Credentials
+   - **Scope**: Global
+   - **Access Key ID**: Your AWS access key
+   - **Secret Access Key**: Your AWS secret key
+   - **ID**: `aws-credentials`
+   - **Description**: AWS credentials for ECR
 
 #### Create Service Pipeline Jobs
 
@@ -224,66 +304,39 @@ For each service repository (frontend-service, backend-service, database-service
    - **Branch filter**: All branches (for PRs and main)
 3. **Add webhook**
 
-### 7. Setup Tools in Jenkins
+### 7. Environment Variables
 
-The `chart-generator` and `umbrella-sync` tools need to be available in Jenkins. Options:
+Set these in Jenkins → Manage Jenkins → Configure System → Global properties:
 
-#### Option A: Clone Tools Repo in Jenkins
-
-Add a stage to checkout the tools repository:
-
-```groovy
-stage('Checkout Tools') {
-    steps {
-        dir('tools') {
-            checkout([
-                $class: 'GitSCM',
-                branches: [[name: '*/main']],
-                userRemoteConfigs: [[
-                    url: 'https://github.com/companyinfo/helm-chart-factory.git',
-                    credentialsId: 'github-credentials'
-                ]],
-                extensions: [[
-                    $class: 'SparseCheckoutPaths',
-                    sparseCheckoutPaths: [[
-                        path: 'factory/chart-generator'
-                    ], [
-                        path: 'factory/umbrella-sync'
-                    ]]
-                ]]
-            ])
-        }
-    }
-}
-```
-
-#### Option B: Install Tools as Jenkins Shared Libraries
-
-Create a Jenkins shared library with the tools.
-
-#### Option C: Package Tools as Docker Images
-
-Build Docker images for the tools and use them in Jenkins pipelines.
+- `UMBRELLA_CHART_REPO`: `https://github.com/companyinfo/umbrella-chart.git`
+- `HELM_CHART_FACTORY_REPO`: `https://github.com/companyinfo/helm-chart-factory.git`
+- `ECR_QA_REGISTRY`: `123456789012.dkr.ecr.us-east-1.amazonaws.com`
+- `ECR_PROD_REGISTRY`: `123456789012.dkr.ecr.us-east-1.amazonaws.com`
+- `COMMON_LIBRARY_REPO`: `https://github.com/companyinfo/common-library.git`
 
 ## Testing the Setup
 
 ### Test Service Pipeline
 
 1. Edit `configuration.yml` in `frontend-service` repo
-2. Commit and push
+2. Commit and push to main
 3. Check Jenkins for triggered build
 4. Verify:
-   - Image built and pushed
+   - Image built and pushed to QA ECR
    - Chart generated
-   - Umbrella chart updated
+   - Chart validated
+   - Chart pushed to QA ECR
+   - PR created to umbrella-chart repo
 
 ### Test Umbrella Pipeline
 
-1. Manually trigger `umbrella-chart` pipeline
+1. Merge PR in `umbrella-chart` repo
 2. Verify:
    - All service configs synced
-   - Charts generated
-   - Deployment to k3s succeeds
+   - Charts generated from `services/` directory
+   - Dependencies updated
+   - Charts linted and templated
+   - Deployment to Kubernetes succeeds (if enabled)
 
 ## Troubleshooting
 
@@ -302,9 +355,17 @@ Build Docker images for the tools and use them in Jenkins pipelines.
 
 ### Chart Generation Fails
 
-- Verify platform-library repo is accessible
-- Check Python dependencies are installed
+- Verify common-library repo is accessible
+- Check Python dependencies are installed in `src/chart-generator/`
 - Verify configuration.yml syntax
+- Check that `src/chart-generator/` exists in umbrella-chart repo
+
+### ECR Push Fails
+
+- Verify AWS credentials are configured
+- Check ECR repository exists
+- Verify IAM permissions for ECR push/pull
+- Check ECR registry URLs are correct
 
 ### Umbrella Chart Update Fails
 
@@ -312,22 +373,13 @@ Build Docker images for the tools and use them in Jenkins pipelines.
 - Verify branch permissions
 - Check if PR branch already exists
 
-## Environment Variables
-
-Set these in Jenkins → Manage Jenkins → Configure System → Global properties:
-
-- `PLATFORM_LIBRARY_REPO`: `https://github.com/companyinfo/platform-library.git`
-- `UMBRELLA_CHART_REPO`: `https://github.com/companyinfo/umbrella-chart.git`
-- `LOCAL_REGISTRY`: `localhost:5000`
-- `K3S_CLUSTER_NAME`: `helm-factory-cluster`
-- `PLATFORM_NAMESPACE`: `platform`
-
 ## Security Considerations
 
 1. **GitHub Tokens**: Use fine-grained tokens with minimal permissions
-2. **Webhook Secrets**: Configure webhook secrets for security
-3. **Jenkins Credentials**: Store securely, rotate regularly
-4. **Repository Access**: Use teams/organizations for access control
-5. **Branch Protection**: Enable branch protection on main branches
-6. **PR Reviews**: Require reviews for umbrella chart changes
-
+2. **AWS Credentials**: Use IAM roles with minimal ECR permissions
+3. **Webhook Secrets**: Configure webhook secrets for security
+4. **Jenkins Credentials**: Store securely, rotate regularly
+5. **Repository Access**: Use teams/organizations for access control
+6. **Branch Protection**: Enable branch protection on main branches
+7. **PR Reviews**: Require reviews for umbrella chart changes
+8. **Production Approvals**: Use `withApprovals` parameter for production deployments
