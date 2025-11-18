@@ -281,10 +281,12 @@ Service teams need Helm charts but shouldn't need to:
 We will use a **configuration-driven approach** where:
 1. Service teams create a `configuration.yml` file (similar to `values.yaml`)
 2. Configuration specifies features like `ingress: enable`, `mtls: enable`, `certificate: enable`
-3. Chart generator merges configuration with library chart defaults
-4. Generated charts reference common-library as dependency
-5. Configuration supports workload types (Deployment, StatefulSet, DaemonSet)
-6. Configuration supports pre-install and post-install Jobs with inline scripts or script files
+3. Chart generation (generic process) merges configuration with library chart defaults
+4. Chart generation occurs in service repositories
+5. Generated charts reference common-library as dependency
+6. Configuration supports workload types (Deployment, StatefulSet, DaemonSet)
+7. Configuration supports pre-install and post-install Jobs with inline scripts or script files
+8. Generated charts are included in PRs to umbrella-chart repository
 
 ### Architecture
 
@@ -294,8 +296,8 @@ graph LR
         CFG[configuration.yml<br/>service:<br/>  name: frontend<br/>workload:<br/>  type: Deployment<br/>ingress:<br/>  enabled: true<br/>job:<br/>  preInstall:<br/>    enabled: true<br/>    script: ...]
     end
     
-    subgraph "Chart Generator"
-        CG[chart-generator/<br/>main.py]
+    subgraph "Chart Generation"
+        GEN[Chart Generation<br/>Process]
         MERGE[Merge Config<br/>with Library<br/>Defaults]
     end
     
@@ -307,13 +309,13 @@ graph LR
         CHART[charts/frontend/<br/>Chart.yaml<br/>values.yaml<br/>templates/]
     end
     
-    CFG --> CG
+    CFG --> GEN
     LIB --> MERGE
-    CG --> MERGE
+    GEN --> MERGE
     MERGE --> CHART
     
     style CFG fill:#ffcccc
-    style CG fill:#fff4e1
+    style GEN fill:#fff4e1
     style LIB fill:#e1f5ff
     style CHART fill:#e1ffe1
 ```
@@ -369,10 +371,12 @@ When service configurations change, the umbrella chart needs to be updated. We n
 
 We will use a **Pull Request-based workflow**:
 1. Service pipelines trigger on PRs and merges to main branch
-2. When `configuration.yml` changes and merges to main, service pipeline creates a PR to umbrella chart repository
-3. PR includes the updated `configuration.yml` in `services/{SERVICE_NAME}/`
-4. Umbrella chart pipeline validates PR changes (lint, template)
-5. On merge to main, umbrella chart pipeline generates charts and deploys to k3s
+2. When `configuration.yml` changes and merges to main, service pipeline generates Helm chart
+3. Service pipeline creates a PR to umbrella chart repository with generated chart
+4. PR includes the generated chart in `charts/{SERVICE_NAME}/` and updated configuration in `services/{SERVICE_NAME}/`
+5. Umbrella chart pipeline validates PR changes (build dependencies, lint)
+6. On merge to main, umbrella chart pipeline builds Helm dependencies
+7. If release condition is met, umbrella chart pipeline deploys to replicated SaaS provider
 
 ### Architecture
 
@@ -383,7 +387,7 @@ sequenceDiagram
     participant ServicePipeline as Service Pipeline
     participant UmbrellaRepo as Umbrella Chart Repo
     participant UmbrellaPipeline as Umbrella Pipeline
-    participant K8S as Kubernetes Cluster
+    participant SaaS as SaaS Provider
     
     Dev->>ServiceRepo: 1. Edit configuration.yml
     Dev->>ServiceRepo: 2. Create PR
@@ -392,17 +396,20 @@ sequenceDiagram
     ServiceRepo->>ServicePipeline: 4. Trigger pipeline
     ServicePipeline->>ServicePipeline: 5. Validate config
     ServicePipeline->>ServicePipeline: 6. Build image
-    ServicePipeline->>UmbrellaRepo: 7. Create PR with config.yml
+    ServicePipeline->>ServicePipeline: 7. Generate chart
+    ServicePipeline->>ServicePipeline: 8. Validate chart
+    ServicePipeline->>UmbrellaRepo: 9. Create PR with chart
     
-    UmbrellaRepo->>UmbrellaPipeline: 8. Trigger on PR
-    UmbrellaPipeline->>UmbrellaPipeline: 9. Generate charts
-    UmbrellaPipeline->>UmbrellaPipeline: 10. Update dependencies
-    UmbrellaPipeline->>UmbrellaPipeline: 11. Lint & template
+    UmbrellaRepo->>UmbrellaPipeline: 10. Trigger on PR
+    UmbrellaPipeline->>UmbrellaPipeline: 11. Build dependencies
+    UmbrellaPipeline->>UmbrellaPipeline: 12. Lint charts
     
-    UmbrellaRepo->>UmbrellaRepo: 12. Merge PR
-    UmbrellaRepo->>UmbrellaPipeline: 13. Trigger on merge
-    UmbrellaPipeline->>K8S: 14. Deploy to Kubernetes
-    K8S->>UmbrellaPipeline: 15. Verify deployment
+    UmbrellaRepo->>UmbrellaRepo: 13. Merge PR
+    UmbrellaRepo->>UmbrellaPipeline: 14. Trigger on merge
+    UmbrellaPipeline->>UmbrellaPipeline: 15. Build dependencies
+    UmbrellaPipeline->>UmbrellaPipeline: 16. Check release condition
+    UmbrellaPipeline->>SaaS: 17. Deploy to SaaS Provider
+    SaaS->>UmbrellaPipeline: 18. Verify deployment
 ```
 
 ### Consequences
@@ -634,10 +641,12 @@ We need to:
 
 We will use an **umbrella chart** pattern where:
 1. Umbrella chart has static dependency on common-library
-2. Umbrella chart contains all service configurations in `services/` directory
-3. Umbrella chart pipeline generates all service charts to `charts/` directory
-4. Umbrella chart automatically updates dependencies for all generated charts
-5. Single `helm install` deploys all services
+2. Umbrella chart receives generated charts from service repositories via PRs
+3. Umbrella chart stores service configurations in `services/` directory (copied from service repos)
+4. Umbrella chart stores generated charts in `charts/` directory (from service PRs)
+5. Umbrella chart pipeline builds Helm dependencies and validates charts
+6. If release condition is met, umbrella chart deploys to replicated SaaS provider
+7. Single `helm install` deploys all services
 
 ### Architecture
 
@@ -663,32 +672,31 @@ graph TB
     
     subgraph "Umbrella Pipeline"
         PIPELINE[Jenkinsfile.umbrella]
-        GEN[Generate Charts<br/>for all services]
-        UPDATE[Update Dependencies]
+        BUILD_DEPS[Build Helm<br/>Dependencies]
+        LINT[Lint Charts]
+        CONDITION{Release<br/>Condition?}
+        DEPLOY[Deploy to<br/>SaaS Provider]
     end
     
-    FE_CFG --> GEN
-    BE_CFG --> GEN
-    DB_CFG --> GEN
+    FE_CHART --> BUILD_DEPS
+    BE_CHART --> BUILD_DEPS
+    DB_CHART --> BUILD_DEPS
     
-    GEN --> FE_CHART
-    GEN --> BE_CHART
-    GEN --> DB_CHART
+    BUILD_DEPS --> DEPS
+    DEPS --> LINT
+    LINT --> CONDITION
+    CONDITION -->|Yes| DEPLOY
     
-    FE_CHART --> UPDATE
-    BE_CHART --> UPDATE
-    DB_CHART --> UPDATE
-    
-    UPDATE --> DEPS
-    
-    PIPELINE --> GEN
-    PIPELINE --> UPDATE
+    PIPELINE --> BUILD_DEPS
+    PIPELINE --> LINT
+    PIPELINE --> CONDITION
     
     style UC fill:#ffe1f5
-    style GEN fill:#fff4e1
+    style BUILD_DEPS fill:#fff4e1
     style FE_CHART fill:#e1f5ff
     style BE_CHART fill:#e1f5ff
     style DB_CHART fill:#e1f5ff
+    style DEPLOY fill:#e1ffe1
 ```
 
 ### Consequences
@@ -834,32 +842,32 @@ graph TB
 
 ---
 
-## ADR-009: Centralized Chart Generation in Umbrella Repository
+## ADR-009: Chart Generation in Service Repositories
 
 **Status:** Accepted  
 **Date:** 2024-11-14  
 **Deciders:** Platform Team  
-**Tags:** architecture, chart-generation, simplification
+**Tags:** architecture, chart-generation, service-repos
 
 ### Context
 
-The original architecture had chart generation happening in service repositories. This led to:
-- Duplication of chart generation logic across services
-- Service repositories containing chart generation tools
-- More complex service pipelines
-- Difficulty maintaining consistency
-- Service teams needing to understand chart generation
+We need to decide where Helm chart generation should occur:
+- Option 1: Centralized in umbrella-chart repository
+- Option 2: Distributed in each service repository
+- Option 3: Separate service for chart generation
+
+Each approach has trade-offs in terms of complexity, maintainability, and service team autonomy.
 
 ### Decision
 
-We will move all chart generation to the **umbrella-chart repository**:
-1. Service repositories only contain `configuration.yml` and application code
-2. Service pipelines create PRs to umbrella chart with configuration changes
-3. Umbrella chart pipeline generates all service charts centrally
-4. Chart generator tools live in umbrella repository or are cloned during pipeline
-5. Common-library is a static dependency in umbrella Chart.yaml
-6. All service configurations stored in `services/` directory
-7. All generated charts stored in `charts/` directory
+We will perform chart generation in **individual service repositories**:
+1. Service repositories contain `configuration.yml`, application code, and chart generation capability
+2. Service pipelines generate Helm charts locally
+3. Service pipelines create PRs to umbrella-chart repository with generated charts
+4. Umbrella chart repository receives PRs and builds Helm dependencies
+5. If release condition is met, umbrella chart deploys to replicated SaaS provider
+6. Common-library is a static dependency in umbrella Chart.yaml
+7. Generated charts are included in PRs to umbrella repository
 
 ### Architecture
 
@@ -875,74 +883,80 @@ graph TB
     subgraph "Service Pipeline"
         VALIDATE[Validate Config]
         BUILD[Build Image]
+        GEN_CHART[Chart Generation]
+        VALIDATE_CHART[Validate Chart]
         CREATE_PR[Create PR to<br/>Umbrella Chart]
     end
     
     subgraph "Umbrella Chart Repository"
-        SERVICES[services/<br/>frontend/config.yml<br/>backend/config.yml<br/>database/config.yml]
+        SERVICES[services/<br/>frontend/<br/>backend/<br/>database/]
         CHARTS[charts/<br/>frontend/<br/>backend/<br/>database/]
         UMBRELLA_CHART[Chart.yaml<br/>dependency: common-library]
-        TOOLS[tools/<br/>chart-generator/]
     end
     
     subgraph "Umbrella Pipeline"
         CHECKOUT[Checkout Code]
-        INSTALL_TOOLS[Install Tools]
-        GENERATE[Generate Charts<br/>for all services]
-        UPDATE_DEPS[Update Dependencies]
+        BUILD_DEPS[Build Helm<br/>Dependencies]
         LINT[Lint Charts]
-        DEPLOY[Deploy to Kubernetes]
+        CONDITION{Release<br/>Condition?}
+        DEPLOY[Deploy to<br/>SaaS Provider]
     end
     
     CFG --> VALIDATE
     VALIDATE --> BUILD
-    BUILD --> CREATE_PR
+    BUILD --> GEN_CHART
+    GEN_CHART --> VALIDATE_CHART
+    VALIDATE_CHART --> CREATE_PR
     CREATE_PR --> SERVICES
+    CREATE_PR --> CHARTS
     
-    SERVICES --> GENERATE
-    TOOLS --> GENERATE
-    GENERATE --> CHARTS
-    CHARTS --> UPDATE_DEPS
-    UPDATE_DEPS --> UMBRELLA_CHART
+    SERVICES --> CHECKOUT
+    CHARTS --> CHECKOUT
+    CHECKOUT --> BUILD_DEPS
+    BUILD_DEPS --> UMBRELLA_CHART
     UMBRELLA_CHART --> LINT
-    LINT --> DEPLOY
+    LINT --> CONDITION
+    CONDITION -->|Yes| DEPLOY
+    CONDITION -->|No| SKIP[Skip Deployment]
     
     style SERVICES fill:#ffe1f5
     style CHARTS fill:#e1ffe1
-    style GENERATE fill:#fff4e1
+    style GEN_CHART fill:#fff4e1
     style UMBRELLA_CHART fill:#e1f5ff
+    style DEPLOY fill:#e1ffe1
 ```
 
 ### Consequences
 
 **Positive:**
-- ✅ Single source of truth for chart generation
-- ✅ Simplified service repositories
-- ✅ Easier to maintain chart generation logic
-- ✅ Consistent chart generation across all services
-- ✅ Centralized visibility of all service configurations
-- ✅ Easier dependency management
-- ✅ Service teams don't need chart generation knowledge
+- ✅ Service teams have full control over their chart generation
+- ✅ Charts generated close to service code and configuration
+- ✅ Service teams can test chart generation locally
+- ✅ Parallel chart generation across services
+- ✅ Service repositories are self-contained
+- ✅ Umbrella repository focuses on orchestration and deployment
 
 **Negative:**
-- ⚠️ Service teams lose ability to generate charts locally (can be mitigated with local tools)
-- ⚠️ Umbrella repository becomes more critical
-- ⚠️ All chart generation happens in one place (single point of failure, mitigated by PR workflow)
+- ⚠️ Chart generation logic duplicated across service repos (mitigated by shared tooling)
+- ⚠️ Service teams need to understand chart generation process
+- ⚠️ More complex service pipelines
+- ⚠️ Need to ensure consistency across service chart generation
 
 **Neutral:**
-- Chart generator can be run locally for testing
-- Tools can be cloned or included in umbrella repo
+- Chart generation tools can be shared via common library or templates
+- Umbrella repository validates and orchestrates deployments
+- Release conditions control when deployments occur
 
 ### Alternatives Considered
 
-1. **Distributed Generation**: Each service repo generates its own chart
-   - ❌ Rejected: Duplication, inconsistency, complexity
+1. **Centralized Generation**: Generate charts in umbrella-chart repository
+   - ⚠️ Considered: Simpler service repos, but less service team autonomy
 
-2. **Centralized Service**: Separate service for chart generation
-   - ⚠️ Considered: More infrastructure, but could work
+2. **Separate Service**: Dedicated service for chart generation
+   - ❌ Rejected: Additional infrastructure, more complexity
 
-3. **Hybrid**: Service repos generate, umbrella syncs
-   - ❌ Rejected: Still has duplication and complexity
+3. **Hybrid**: Service repos generate, umbrella validates and syncs
+   - ⚠️ Considered: Current approach balances autonomy and consistency
 
 ---
 
@@ -1022,17 +1036,24 @@ graph TB
 - `ENABLE_CREATE_PR` (default: true)
 - `withApprovals` (default: false) - Required for production deployments
 
-**Pipeline Stages:**
+**Service Pipeline Stages:**
 1. **Checkout Code** - Checkout service repository
 2. **Install Tools** - Install uv (via pip3), yq, and other required tools
 3. **Build Docker Image** - Build image using `dockerTasks` groovy function
 4. **Push Image to QA ECR** - Push image to QA ECR registry
-5. **Generate Helm Chart** - Generate chart using chart-generator from helm-chart-factory
+5. **Chart Generation** - Generate Helm chart (generic chart generation process)
 6. **Validate Helm Chart** - Validate generated chart using `helm lint` and `helm template`
 7. **Push Helm Chart to QA ECR** - Push chart to QA ECR OCI registry
 8. **Push Image to PROD ECR** - Conditional on main branch and `withApprovals`
 9. **Push Helm Chart to PROD ECR** - Conditional on main branch and `withApprovals`
-10. **Create PR to Umbrella Chart** - Create PR with updated configuration.yml
+10. **Create PR to Umbrella Chart** - Create PR with generated chart and configuration.yml
+
+**Umbrella Pipeline Stages:**
+1. **Checkout Code** - Checkout umbrella-chart repository
+2. **Build Helm Dependencies** - Run `helm dependency build` to resolve dependencies
+3. **Lint Charts** - Lint all charts using `helm lint`
+4. **Check Release Condition** - Evaluate if release condition is met
+5. **Deploy to SaaS Provider** - Deploy to replicated SaaS provider if condition is met
 
 ### Consequences
 
@@ -1192,9 +1213,9 @@ These ADRs document the key architectural decisions for the Helm Chart Factory s
 4. **Pull Request Workflow** - Review and audit trail
 5. **Multiple Workload Types** - Flexibility for different services
 6. **Stage Toggles** - Pipeline flexibility using Jenkins parameters
-7. **Umbrella Chart** - Coordinated multi-service deployment with centralized generation
+7. **Umbrella Chart** - Coordinated multi-service deployment with dependency management
 8. **Kubernetes Cluster for Deployment** - Multi-environment deployment with ECR
-9. **Centralized Chart Generation** - All charts generated in umbrella repository
+9. **Chart Generation in Service Repos** - Charts generated in individual service repositories
 10. **Jenkins Pipeline Parameters** - Boolean parameters for stage control with approval gates
 11. **ECR-Based Registry** - AWS ECR for container images and Helm charts (OCI)
 
