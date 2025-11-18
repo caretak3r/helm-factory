@@ -176,17 +176,17 @@ graph TB
 
 The system needs to support:
 - Platform team maintaining library chart independently
-- Service teams owning their service code and configuration
-- Centralized umbrella chart for deployment orchestration
+- Service teams owning their service code, configuration, and chart generation
+- Centralized umbrella chart for deployment orchestration and dependency management
 - CI/CD pipelines that can trigger independently
+- Chart generation occurring in service repositories
 
 ### Decision
 
 We will use a **multi-repository architecture** with separate GitHub repositories:
 - `common-library` - Platform team's library chart (renamed from platform-library)
-- `*-service` repositories - Each service has its own repository
-- `umbrella-chart` - Umbrella chart repository (contains all service configs and generated charts)
-- `helm-chart-factory` - Tools and documentation repository (optional, tools can be cloned)
+- `*-service` repositories - Each service has its own repository (contains configuration.yml, code, and chart generation)
+- `umbrella-chart` - Umbrella chart repository (receives generated charts via PRs, builds dependencies, optionally releases to Replicated SaaS Provider)
 
 ### Architecture
 
@@ -197,36 +197,77 @@ graph TB
         FE_REPO[frontend-service<br/>Repository]
         BE_REPO[backend-service<br/>Repository]
         DB_REPO[database-service<br/>Repository]
-        UMBRELLA_REPO[umbrella-chart<br/>Repository]
-        TOOLS_REPO[helm-chart-factory<br/>Repository<br/>Optional]
+        UMBRELLA_REPO[umbrella-chart<br/>Repository<br/>Receives Charts via PRs]
     end
     
-    subgraph "Jenkins"
-        FE_PIPELINE[frontend-service<br/>Pipeline]
-        BE_PIPELINE[backend-service<br/>Pipeline]
-        DB_PIPELINE[database-service<br/>Pipeline]
-        UMBRELLA_PIPELINE[umbrella-chart<br/>Pipeline]
+    subgraph "Service Pipeline - Chart Generation"
+        CFG[configuration.yml<br/>CHANGED]
+        PARSE[Parse configuration.yml]
+        CREATE_CHART[Create Chart.yaml]
+        CREATE_VALUES[Create values.yaml]
+        ADD_DEP[Add common-library<br/>dependency]
+        DEP_UPDATE[helm dependency<br/>update]
+        INCLUDE_TEMPLATE[Include app.yml<br/>template]
+        VALIDATE[VALIDATION<br/>helm lint<br/>helm template]
+        PACKAGE[helm package]
+        PUSH_ECR[Push to ECR]
+        CREATE_PR[Create PR to<br/>umbrella-chart]
     end
     
-    FE_REPO -->|Webhook| FE_PIPELINE
-    BE_REPO -->|Webhook| BE_PIPELINE
-    DB_REPO -->|Webhook| DB_PIPELINE
-    UMBRELLA_REPO -->|Webhook| UMBRELLA_PIPELINE
+    subgraph "Umbrella Pipeline"
+        CHECKOUT[Checkout Code]
+        BUILD_DEPS[Build Helm<br/>Dependencies]
+        LINT[Lint Charts]
+        CONDITION{Release<br/>Condition?}
+        DEPLOY[Deploy to<br/>SaaS Provider]
+    end
     
-    FE_PIPELINE -->|Create PR| UMBRELLA_REPO
-    BE_PIPELINE -->|Create PR| UMBRELLA_REPO
-    DB_PIPELINE -->|Create PR| UMBRELLA_REPO
+    FE_REPO -->|Webhook| CFG
+    BE_REPO -->|Webhook| CFG
+    DB_REPO -->|Webhook| CFG
     
-    UMBRELLA_PIPELINE -->|Checkout| COMMON_REPO
-    UMBRELLA_PIPELINE -->|Clone| TOOLS_REPO
-    UMBRELLA_PIPELINE -->|Generate Charts| UMBRELLA_REPO
+    CFG --> PARSE
+    PARSE --> CREATE_CHART
+    PARSE --> CREATE_VALUES
+    CREATE_CHART --> ADD_DEP
+    ADD_DEP --> DEP_UPDATE
+    DEP_UPDATE --> COMMON_REPO
+    DEP_UPDATE --> INCLUDE_TEMPLATE
+    INCLUDE_TEMPLATE --> VALIDATE
+    VALIDATE --> PACKAGE
+    PACKAGE --> PUSH_ECR
+    PUSH_ECR --> CREATE_PR
+    
+    CREATE_PR --> UMBRELLA_REPO
+    UMBRELLA_REPO -->|Webhook| CHECKOUT
+    CHECKOUT --> BUILD_DEPS
+    BUILD_DEPS --> LINT
+    LINT --> TEMPLATE
+    TEMPLATE --> CONDITION
+    CONDITION -->|Approved| RELEASE
+    CONDITION -->|Not Approved| SKIP[Skip Release]
     
     style COMMON_REPO fill:#fff4e1
     style FE_REPO fill:#e1f5ff
     style BE_REPO fill:#e1f5ff
     style DB_REPO fill:#e1f5ff
     style UMBRELLA_REPO fill:#ffe1f5
-    style TOOLS_REPO fill:#e1ffe1
+    style CFG fill:#ffcccc
+    style PARSE fill:#fff4e1
+    style CREATE_CHART fill:#fff4e1
+    style CREATE_VALUES fill:#fff4e1
+    style ADD_DEP fill:#fff4e1
+    style DEP_UPDATE fill:#fff4e1
+    style INCLUDE_TEMPLATE fill:#fff4e1
+    style VALIDATE fill:#ffe1f5
+    style PACKAGE fill:#fff4e1
+    style PUSH_ECR fill:#fff4e1
+    style CREATE_PR fill:#fff4e1
+    style CHECKOUT fill:#e1f5ff
+    style BUILD_DEPS fill:#e1f5ff
+    style LINT fill:#e1f5ff
+    style TEMPLATE fill:#e1f5ff
+    style RELEASE fill:#e1ffe1
 ```
 
 ### Consequences
@@ -235,18 +276,23 @@ graph TB
 - ✅ Clear ownership boundaries
 - ✅ Independent versioning and releases
 - ✅ Service teams can work independently
+- ✅ Service teams control their chart generation process
 - ✅ Platform team controls library chart evolution
 - ✅ Fine-grained access control per repository
 - ✅ Independent CI/CD pipelines
+- ✅ Charts generated close to service code and configuration
+- ✅ Umbrella repository focuses on orchestration and deployment
 
 **Negative:**
 - ⚠️ More repositories to manage
 - ⚠️ Requires coordination for cross-repo changes
 - ⚠️ More complex webhook configuration
+- ⚠️ Chart generation logic may be duplicated across service repos (mitigated by shared patterns)
 
 **Neutral:**
 - Requires tooling to sync across repositories
 - PR-based workflow adds review step
+- Service repositories contain chart generation capability
 
 ### Alternatives Considered
 
@@ -258,6 +304,9 @@ graph TB
 
 3. **Git Submodules**: Use submodules for library chart
    - ❌ Rejected: Submodules are complex and error-prone
+
+4. **Centralized Chart Generation**: Generate charts in umbrella repository
+   - ⚠️ Considered: Simpler service repos, but less service team autonomy and control
 
 ---
 
@@ -409,7 +458,7 @@ sequenceDiagram
     participant ServicePipeline as Service Pipeline
     participant UmbrellaRepo as Umbrella Chart Repo
     participant UmbrellaPipeline as Umbrella Pipeline
-    participant SaaS as SaaS Provider
+    participant REPLICATED as Replicated SaaS Provider
     
     Dev->>ServiceRepo: 1. Edit configuration.yml
     Dev->>ServiceRepo: 2. Create PR
@@ -428,15 +477,20 @@ sequenceDiagram
     ServicePipeline->>UmbrellaRepo: 14. Create PR with chart
     
     UmbrellaRepo->>UmbrellaPipeline: 15. Trigger on PR
-    UmbrellaPipeline->>UmbrellaPipeline: 16. Build dependencies
-    UmbrellaPipeline->>UmbrellaPipeline: 17. Lint charts
+    UmbrellaPipeline->>UmbrellaPipeline: 16. Checkout code
+    UmbrellaPipeline->>UmbrellaPipeline: 17. Build dependencies
+    UmbrellaPipeline->>UmbrellaPipeline: 18. Lint charts
+    UmbrellaPipeline->>UmbrellaPipeline: 19. Template charts
     
-    UmbrellaRepo->>UmbrellaRepo: 18. Merge PR
-    UmbrellaRepo->>UmbrellaPipeline: 19. Trigger on merge
-    UmbrellaPipeline->>UmbrellaPipeline: 20. Build dependencies
-    UmbrellaPipeline->>UmbrellaPipeline: 21. Check release condition
-    UmbrellaPipeline->>SaaS: 22. Deploy to SaaS Provider
-    SaaS->>UmbrellaPipeline: 23. Verify deployment
+    UmbrellaRepo->>UmbrellaRepo: 20. Merge PR
+    UmbrellaRepo->>UmbrellaPipeline: 21. Trigger on merge
+    UmbrellaPipeline->>UmbrellaPipeline: 22. Checkout code
+    UmbrellaPipeline->>UmbrellaPipeline: 23. Build dependencies
+    UmbrellaPipeline->>UmbrellaPipeline: 24. Lint charts
+    UmbrellaPipeline->>UmbrellaPipeline: 25. Template charts
+    UmbrellaPipeline->>UmbrellaPipeline: 26. Check release approval
+    UmbrellaPipeline->>REPLICATED: 27. Release to Replicated SaaS
+    REPLICATED->>UmbrellaPipeline: 28. Verify release
 ```
 
 ### Consequences
@@ -680,8 +734,8 @@ We will use an **umbrella chart** pattern where:
 ```mermaid
 graph TB
     subgraph "Umbrella Chart Repository"
-        UC[umbrella-chart/<br/>Chart.yaml<br/>dependency: common-library]
-        UC --> DEPS[Dependencies:<br/>- common-library<br/>- frontend<br/>- backend<br/>- database]
+        UC[umbrella-chart/<br/>Chart.yaml]
+        UC --> DEPS[Dependencies:<br/>- frontend<br/>- backend<br/>- database]
         UC --> VALUES[values.yaml<br/>Global values]
         
         subgraph "Services Directory"
@@ -698,32 +752,35 @@ graph TB
     end
     
     subgraph "Umbrella Pipeline"
-        PIPELINE[Jenkinsfile.umbrella]
+        CHECKOUT[Checkout Code]
         BUILD_DEPS[Build Helm<br/>Dependencies]
         LINT[Lint Charts]
-        CONDITION{Release<br/>Condition?}
-        DEPLOY[Deploy to<br/>SaaS Provider]
+        TEMPLATE[Template Charts]
+        CONDITION{Release<br/>Approval?}
+        RELEASE[Release to<br/>Replicated SaaS]
     end
     
-    FE_CHART --> BUILD_DEPS
-    BE_CHART --> BUILD_DEPS
-    DB_CHART --> BUILD_DEPS
+    FE_CHART --> CHECKOUT
+    BE_CHART --> CHECKOUT
+    DB_CHART --> CHECKOUT
     
+    CHECKOUT --> BUILD_DEPS
     BUILD_DEPS --> DEPS
     DEPS --> LINT
-    LINT --> CONDITION
-    CONDITION -->|Yes| DEPLOY
-    
-    PIPELINE --> BUILD_DEPS
-    PIPELINE --> LINT
-    PIPELINE --> CONDITION
+    LINT --> TEMPLATE
+    TEMPLATE --> CONDITION
+    CONDITION -->|Approved| RELEASE
+    CONDITION -->|Not Approved| SKIP[Skip Release]
     
     style UC fill:#ffe1f5
-    style BUILD_DEPS fill:#fff4e1
+    style CHECKOUT fill:#e1f5ff
+    style BUILD_DEPS fill:#e1f5ff
+    style LINT fill:#e1f5ff
+    style TEMPLATE fill:#e1f5ff
     style FE_CHART fill:#e1f5ff
     style BE_CHART fill:#e1f5ff
     style DB_CHART fill:#e1f5ff
-    style DEPLOY fill:#e1ffe1
+    style RELEASE fill:#e1ffe1
 ```
 
 ### Consequences
@@ -897,9 +954,9 @@ We will perform chart generation in **individual service repositories**:
 7. Chart is packaged using `helm package`
 8. Packaged chart is pushed to ECR (OCI registry)
 9. Service pipeline creates PR to umbrella-chart repository with generated chart and updated configuration.yml
-10. Umbrella chart repository receives PRs and validates changes
-11. If release condition is met, umbrella chart deploys to replicated SaaS provider
-12. Common-library is a static dependency in both service charts and umbrella Chart.yaml
+10. Umbrella chart repository receives PRs and conducts pipeline stages: checkout, build dependencies, lint, template
+11. If release approval is granted, umbrella chart releases to Replicated SaaS Provider
+12. Common-library is a dependency in service charts (not in umbrella Chart.yaml)
 
 ### Architecture
 
@@ -927,15 +984,16 @@ graph TB
     subgraph "Umbrella Chart Repository"
         SERVICES[services/<br/>frontend/<br/>backend/<br/>database/]
         CHARTS[charts/<br/>frontend/<br/>backend/<br/>database/]
-        UMBRELLA_CHART[Chart.yaml<br/>dependency: common-library]
+        UMBRELLA_CHART[Chart.yaml<br/>Dependencies: service charts]
     end
     
     subgraph "Umbrella Pipeline"
         CHECKOUT[Checkout Code]
         BUILD_DEPS[Build Helm<br/>Dependencies]
         LINT[Lint Charts]
-        CONDITION{Release<br/>Condition?}
-        DEPLOY[Deploy to<br/>SaaS Provider]
+        TEMPLATE[Template Charts]
+        CONDITION{Release<br/>Approval?}
+        RELEASE[Release to<br/>Replicated SaaS]
     end
     
     CFG --> PARSE
@@ -955,15 +1013,19 @@ graph TB
     CHECKOUT --> BUILD_DEPS
     BUILD_DEPS --> UMBRELLA_CHART
     UMBRELLA_CHART --> LINT
-    LINT --> CONDITION
-    CONDITION -->|Yes| DEPLOY
-    CONDITION -->|No| SKIP[Skip Deployment]
+    LINT --> TEMPLATE
+    TEMPLATE --> CONDITION
+    CONDITION -->|Approved| RELEASE
+    CONDITION -->|Not Approved| SKIP[Skip Release]
     
     style SERVICES fill:#ffe1f5
     style CHARTS fill:#e1ffe1
-    style GEN_CHART fill:#fff4e1
     style UMBRELLA_CHART fill:#e1f5ff
-    style DEPLOY fill:#e1ffe1
+    style CHECKOUT fill:#e1f5ff
+    style BUILD_DEPS fill:#e1f5ff
+    style LINT fill:#e1f5ff
+    style TEMPLATE fill:#e1f5ff
+    style RELEASE fill:#e1ffe1
 ```
 
 ### Consequences
@@ -1098,8 +1160,9 @@ graph TB
 1. **Checkout Code** - Checkout umbrella-chart repository
 2. **Build Helm Dependencies** - Run `helm dependency build` to resolve dependencies
 3. **Lint Charts** - Lint all charts using `helm lint`
-4. **Check Release Condition** - Evaluate if release condition is met
-5. **Deploy to SaaS Provider** - Deploy to replicated SaaS provider if condition is met
+4. **Template Charts** - Run `helm template` to validate charts render correctly
+5. **Check Release Approval** - Evaluate if release approval is granted
+6. **Release to Replicated SaaS** - Release to Replicated SaaS Provider if approved (optional)
 
 ### Consequences
 
