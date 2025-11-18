@@ -4,9 +4,15 @@ pipeline {
     parameters {
         booleanParam(name: 'ENABLE_CHECKOUT', defaultValue: true, description: 'Enable checkout stage')
         booleanParam(name: 'ENABLE_INSTALL_TOOLS', defaultValue: true, description: 'Enable install tools stage')
-        booleanParam(name: 'ENABLE_VALIDATE_CONFIG', defaultValue: true, description: 'Enable validate configuration stage')
         booleanParam(name: 'ENABLE_BUILD_IMAGE', defaultValue: true, description: 'Enable build image stage')
+        booleanParam(name: 'ENABLE_PUSH_IMAGE_QA', defaultValue: true, description: 'Enable push image to QA ECR stage')
+        booleanParam(name: 'ENABLE_GENERATE_CHART', defaultValue: true, description: 'Enable generate helm chart stage')
+        booleanParam(name: 'ENABLE_VALIDATE_CHART', defaultValue: true, description: 'Enable validate helm chart stage')
+        booleanParam(name: 'ENABLE_PUSH_CHART_QA', defaultValue: true, description: 'Enable push helm chart to QA ECR stage')
+        booleanParam(name: 'ENABLE_PUSH_IMAGE_PROD', defaultValue: false, description: 'Enable push image to PROD ECR stage')
+        booleanParam(name: 'ENABLE_PUSH_CHART_PROD', defaultValue: false, description: 'Enable push helm chart to PROD ECR stage')
         booleanParam(name: 'ENABLE_CREATE_PR', defaultValue: true, description: 'Enable create PR stage')
+        booleanParam(name: 'withApprovals', defaultValue: false, description: 'Approvals received for production deployment')
     }
 
     environment {
@@ -21,12 +27,29 @@ pipeline {
         
         // Repository URLs
         UMBRELLA_CHART_REPO = "${env.UMBRELLA_CHART_REPO ?: 'https://github.com/companyinfo/umbrella-chart.git'}"
+        HELM_CHART_FACTORY_REPO = "${env.HELM_CHART_FACTORY_REPO ?: 'https://github.com/companyinfo/helm-chart-factory.git'}"
+        
+        // ECR Registry URLs
+        ECR_QA_REGISTRY = "${env.ECR_QA_REGISTRY ?: '123456789012.dkr.ecr.us-east-1.amazonaws.com'}"
+        ECR_PROD_REGISTRY = "${env.ECR_PROD_REGISTRY ?: '123456789012.dkr.ecr.us-east-1.amazonaws.com'}"
+        
+        // AWS credentials for ECR
+        AWS_CREDENTIALS = credentials('aws-credentials')
     }
 
     options {
         buildDiscarder(logRotator(numToKeepStr: '10'))
-        timeout(time: 30, unit: 'MINUTES')
+        timeout(time: 60, unit: 'MINUTES')
         timestamps()
+    }
+
+    // Groovy function for Docker tasks
+    def dockerTasks(imageRepo, imageTag) {
+        echo "🐳 Building Docker image ${imageRepo}:${imageTag}..."
+        sh """
+            docker build -t ${imageRepo}:${imageTag} .
+            docker tag ${imageRepo}:${imageTag} ${imageRepo}:latest
+        """
     }
 
     stages {
@@ -47,100 +70,279 @@ pipeline {
                     echo "🛠️ Installing tools to ${TOOLS_DIR}..."
                     dir(TOOLS_DIR) {
                         sh '''
-                            # Install Python dependencies if needed
+                            # Check and install Python3
                             if ! command -v python3 &> /dev/null; then
                                 echo "Python3 not found, installing..."
-                                # Add installation logic here
+                                # Add installation logic here based on OS
+                                if [ -f /etc/debian_version ]; then
+                                    sudo apt-get update && sudo apt-get install -y python3 python3-pip
+                                elif [ -f /etc/redhat-release ]; then
+                                    sudo yum install -y python3 python3-pip
+                                else
+                                    echo "ERROR: Cannot auto-install Python3. Please install manually."
+                                    exit 1
+                                fi
+                            else
+                                echo "✓ Python3 already installed: $(python3 --version)"
                             fi
                             
-                            # Install uv if not present
+                            # Check and install uv via pip3
                             if ! command -v uv &> /dev/null; then
-                                echo "Installing uv..."
-                                curl -LsSf https://astral.sh/uv/install.sh | sh
+                                echo "Installing uv via pip3..."
+                                pip3 install uv
+                            else
+                                echo "✓ uv already installed: $(uv --version)"
                             fi
                             
-                            # Verify tools
+                            # Check and install yq
+                            if ! command -v yq &> /dev/null; then
+                                echo "Installing yq..."
+                                # Install yq based on OS
+                                if [ -f /etc/debian_version ]; then
+                                    wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+                                    chmod +x /usr/local/bin/yq
+                                elif [ -f /etc/redhat-release ]; then
+                                    wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+                                    chmod +x /usr/local/bin/yq
+                                elif [[ "$OSTYPE" == "darwin"* ]]; then
+                                    brew install yq || echo "Please install yq manually: brew install yq"
+                                else
+                                    echo "ERROR: Cannot auto-install yq. Please install manually."
+                                    exit 1
+                                fi
+                            else
+                                echo "✓ yq already installed: $(yq --version)"
+                            fi
+                            
+                            # Verify all tools
+                            echo "=== Tool Versions ==="
                             python3 --version
-                            uv --version || echo "uv installation may need shell restart"
+                            uv --version || echo "uv may need shell restart"
+                            yq --version
                         '''
                     }
                     
-                    // Set PATH for subsequent stages (tools directory + system paths)
-                    env.PATH = "${TOOLS_DIR}:${HOME}/.cargo/bin:${env.PATH}"
+                    // Set PATH for subsequent stages
+                    env.PATH = "${TOOLS_DIR}:${HOME}/.cargo/bin:${HOME}/.local/bin:${env.PATH}"
                 }
             }
         }
 
-        stage('Validate Configuration') {
-            when { expression { params.ENABLE_VALIDATE_CONFIG } }
-            steps {
-                script {
-                    echo "✅ Validating configuration.yml..."
-                    sh '''
-                        python3 -c "
-                        import yaml
-                        import sys
-                        
-                        try:
-                            with open('configuration.yml', 'r') as f:
-                                config = yaml.safe_load(f)
-                            
-                            # Basic validation
-                            if not config.get('service', {}).get('name'):
-                                print('ERROR: service.name is required')
-                                sys.exit(1)
-                            
-                            print('✓ Configuration is valid')
-                        except Exception as e:
-                            print(f'ERROR: {e}')
-                            sys.exit(1)
-                        "
-                    '''
-                }
-            }
-        }
-
-        stage('Build Image') {
+        stage('Build Docker Image') {
             when { expression { params.ENABLE_BUILD_IMAGE } }
             steps {
                 script {
-                    echo "🐳 Building Docker image..."
-                    sh '''
-                        # Extract image info from configuration.yml
-                        IMAGE_REPO=$(python3 -c "
-                        import yaml
-                        with open('configuration.yml') as f:
-                            config = yaml.safe_load(f)
-                            print(config.get('deployment', {}).get('image', {}).get('repository', 'localhost:5000/' + '${SERVICE_NAME}'))
-                        ")
+                    echo "🏗️ Building Docker image..."
+                    
+                    // Extract image info from configuration.yml
+                    def config = readYaml file: 'configuration.yml'
+                    def imageRepo = config.deployment?.image?.repository ?: "${ECR_QA_REGISTRY}/${SERVICE_NAME}"
+                    def imageTag = config.deployment?.image?.tag ?: "latest"
+                    
+                    env.IMAGE_REPO = imageRepo
+                    env.IMAGE_TAG = imageTag
+                    
+                    // Call dockerTasks function
+                    dockerTasks(imageRepo, imageTag)
+                }
+            }
+        }
+
+        stage('Push Image to QA ECR') {
+            when { expression { params.ENABLE_PUSH_IMAGE_QA } }
+            steps {
+                script {
+                    echo "📤 Pushing Docker image to QA ECR..."
+                    withCredentials([usernamePassword(credentialsId: 'aws-credentials', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                        sh """
+                            # Login to ECR
+                            aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${ECR_QA_REGISTRY}
+                            
+                            # Tag image for QA ECR
+                            docker tag ${env.IMAGE_REPO}:${env.IMAGE_TAG} ${ECR_QA_REGISTRY}/${SERVICE_NAME}:${env.IMAGE_TAG}
+                            docker tag ${env.IMAGE_REPO}:${env.IMAGE_TAG} ${ECR_QA_REGISTRY}/${SERVICE_NAME}:latest
+                            
+                            # Push to QA ECR
+                            docker push ${ECR_QA_REGISTRY}/${SERVICE_NAME}:${env.IMAGE_TAG}
+                            docker push ${ECR_QA_REGISTRY}/${SERVICE_NAME}:latest
+                            
+                            echo "✅ Image pushed to QA ECR: ${ECR_QA_REGISTRY}/${SERVICE_NAME}:${env.IMAGE_TAG}"
+                        """
+                    }
+                }
+            }
+        }
+
+        stage('Generate Helm Chart') {
+            when { expression { params.ENABLE_GENERATE_CHART } }
+            steps {
+                script {
+                    echo "📦 Generating Helm chart..."
+                    
+                    // Clone helm-chart-factory if not already present
+                    dir("${TOOLS_DIR}") {
+                        if (!fileExists("helm-chart-factory")) {
+                            sh """
+                                git clone ${HELM_CHART_FACTORY_REPO} helm-chart-factory
+                            """
+                        }
+                    }
+                    
+                    // Generate chart using chart-generator
+                    sh """
+                        cd ${TOOLS_DIR}/helm-chart-factory/chart-generator
                         
-                        IMAGE_TAG=$(python3 -c "
-                        import yaml
-                        with open('configuration.yml') as f:
-                            config = yaml.safe_load(f)
-                            print(config.get('deployment', {}).get('image', {}).get('tag', 'latest'))
-                        ")
-                        
-                        docker build -t ${IMAGE_REPO}:${IMAGE_TAG} .
-                        docker tag ${IMAGE_REPO}:${IMAGE_TAG} ${IMAGE_REPO}:latest
-                        
-                        # Push to local registry if available
-                        if docker info | grep -q "localhost:5000"; then
-                            docker push ${IMAGE_REPO}:${IMAGE_TAG}
-                            docker push ${IMAGE_REPO}:latest
+                        # Install dependencies if needed
+                        if [ -f pyproject.toml ] || [ -f requirements.txt ]; then
+                            uv pip install -e . || pip3 install -e .
                         fi
-                    '''
+                        
+                        # Run chart generator
+                        python3 main.py \\
+                            --config ${WORKSPACE}/configuration.yml \\
+                            --output ${WORKSPACE}/generated-chart \\
+                            --library ../common-library || python3 main.py \\
+                            --config ${WORKSPACE}/configuration.yml \\
+                            --output ${WORKSPACE}/generated-chart \\
+                            --library-chart ../common-library
+                        
+                        # Extract chart version
+                        if [ -f ${WORKSPACE}/generated-chart/Chart.yaml ]; then
+                            CHART_VERSION=\$(yq eval '.version' ${WORKSPACE}/generated-chart/Chart.yaml)
+                            CHART_NAME=\$(yq eval '.name' ${WORKSPACE}/generated-chart/Chart.yaml)
+                            echo "✅ Generated Helm chart: ${CHART_NAME} version ${CHART_VERSION}"
+                            echo "Chart location: ${WORKSPACE}/generated-chart"
+                            
+                            # Store for later stages
+                            echo "CHART_NAME=${CHART_NAME}" > ${WORKSPACE}/chart-info.env
+                            echo "CHART_VERSION=${CHART_VERSION}" >> ${WORKSPACE}/chart-info.env
+                        else
+                            echo "ERROR: Chart.yaml not found after generation"
+                            exit 1
+                        fi
+                    """
+                    
+                    // Load chart info
+                    def chartInfo = readFile("${WORKSPACE}/chart-info.env")
+                    chartInfo.split('\n').each { line ->
+                        if (line.contains('CHART_NAME=')) {
+                            env.CHART_NAME = line.split('=')[1]
+                        }
+                        if (line.contains('CHART_VERSION=')) {
+                            env.CHART_VERSION = line.split('=')[1]
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Validate Helm Chart') {
+            when { expression { params.ENABLE_VALIDATE_CHART } }
+            steps {
+                script {
+                    echo "✅ Validating Helm chart..."
+                    sh """
+                        # Install Helm if not present
+                        if ! command -v helm &> /dev/null; then
+                            echo "Installing Helm..."
+                            curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+                        fi
+                        
+                        # Validate chart
+                        helm lint ${WORKSPACE}/generated-chart
+                        helm template ${WORKSPACE}/generated-chart --debug
+                        
+                        echo "✅ Helm chart validation passed"
+                    """
+                }
+            }
+        }
+
+        stage('Push Helm Chart to QA ECR') {
+            when { expression { params.ENABLE_PUSH_CHART_QA } }
+            steps {
+                script {
+                    echo "📤 Pushing Helm chart to QA ECR (OCI)..."
+                    withCredentials([usernamePassword(credentialsId: 'aws-credentials', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                        sh """
+                            # Login to ECR
+                            aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${ECR_QA_REGISTRY}
+                            
+                            # Package and push chart to ECR OCI
+                            helm package ${WORKSPACE}/generated-chart
+                            
+                            CHART_FILE=\$(ls ${WORKSPACE}/*.tgz | head -1)
+                            helm push ${CHART_FILE} oci://${ECR_QA_REGISTRY}/${SERVICE_NAME}-charts
+                            
+                            echo "✅ Helm chart pushed to QA ECR: oci://${ECR_QA_REGISTRY}/${SERVICE_NAME}-charts/${env.CHART_NAME}:${env.CHART_VERSION}"
+                        """
+                    }
+                }
+            }
+        }
+
+        stage('Push Image to PROD ECR') {
+            when {
+                allOf {
+                    expression { params.ENABLE_PUSH_IMAGE_PROD }
+                    expression { params.withApprovals }
+                    anyOf { branch 'main'; branch 'master' }
+                }
+            }
+            steps {
+                script {
+                    echo "🚀 Pushing Docker image to PROD ECR..."
+                    withCredentials([usernamePassword(credentialsId: 'aws-credentials', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                        sh """
+                            # Login to PROD ECR
+                            aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${ECR_PROD_REGISTRY}
+                            
+                            # Tag image for PROD ECR
+                            docker tag ${env.IMAGE_REPO}:${env.IMAGE_TAG} ${ECR_PROD_REGISTRY}/${SERVICE_NAME}:${env.IMAGE_TAG}
+                            docker tag ${env.IMAGE_REPO}:${env.IMAGE_TAG} ${ECR_PROD_REGISTRY}/${SERVICE_NAME}:latest
+                            
+                            # Push to PROD ECR
+                            docker push ${ECR_PROD_REGISTRY}/${SERVICE_NAME}:${env.IMAGE_TAG}
+                            docker push ${ECR_PROD_REGISTRY}/${SERVICE_NAME}:latest
+                            
+                            echo "✅ Image pushed to PROD ECR: ${ECR_PROD_REGISTRY}/${SERVICE_NAME}:${env.IMAGE_TAG}"
+                        """
+                    }
+                }
+            }
+        }
+
+        stage('Push Helm Chart to PROD ECR') {
+            when {
+                allOf {
+                    expression { params.ENABLE_PUSH_CHART_PROD }
+                    expression { params.withApprovals }
+                    anyOf { branch 'main'; branch 'master' }
+                }
+            }
+            steps {
+                script {
+                    echo "🚀 Pushing Helm chart to PROD ECR (OCI)..."
+                    withCredentials([usernamePassword(credentialsId: 'aws-credentials', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                        sh """
+                            # Login to PROD ECR
+                            aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${ECR_PROD_REGISTRY}
+                            
+                            # Package and push chart to PROD ECR OCI
+                            helm package ${WORKSPACE}/generated-chart
+                            
+                            CHART_FILE=\$(ls ${WORKSPACE}/*.tgz | head -1)
+                            helm push ${CHART_FILE} oci://${ECR_PROD_REGISTRY}/${SERVICE_NAME}-charts
+                            
+                            echo "✅ Helm chart pushed to PROD ECR: oci://${ECR_PROD_REGISTRY}/${SERVICE_NAME}-charts/${env.CHART_NAME}:${env.CHART_VERSION}"
+                        """
+                    }
                 }
             }
         }
 
         stage('Create PR to Umbrella Chart') {
-            when {
-                allOf {
-                    expression { params.ENABLE_CREATE_PR }
-                    anyOf { branch 'main'; branch 'master' }
-                }
-            }
+            when { expression { params.ENABLE_CREATE_PR } }
             steps {
                 script {
                     echo "📝 Creating PR to umbrella chart repository..."
@@ -165,6 +367,12 @@ pipeline {
                             mkdir -p services/${SERVICE_NAME}
                             cp ${WORKSPACE}/configuration.yml services/${SERVICE_NAME}/configuration.yml
                             
+                            # Copy generated chart if it exists
+                            if [ -d "${WORKSPACE}/generated-chart" ]; then
+                                echo "Copying generated chart metadata..."
+                                # Optionally copy chart metadata for reference
+                            fi
+                            
                             echo "Copied configuration.yml to services/${SERVICE_NAME}/"
                             
                             # Check if there are changes
@@ -181,6 +389,7 @@ pipeline {
                             - Build: ${BUILD_NUMBER}
                             - Job: ${JOB_NAME}
                             - Commit: ${GIT_COMMIT}
+                            - Chart Version: ${CHART_VERSION:-unknown}
                             "
                             
                             # Push branch
@@ -195,6 +404,7 @@ pipeline {
                             **Branch:** ${BRANCH_NAME}
                             **Build Number:** ${BUILD_NUMBER}
                             **Commit:** ${GIT_COMMIT}
+                            **Chart Version:** ${CHART_VERSION:-unknown}
 
                             Changes:
                             - Updated \`services/${SERVICE_NAME}/configuration.yml\`
@@ -255,4 +465,3 @@ pipeline {
         }
     }
 }
-

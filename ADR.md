@@ -67,6 +67,12 @@ This document contains Architecture Decision Records (ADRs) for the Helm Chart F
     - [Implementation Details](#implementation-details)
     - [Consequences](#consequences-9)
     - [Alternatives Considered](#alternatives-considered-9)
+  - [ADR-011: ECR-Based Container and Helm Chart Registry](#adr-011-ecr-based-container-and-helm-chart-registry)
+    - [Context](#context-10)
+    - [Decision](#decision-10)
+    - [Architecture](#architecture-10)
+    - [Consequences](#consequences-10)
+    - [Alternatives Considered](#alternatives-considered-10)
   - [Summary](#summary)
 
 ---
@@ -377,7 +383,7 @@ sequenceDiagram
     participant ServicePipeline as Service Pipeline
     participant UmbrellaRepo as Umbrella Chart Repo
     participant UmbrellaPipeline as Umbrella Pipeline
-    participant k3s as k3s Cluster
+    participant K8S as Kubernetes Cluster
     
     Dev->>ServiceRepo: 1. Edit configuration.yml
     Dev->>ServiceRepo: 2. Create PR
@@ -395,8 +401,8 @@ sequenceDiagram
     
     UmbrellaRepo->>UmbrellaRepo: 12. Merge PR
     UmbrellaRepo->>UmbrellaPipeline: 13. Trigger on merge
-    UmbrellaPipeline->>k3s: 14. Deploy
-    k3s->>UmbrellaPipeline: 15. Verify deployment
+    UmbrellaPipeline->>K8S: 14. Deploy to Kubernetes
+    K8S->>UmbrellaPipeline: 15. Verify deployment
 ```
 
 ### Consequences
@@ -717,112 +723,114 @@ graph TB
 
 ---
 
-## ADR-008: Local Development Environment with k3s
+## ADR-008: Kubernetes Cluster for Deployment
 
 **Status:** Accepted  
 **Date:** 2024-11-14  
 **Deciders:** Platform Team, DevOps Team  
-**Tags:** kubernetes, local-development, testing
+**Tags:** kubernetes, deployment, infrastructure
 
 ### Context
 
-We need a local Kubernetes environment for:
+We need Kubernetes clusters for:
 - Testing chart generation
 - Validating deployments
-- POC demonstrations
+- QA and production deployments
 - Developer onboarding
 
-Options include: minikube, kind, k3s, Docker Desktop Kubernetes.
+The system needs to support multiple environments (QA and Production) with appropriate approval gates.
 
 ### Decision
 
-We will use **k3s** as the local Kubernetes environment because:
-- Lightweight and fast startup
-- Single binary, easy installation
-- Full Kubernetes API compatibility
-- Good for CI/CD pipelines
-- Works well in containers
-- Includes local Docker registry support
+We will use **Kubernetes clusters** (generic, not specific to k3s) for deployment:
+- Support for multiple environments (QA and Production)
+- ECR (Elastic Container Registry) for container images
+- ECR OCI registry for Helm charts
+- Approval gates for production deployments
+- Separate ECR registries for QA and Production environments
 
 ### Architecture
 
 ```mermaid
 graph TB
-    subgraph "Local Machine"
-        DEV[Developer]
+    subgraph "CI/CD Pipeline"
         JENKINS[Jenkins Pipeline]
-        K3S[k3s Cluster]
-        REGISTRY[Local Docker<br/>Registry :5000]
+        BUILD[Build Image]
+        GEN[Generate Chart]
+        VALIDATE[Validate Chart]
     end
     
-    subgraph "k3s Cluster"
-        API[k3s API Server]
-        ETCD[etcd]
-        KUBELET[kubelet]
-        PODS[Pods]
-        SVC[Services]
-        ING[Ingress]
-        CERT[cert-manager<br/>Self-signed CA]
+    subgraph "QA Environment"
+        QA_ECR[QA ECR Registry<br/>Container Images]
+        QA_ECR_CHARTS[QA ECR OCI<br/>Helm Charts]
+        QA_K8S[QA Kubernetes<br/>Cluster]
+    end
+    
+    subgraph "Production Environment"
+        PROD_ECR[PROD ECR Registry<br/>Container Images]
+        PROD_ECR_CHARTS[PROD ECR OCI<br/>Helm Charts]
+        PROD_K8S[Production Kubernetes<br/>Cluster]
     end
     
     subgraph "External"
         GH[GitHub<br/>Repositories]
     end
     
-    DEV -->|Push| GH
     GH -->|Webhook| JENKINS
+    JENKINS --> BUILD
+    BUILD --> QA_ECR
+    BUILD -->|withApprovals| PROD_ECR
     
-    JENKINS -->|Build Images| REGISTRY
-    JENKINS -->|Deploy Charts| K3S
+    JENKINS --> GEN
+    GEN --> VALIDATE
+    VALIDATE --> QA_ECR_CHARTS
+    VALIDATE -->|withApprovals| PROD_ECR_CHARTS
     
-    K3S --> API
-    API --> ETCD
-    API --> KUBELET
-    KUBELET --> PODS
+    QA_ECR --> QA_K8S
+    QA_ECR_CHARTS --> QA_K8S
     
-    PODS -->|Pull Images| REGISTRY
-    PODS --> SVC
-    SVC --> ING
-    ING --> CERT
+    PROD_ECR --> PROD_K8S
+    PROD_ECR_CHARTS --> PROD_K8S
     
-    style K3S fill:#e1ffe1
-    style REGISTRY fill:#fff4e1
-    style JENKINS fill:#ffe1f5
-    style CERT fill:#e1f5ff
+    style QA_ECR fill:#fff4e1
+    style QA_ECR_CHARTS fill:#fff4e1
+    style PROD_ECR fill:#ffe1f5
+    style PROD_ECR_CHARTS fill:#ffe1f5
+    style JENKINS fill:#e1f5ff
 ```
 
 ### Consequences
 
 **Positive:**
-- ✅ Fast startup (< 30 seconds)
-- ✅ Low resource usage
-- ✅ Full Kubernetes API
-- ✅ Good for CI/CD
-- ✅ Easy to reset/cleanup
-- ✅ Includes local registry support
+- ✅ Supports multiple environments
+- ✅ Clear separation between QA and Production
+- ✅ Approval gates prevent accidental production deployments
+- ✅ ECR provides secure, scalable registry
+- ✅ OCI registry supports Helm charts natively
+- ✅ Works with any Kubernetes distribution
 
 **Negative:**
-- ⚠️ Some differences from production clusters
-- ⚠️ Single node (no HA testing)
-- ⚠️ Limited storage options
+- ⚠️ Requires AWS ECR setup and credentials
+- ⚠️ More complex than local development setup
+- ⚠️ Production deployments require approvals (by design)
 
 **Neutral:**
-- Can switch to other solutions later
-- Production can use different distribution
+- Can use any Kubernetes distribution
+- ECR can be replaced with other OCI-compatible registries
 
 ### Alternatives Considered
 
-1. **minikube**: Local Kubernetes
-   - ⚠️ Considered: Heavier, slower startup
+1. **Local Registry Only**: Use local Docker registry
+   - ❌ Rejected: Not suitable for production, no multi-environment support
 
-2. **kind**: Kubernetes in Docker
-   - ⚠️ Considered: Good for CI, but more complex setup
+2. **Docker Hub**: Use Docker Hub for images
+   - ⚠️ Considered: Less secure, rate limits, not suitable for enterprise
 
-3. **Docker Desktop Kubernetes**: Built-in K8s
-   - ❌ Rejected: Platform-specific, licensing issues
+3. **Harbor**: Use Harbor registry
+   - ⚠️ Considered: Good alternative, but ECR is AWS-native
 
-4. **Production-like Cluster**: Use cloud cluster
-   - ❌ Rejected: Cost, complexity, not local
+4. **k3s for Production**: Use k3s in production
+   - ❌ Rejected: Not suitable for production workloads, limited scalability
 
 ---
 
@@ -883,7 +891,7 @@ graph TB
         GENERATE[Generate Charts<br/>for all services]
         UPDATE_DEPS[Update Dependencies]
         LINT[Lint Charts]
-        DEPLOY[Deploy to k3s]
+        DEPLOY[Deploy to Kubernetes]
     end
     
     CFG --> VALIDATE
@@ -968,18 +976,20 @@ We will use **Jenkins pipeline parameters** (boolean parameters) for stage toggl
 ```mermaid
 graph TB
     subgraph "Jenkins Job Configuration"
-        PARAMS[Pipeline Parameters<br/>booleanParam<br/>ENABLE_CHECKOUT: true<br/>ENABLE_INSTALL_TOOLS: true<br/>ENABLE_VALIDATE_CONFIG: true<br/>ENABLE_BUILD_IMAGE: true<br/>ENABLE_CREATE_PR: true<br/>ENABLE_GENERATE_CHARTS: true<br/>ENABLE_UPDATE_DEPENDENCIES: true<br/>ENABLE_LINT_CHARTS: true<br/>ENABLE_TEMPLATE_CHARTS: true<br/>ENABLE_DEPLOY: false<br/>ENABLE_VERIFY_DEPLOYMENT: false]
+        PARAMS[Pipeline Parameters<br/>booleanParam<br/>ENABLE_CHECKOUT: true<br/>ENABLE_INSTALL_TOOLS: true<br/>ENABLE_BUILD_IMAGE: true<br/>ENABLE_PUSH_IMAGE_QA: true<br/>ENABLE_GENERATE_CHART: true<br/>ENABLE_VALIDATE_CHART: true<br/>ENABLE_PUSH_CHART_QA: true<br/>ENABLE_PUSH_IMAGE_PROD: false<br/>ENABLE_PUSH_CHART_PROD: false<br/>ENABLE_CREATE_PR: true<br/>withApprovals: false]
     end
     
     subgraph "Pipeline Execution"
-        S1[Stage: Checkout<br/>when: params.ENABLE_CHECKOUT]
-        S2[Stage: Install Tools<br/>when: params.ENABLE_INSTALL_TOOLS]
-        S3[Stage: Validate<br/>when: params.ENABLE_VALIDATE_CONFIG]
-        S4[Stage: Build<br/>when: params.ENABLE_BUILD_IMAGE]
-        S5[Stage: Create PR<br/>when: params.ENABLE_CREATE_PR]
-        S6[Stage: Generate<br/>when: params.ENABLE_GENERATE_CHARTS]
-        S7[Stage: Deploy<br/>when: params.ENABLE_DEPLOY]
-        S8[Stage: Verify<br/>when: params.ENABLE_VERIFY_DEPLOYMENT]
+        S1[Stage: Checkout]
+        S2[Stage: Install Tools]
+        S3[Stage: Build Image]
+        S4[Stage: Push Image QA]
+        S5[Stage: Generate Chart]
+        S6[Stage: Validate Chart]
+        S7[Stage: Push Chart QA]
+        S8[Stage: Push Image PROD<br/>main + approvals]
+        S9[Stage: Push Chart PROD<br/>main + approvals]
+        S10[Stage: Create PR]
     end
     
     PARAMS -->|Controls| S1
@@ -990,9 +1000,11 @@ graph TB
     PARAMS -->|Controls| S6
     PARAMS -->|Controls| S7
     PARAMS -->|Controls| S8
+    PARAMS -->|Controls| S9
+    PARAMS -->|Controls| S10
     
-    style S7 fill:#FFB6C1
     style S8 fill:#FFB6C1
+    style S9 fill:#FFB6C1
 ```
 
 ### Implementation Details
@@ -1000,19 +1012,27 @@ graph TB
 **Service Pipeline Parameters:**
 - `ENABLE_CHECKOUT` (default: true)
 - `ENABLE_INSTALL_TOOLS` (default: true)
-- `ENABLE_VALIDATE_CONFIG` (default: true)
 - `ENABLE_BUILD_IMAGE` (default: true)
+- `ENABLE_PUSH_IMAGE_QA` (default: true)
+- `ENABLE_GENERATE_CHART` (default: true)
+- `ENABLE_VALIDATE_CHART` (default: true)
+- `ENABLE_PUSH_CHART_QA` (default: true)
+- `ENABLE_PUSH_IMAGE_PROD` (default: false)
+- `ENABLE_PUSH_CHART_PROD` (default: false)
 - `ENABLE_CREATE_PR` (default: true)
+- `withApprovals` (default: false) - Required for production deployments
 
-**Umbrella Pipeline Parameters:**
-- `ENABLE_CHECKOUT` (default: true)
-- `ENABLE_INSTALL_TOOLS` (default: true)
-- `ENABLE_GENERATE_CHARTS` (default: true)
-- `ENABLE_UPDATE_DEPENDENCIES` (default: true)
-- `ENABLE_LINT_CHARTS` (default: true)
-- `ENABLE_TEMPLATE_CHARTS` (default: true)
-- `ENABLE_DEPLOY` (default: false)
-- `ENABLE_VERIFY_DEPLOYMENT` (default: false)
+**Pipeline Stages:**
+1. **Checkout Code** - Checkout service repository
+2. **Install Tools** - Install uv (via pip3), yq, and other required tools
+3. **Build Docker Image** - Build image using `dockerTasks` groovy function
+4. **Push Image to QA ECR** - Push image to QA ECR registry
+5. **Generate Helm Chart** - Generate chart using chart-generator from helm-chart-factory
+6. **Validate Helm Chart** - Validate generated chart using `helm lint` and `helm template`
+7. **Push Helm Chart to QA ECR** - Push chart to QA ECR OCI registry
+8. **Push Image to PROD ECR** - Conditional on main branch and `withApprovals`
+9. **Push Helm Chart to PROD ECR** - Conditional on main branch and `withApprovals`
+10. **Create PR to Umbrella Chart** - Create PR with updated configuration.yml
 
 ### Consequences
 
@@ -1024,17 +1044,21 @@ graph TB
 - ✅ Parameters persist across builds (can be configured per job)
 - ✅ Visible in Jenkins "Build with Parameters" UI
 - ✅ Can be set via Jenkins API for automation
+- ✅ Approval gates prevent accidental production deployments
+- ✅ Clear separation between QA and Production stages
 
 **Negative:**
 - ⚠️ Requires Jenkins job to be configured with parameters (first build)
 - ⚠️ Parameters must be set correctly for each use case
 - ⚠️ More parameters to document
 - ⚠️ Parameters need to be defined in Jenkinsfile (can't be changed without code change)
+- ⚠️ Production deployments require manual approval step
 
 **Neutral:**
-- Defaults set for POC (deployment disabled)
+- Defaults set appropriately (production disabled by default)
 - Can override per job or globally
 - Parameters are part of pipeline definition
+- Approval gates add safety but also latency
 
 ### Alternatives Considered
 
@@ -1046,6 +1070,115 @@ graph TB
 
 3. **Configuration File**: Read from config file in repo
    - ⚠️ Considered: Version controlled, but requires file management
+
+4. **Separate Pipelines**: Different pipelines for QA and Production
+   - ⚠️ Considered: Could work, but adds duplication
+
+---
+
+## ADR-011: ECR-Based Container and Helm Chart Registry
+
+**Status:** Accepted  
+**Date:** 2024-11-14  
+**Deciders:** Platform Team, DevOps Team  
+**Tags:** aws, ecr, registry, helm
+
+### Context
+
+We need to store:
+- Docker container images
+- Helm charts
+- Support multiple environments (QA and Production)
+- Secure, scalable, and enterprise-ready solution
+
+Options include: Docker Hub, Harbor, ECR, Artifactory, Nexus.
+
+### Decision
+
+We will use **AWS ECR (Elastic Container Registry)** for both container images and Helm charts:
+1. ECR for container images (standard Docker registry)
+2. ECR OCI registry for Helm charts (Helm 3.8+ supports OCI registries)
+3. Separate ECR registries/repositories for QA and Production environments
+4. AWS IAM for authentication and authorization
+5. Image scanning and lifecycle policies supported
+
+### Architecture
+
+```mermaid
+graph TB
+    subgraph "Jenkins Pipeline"
+        BUILD[Build Image]
+        GEN[Generate Chart]
+    end
+    
+    subgraph "QA ECR"
+        QA_ECR_IMAGES[QA ECR<br/>Container Images<br/>service-name:tag]
+        QA_ECR_CHARTS[QA ECR OCI<br/>Helm Charts<br/>service-name-charts/chart:version]
+    end
+    
+    subgraph "PROD ECR"
+        PROD_ECR_IMAGES[PROD ECR<br/>Container Images<br/>service-name:tag]
+        PROD_ECR_CHARTS[PROD ECR OCI<br/>Helm Charts<br/>service-name-charts/chart:version]
+    end
+    
+    subgraph "Kubernetes Clusters"
+        QA_K8S[QA Kubernetes<br/>Cluster]
+        PROD_K8S[Production Kubernetes<br/>Cluster]
+    end
+    
+    BUILD --> QA_ECR_IMAGES
+    BUILD -->|withApprovals| PROD_ECR_IMAGES
+    
+    GEN --> QA_ECR_CHARTS
+    GEN -->|withApprovals| PROD_ECR_CHARTS
+    
+    QA_ECR_IMAGES --> QA_K8S
+    QA_ECR_CHARTS --> QA_K8S
+    
+    PROD_ECR_IMAGES --> PROD_K8S
+    PROD_ECR_CHARTS --> PROD_K8S
+    
+    style QA_ECR_IMAGES fill:#fff4e1
+    style QA_ECR_CHARTS fill:#fff4e1
+    style PROD_ECR_IMAGES fill:#ffe1f5
+    style PROD_ECR_CHARTS fill:#ffe1f5
+```
+
+### Consequences
+
+**Positive:**
+- ✅ Native AWS integration
+- ✅ IAM-based authentication and authorization
+- ✅ Image scanning and vulnerability detection
+- ✅ Lifecycle policies for automatic cleanup
+- ✅ OCI registry support for Helm charts (Helm 3.8+)
+- ✅ High availability and scalability
+- ✅ Cost-effective (pay per GB stored and transferred)
+- ✅ Supports both container images and Helm charts
+
+**Negative:**
+- ⚠️ AWS-specific (vendor lock-in)
+- ⚠️ Requires AWS credentials and IAM setup
+- ⚠️ ECR OCI support requires Helm 3.8+
+- ⚠️ Network egress costs for pulling images
+
+**Neutral:**
+- Can migrate to other OCI-compatible registries if needed
+- ECR supports both public and private repositories
+
+### Alternatives Considered
+
+1. **Docker Hub**: Use Docker Hub for images
+   - ❌ Rejected: Rate limits, less secure, not suitable for enterprise
+
+2. **Harbor**: Self-hosted registry
+   - ⚠️ Considered: Good alternative, but requires infrastructure management
+
+3. **Artifactory**: JFrog Artifactory
+   - ⚠️ Considered: Feature-rich but expensive, more complex setup
+
+4. **Nexus**: Sonatype Nexus
+   - ⚠️ Considered: Good alternative, but ECR is simpler for AWS-native deployments
 
 ---
 
@@ -1060,8 +1193,9 @@ These ADRs document the key architectural decisions for the Helm Chart Factory s
 5. **Multiple Workload Types** - Flexibility for different services
 6. **Stage Toggles** - Pipeline flexibility using Jenkins parameters
 7. **Umbrella Chart** - Coordinated multi-service deployment with centralized generation
-8. **k3s for Local Development** - Fast, lightweight testing environment
+8. **Kubernetes Cluster for Deployment** - Multi-environment deployment with ECR
 9. **Centralized Chart Generation** - All charts generated in umbrella repository
-10. **Jenkins Pipeline Parameters** - Boolean parameters for stage control
+10. **Jenkins Pipeline Parameters** - Boolean parameters for stage control with approval gates
+11. **ECR-Based Registry** - AWS ECR for container images and Helm charts (OCI)
 
 Each decision balances trade-offs between flexibility, maintainability, and ease of use, with a focus on enabling service teams while maintaining platform standards.
