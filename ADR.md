@@ -480,7 +480,7 @@ graph TB
     end
     
     subgraph "Generated Chart"
-        TEMPLATE[workload.yaml<br/>{{- include "platform.workload" . }}]
+        TEMPLATE["workload.yaml<br/>includes platform.workload helper"]
     end
     
     CFG --> CG
