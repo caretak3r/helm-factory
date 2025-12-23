@@ -1,0 +1,14 @@
+platform:
+  service:
+    name: backend-api
+    port: 3000
+    targetPort: 3000
+  workload:
+    type: Deployment
+  deployment:
+    replicas: 1
+    image:
+      repository: nginx
+      tag: alpine
+  global:
+    namespace: test

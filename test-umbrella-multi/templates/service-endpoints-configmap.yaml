@@ -1,0 +1,72 @@
+{{/*
+Enhanced service endpoints ConfigMap for umbrella charts
+This template dynamically discovers all enabled services and creates endpoints
+*/}}
+{{- define "service-endpoints.umbrella" -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-service-endpoints
+  namespace: {{ .Values.platform.global.namespace | default "default" }}
+  labels:
+    app.kubernetes.io/name: {{ .Release.Name }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+data:
+  enabled-subcharts: {{ " " }}
+    {{- $enabled := list }}
+    {{- range $chartName, $chartValues := .Values }}
+    {{- if and (not (eq $chartName "global")) (not (eq $chartName "nameOverride")) (not (eq $chartName "common")) }}
+    {{- if and (hasKey $chartValues "enabled") $chartValues.enabled }}
+    {{- $enabled = append $enabled $chartName }}
+    {{- end }}
+    {{- end }}
+    {{- end }}
+    {{- $enabled | join "," }}
+
+  {{- if .Values.platform.service }}
+  control-plane-endpoint: {{ .Values.platform.service.name | default .Release.Name }}.{{ .Values.platform.global.namespace | default "default" }}.svc.cluster.local:{{ .Values.platform.service.port | default 80 }}
+  {{- end }}
+
+  service-endpoints: {{ " " }}
+    {{- range $chartName, $chartValues := .Values }}
+    {{- if and (not (eq $chartName "global")) (not (eq $chartName "nameOverride")) (not (eq $chartName "common")) }}
+    {{- if and (hasKey $chartValues "enabled") $chartValues.enabled }}
+    {{- if $chartValues.platform.service }}
+    {{- $subserviceName := $chartValues.platform.service.name }}
+    {{- $subservicePort := $chartValues.platform.service.port | default 80 }}
+    {{- $namespace := $chartValues.platform.global.namespace | default $.Values.platform.global.namespace | default "default" }}
+    {{- $endpoint := printf "%s.%s.svc.cluster.local:%s" $subserviceName $namespace ($subservicePort | toString) }}
+    {{ $chartName }}-endpoint: {{ $endpoint | quote }}
+    {{- end }}
+    {{- end }}
+    {{- end }}
+    {{- end }}
+
+  service-endpoints.yaml: {{ " " }}
+    {{- $endpointsResult := dict }}
+    {{- if .Values.platform.service }}
+    {{- $serviceName := .Values.platform.service.name | default .Release.Name }}
+    {{- $servicePort := .Values.platform.service.port | default 80 }}
+    {{- $namespace := .Values.platform.global.namespace | default "default" }}
+    {{- $serviceEndpoint := printf "%s.%s.svc.cluster.local:%s" $serviceName $namespace ($servicePort | toString) }}
+    {{- $endpointsResult = set $endpointsResult "control-plane" $serviceEndpoint }}
+    {{- end }}
+    
+    {{- range $chartName, $chartValues := .Values }}
+    {{- if and (not (eq $chartName "global")) (not (eq $chartName "nameOverride")) (not (eq $chartName "common")) }}
+    {{- if and (hasKey $chartValues "enabled") $chartValues.enabled }}
+    {{- if $chartValues.platform.service }}
+    {{- $subserviceName := $chartValues.platform.service.name }}
+    {{- $subservicePort := $chartValues.platform.service.port | default 80 }}
+    {{- $namespace := $chartValues.platform.global.namespace | default $.Values.platform.global.namespace | default "default" }}
+    {{- $endpoint := printf "%s.%s.svc.cluster.local:%s" $subserviceName $namespace ($subservicePort | toString) }}
+    {{- $endpointsResult = set $endpointsResult $chartName $endpoint }}
+    {{- end }}
+    {{- end }}
+    {{- end }}
+    {{- end }}
+    {{- $endpointsResult | toYaml | nindent 4 }}
+{{- end }}
+
+{{- include "service-endpoints.umbrella" . }}
