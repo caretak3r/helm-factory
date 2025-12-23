@@ -130,7 +130,7 @@ def generate_chart(
         "appVersion": config.get("appVersion", "1.0.0"),
         "dependencies": [
             {
-                "name": "common-library",
+                "name": "platform",
                 "version": "1.0.0",
                 "repository": library_repo,
             }

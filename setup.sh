@@ -14,19 +14,13 @@ cd chart-generator
 uv pip install -r requirements.txt
 cd ..
 
-echo "📦 Installing umbrella-sync dependencies..."
-cd umbrella-sync
-uv pip install -r requirements.txt
-cd ..
-
 echo "✅ Setup complete!"
 echo ""
 echo "Next steps:"
-echo "  1. Generate a service chart:"
-echo "     cd chart-generator"
-echo "     python main.py --config ../services/frontend/configuration.yml --library ../platform-library --output ../generated-charts/frontend"
+echo "  1. Create a service configuration.yml file"
+echo "  2. Generate a Helm chart:"
+echo "     cd chart-generator && python main.py --config path/to/configuration.yml --library ../platform-library --output path/to/output"
 echo ""
-echo "  2. Sync umbrella chart:"
-echo "     cd umbrella-sync"
-echo "     python main.py --umbrella ../umbrella-chart --services ../services --library ../platform-library"
+echo "Example:"
+echo "  python main.py --config ./service-config.yml --library ../platform-library --output ./my-service-chart"
 

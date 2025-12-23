@@ -1,52 +1,112 @@
-# Helm Chart Factory - Platform Best Practices
+# Helm Library Chart Generator
 
-A proof-of-concept system for automatically generating Helm charts from service configurations using a shared library chart with platform best practices.
+A system for automatically generating Helm charts from service configuration files using a shared platform library chart.
 
-## Overview
+## Quick Start
 
-This system allows service teams to:
-- Submit a simple `configuration.yml` file (like `values.yaml`)
-- Automatically generate a complete Helm chart using platform best practices
-- Have their service automatically included in an umbrella chart
+1. **Install dependencies:**
+   ```bash
+   ./setup.sh
+   ```
 
-The platform team maintains:
-- A library chart (`platform-library`) with best practices templates
-- Automation to sync service configurations to umbrella chart dependencies
+2. **Create a service configuration file** (`service-config.yml`):
+   ```yaml
+   service:
+     name: my-service
+   deployment:
+     image: my-registry/my-service:latest
+     replicas: 2
+   ```
+
+3. **Generate your Helm chart:**
+   ```bash
+   cd chart-generator
+   python main.py --config ../service-config.yml --library ../platform-library --output ../my-service-chart
+   ```
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    Service Teams                             │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
-│  │ Frontend     │  │ Backend      │  │ Database     │     │
-│  │ config.yml   │  │ config.yml   │  │ config.yml   │     │
-│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘     │
-│         │                 │                 │              │
-└─────────┼─────────────────┼─────────────────┼──────────────┘
-          │                 │                 │
-          └─────────────────┼─────────────────┘
-                            │
-          ┌─────────────────▼─────────────────┐
-          │     Chart Generator Tool           │
-          │  (config.yml + library chart)     │
-          └─────────────────┬─────────────────┘
-                            │
-          ┌─────────────────▼─────────────────┐
-          │     Generated Service Charts       │
-          │  (frontend, backend, database)     │
-          └─────────────────┬─────────────────┘
-                            │
-          ┌─────────────────▼─────────────────┐
-          │     Umbrella Chart Sync            │
-          │  (Updates Chart.yaml dependencies) │
-          └─────────────────┬─────────────────┘
-                            │
-          ┌─────────────────▼─────────────────┐
-          │     Umbrella Chart                 │
-          │  (All services as dependencies)    │
-          └────────────────────────────────────┘
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│ Service Config  │───▶│ Chart Generator  │───▶│ Generated Chart │
+│ configuration.yml│    │ (Python Script)  │    │ My Service      │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+                                                        │
+                                                        ▼
+                                              ┌─────────────────┐
+                                              │ Platform Library│
+                                              │ Best Practices   │
+                                              └─────────────────┘
 ```
+
+## Components
+
+### Platform Library (`platform-library/`)
+- **Type**: Library chart
+- **Purpose**: Contains reusable Helm templates with platform best practices
+- **Features**:
+  - Deployments, StatefulSets, DaemonSets
+  - Services, Ingress, Certificates
+  - mTLS configuration
+  - Service Accounts
+  - Horizontal Pod Autoscaling
+  - Pre/Post-install jobs
+
+### Chart Generator (`chart-generator/main.py`)
+- **Purpose**: Converts service configuration into complete Helm charts
+- **Input**: `configuration.yml` file
+- **Output**: Complete Helm chart that uses the platform library
+
+## Configuration Example
+
+```yaml
+# service-config.yml
+service:
+  name: webapp
+  namespace: production
+
+deployment:
+  image: nginx:1.21
+  replicas: 3
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+service:
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: 8080
+
+ingress:
+  enabled: true
+  hosts:
+    - webapp.example.com
+  paths:
+    - path: /
+      pathType: Prefix
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+```
+
+## Usage
+
+Service teams only need to maintain a single `configuration.yml` file with their service specifications. The chart generator will:
+
+1. Validate the configuration
+2. Merge with platform library defaults
+3. Generate a complete Helm chart
+4. Include the platform library as a dependency
+
+The generated chart includes all Kubernetes resources needed for the service following platform best practices.
 
 ## Directory Structure
 
