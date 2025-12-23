@@ -9,8 +9,7 @@
 # Global Configuration
 # =================================================================
 global:
-  # Kubernetes namespace where the service will be deployed
-  namespace: default
+
   
   # Environment identifier (development, staging, production)
   environment: production
@@ -25,6 +24,9 @@ global:
 service:
   # Name of the service (will be auto-generated if not specified)
   name: ""
+
+  # Service version (will be used for Helm chart version and appVersion)
+  version: "0.1.0"
   
   # Service type: ClusterIP, NodePort, LoadBalancer
   type: ClusterIP
@@ -550,25 +552,6 @@ sidecars: []
 #         memory: 64Mi
 
 # =================================================================
-# Service Monitor (for Prometheus monitoring)
-# =================================================================
-serviceMonitor:
-  enabled: false
-  
-  # Service monitor labels for Prometheus selector
-  labels: {}
-  # Example:
-  # labels:
-  #   release: prometheus-operator
-  
-  # Metrics endpoints configuration
-  endpoints:
-    - port: http
-      path: /metrics
-      interval: 30s
-      # honorLabels: true
-
-# =================================================================
 # Pod Annotations and Labels
 # =================================================================
 # Additional labels that will be applied to pods
@@ -587,13 +570,6 @@ annotations: {}
 #   prometheus.io/scrape: "true"
 #   prometheus.io/port: "8080"
 #   prometheus.io/path: "/metrics"
-
-# =================================================================
-# Helm Chart Information
-# =================================================================
-# Chart version and app version (optional, override Chart.yaml)
-version: ""
-appVersion: ""
 
 # =================================================================
 # Example Complete Configuration
