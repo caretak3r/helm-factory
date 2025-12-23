@@ -241,3 +241,112 @@ Post-install script ConfigMap template
 {{- end }}
 {{- end }}
 
+{{/*
+Get service endpoint for this service
+*/}}
+{{- define "platform.service.endpoint" -}}
+{{- $serviceName := include "platform.fullname" . }}
+{{- $servicePort := .Values.service.port | default 80 }}
+{{- $namespace := .Values.global.namespace | default "default" }}
+{{- printf "%s.%s.svc.cluster.local:%d" $serviceName $namespace $servicePort }}
+{{- end }}
+
+{{/*
+Get service endpoint for a specific subchart (for umbrella charts)
+*/}}
+{{- define "global.subchartEndpoint" -}}
+{{- $subchartName := .subchartName -}}
+{{- $rootContext := .rootContext -}}
+{{- if $subchartName -}}
+  {{- $subchartContext := index $rootContext.Values $subchartName -}}
+  {{- if $subchartContext -}}
+    {{- $subserviceName := $subchartName -}}
+    {{- if $subchartContext.service.name -}}
+      {{- $subserviceName = $subchartContext.service.name -}}
+    {{- end -}}
+    {{- $subservicePort := $subchartContext.service.port | default 80 -}}
+    {{- $namespace := $subchartContext.global.namespace | default $rootContext.Values.global.namespace | default "default" -}}
+    {{- printf "%s.%s.svc.cluster.local:%d" $subserviceName $namespace $subservicePort -}}
+  {{- end -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Get all enabled subcharts dynamically
+*/}}
+{{- define "global.enabledSubcharts" -}}
+{{- $enabled := list -}}
+{{- range $chartName, $chartValues := .Values -}}
+  {{- if and (not (eq $chartName "global")) (not (eq $chartName "nameOverride")) (not (eq $chartName "common")) }}
+    {{- if or (hasKey $chartValues "enabled") (not (hasKey $chartValues "enabled")) }}
+      {{- if or $chartValues.enabled (not (hasKey $chartValues "enabled")) }}
+        {{- $enabled = append $enabled $chartName -}}
+      {{- end -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+{{- $enabled | join "," -}}
+{{- end }}
+
+{{/*
+Get all service endpoints dynamically
+*/}}
+{{- define "global.allEndpointsDynamic" -}}
+{{- $endpoints := dict -}}
+{{- range $chartName, $chartValues := .Values -}}
+  {{- if and (not (eq $chartName "global")) (not (eq $chartName "nameOverride")) (not (eq $chartName "common")) }}
+    {{- if or (hasKey $chartValues "enabled") (not (hasKey $chartValues "enabled")) }}
+      {{- if or $chartValues.enabled (not (hasKey $chartValues "enabled")) }}
+        {{- $subserviceName := $chartName -}}
+        {{- if $chartValues.service.name -}}
+          {{- $subserviceName = $chartValues.service.name -}}
+        {{- end -}}
+        {{- $subservicePort := $chartValues.service.port | default 80 -}}
+        {{- if $subservicePort -}}
+          {{- $namespace := $chartValues.global.namespace | default $.Values.global.namespace | default "default" -}}
+          {{- $endpoint := printf "%s.%s.svc.cluster.local:%d" $subserviceName $namespace $subservicePort -}}
+          {{- $endpoints = set $endpoints $subserviceName $endpoint -}}
+        {{- end -}}
+      {{- end -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+{{- $endpoints | toYaml -}}
+{{- end }}
+
+{{/*
+All service endpoints as a dynamic single variable (backward compatibility)
+*/}}
+{{- define "global.allEndpoints" -}}
+{{- include "global.allEndpointsDynamic" . -}}
+{{- end }}
+
+{{/*
+Create ConfigMap with all service endpoints
+*/}}
+{{- define "platform.serviceEndpoints.configmap" -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "platform.fullname" . }}-service-endpoints
+  namespace: {{ .Values.global.namespace | default "default" }}
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+data:
+  # List of enabled subcharts
+  enabled-subcharts: |
+    {{- include "global.enabledSubcharts" . | nindent 4 }}
+
+  # Dynamically generate all enabled service endpoints
+  {{- $allEndpoints := include "global.allEndpointsDynamic" . | fromYaml }}
+  {{- range $service, $endpoint := $allEndpoints }}
+  {{- if $endpoint }}
+  {{ $service }}-endpoint: {{ $endpoint | quote }}
+  {{- end }}
+  {{- end }}
+
+  # All endpoints as structured data
+  service-endpoints.yaml: |
+    {{- include "global.allEndpointsDynamic" . | nindent 4 }}
+{{- end -}}
+
