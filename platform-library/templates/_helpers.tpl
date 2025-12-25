@@ -49,6 +49,294 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/*
+Resolve the full image reference, honoring global overrides
+*/}}
+{{- define "platform.image" -}}
+{{- $repository := trimPrefix "/" (.Values.image.repository | default "") -}}
+{{- $registry := ternary .Values.global.imageRegistry .Values.image.registry (ne .Values.global.imageRegistry "") -}}
+{{- if $registry }}
+  {{- $repository = printf "%s/%s" $registry $repository -}}
+{{- end }}
+{{- if .Values.image.digest }}
+{{ printf "%s@%s" $repository .Values.image.digest }}
+{{- else }}
+{{ printf "%s:%s" $repository (.Values.image.tag | default "latest") }}
+{{- end }}
+{{- end }}
+
+{{/*
+Resolve pull policy with global override support
+*/}}
+{{- define "platform.imagePullPolicy" -}}
+{{- $policy := .Values.image.pullPolicy | default "" -}}
+{{- if .Values.global.imagePullPolicy }}
+  {{- $policy = .Values.global.imagePullPolicy -}}
+{{- end }}
+{{ default "IfNotPresent" $policy }}
+{{- end }}
+
+{{/*
+Render environment variables from map or slice inputs
+*/}}
+{{- define "platform.envVars" -}}
+{{- $env := .Values.envVars -}}
+{{- if kindIs "map" $env }}
+  {{- range $k, $v := $env }}
+- name: {{ $k }}
+  {{- if kindIs "map" $v }}
+  {{- toYaml $v | nindent 2 }}
+  {{- else }}
+  value: {{ $v | quote }}
+  {{- end }}
+  {{- end }}
+{{- else if kindIs "slice" $env }}
+{{ toYaml $env }}
+{{- end }}
+{{- end }}
+
+{{/*
+Return the primary service port definition
+*/}}
+{{- define "platform.primaryServicePort" -}}
+{{- $holder := dict "value" (dict "port" 80 "targetPort" "http" "name" "http" "protocol" "TCP") -}}
+{{- if and .Values.service .Values.service.ports }}
+  {{- $_ := set $holder "value" (index .Values.service.ports 0) -}}
+{{- end }}
+{{ toYaml (index $holder "value") }}
+{{- end }}
+
+{{/*
+Build affinity block honoring HA presets when explicit affinity not provided
+*/}}
+{{- define "platform.buildAffinity" -}}
+{{- if .Values.affinity }}
+{{ toYaml .Values.affinity }}
+{{- else if and .Values.highAvailability .Values.highAvailability.enabled }}
+  {{- $ha := .Values.highAvailability -}}
+  {{- $aff := dict -}}
+  {{- $selector := include "platform.selectorLabels" . | fromYaml -}}
+  {{- $matchLabels := dict -}}
+  {{- range $k, $v := $selector }}
+    {{- $_ := set $matchLabels $k $v -}}
+  {{- end }}
+  {{- /* Pod Anti-Affinity */}}
+  {{- if eq $ha.podAntiAffinityPreset "hard" }}
+    {{- $_ := set $aff "podAntiAffinity" (dict "requiredDuringSchedulingIgnoredDuringExecution" (list (dict "labelSelector" (dict "matchLabels" $matchLabels) "topologyKey" "kubernetes.io/hostname"))) }}
+  {{- else if eq $ha.podAntiAffinityPreset "soft" }}
+    {{- $_ := set $aff "podAntiAffinity" (dict "preferredDuringSchedulingIgnoredDuringExecution" (list (dict "weight" 100 "podAffinityTerm" (dict "labelSelector" (dict "matchLabels" $matchLabels) "topologyKey" "kubernetes.io/hostname")))) }}
+  {{- end }}
+  {{- /* Pod Affinity */}}
+  {{- if eq $ha.podAffinityPreset "hard" }}
+    {{- $_ := set $aff "podAffinity" (dict "requiredDuringSchedulingIgnoredDuringExecution" (list (dict "labelSelector" (dict "matchLabels" $matchLabels) "topologyKey" "kubernetes.io/hostname"))) }}
+  {{- else if eq $ha.podAffinityPreset "soft" }}
+    {{- $_ := set $aff "podAffinity" (dict "preferredDuringSchedulingIgnoredDuringExecution" (list (dict "weight" 100 "podAffinityTerm" (dict "labelSelector" (dict "matchLabels" $matchLabels) "topologyKey" "kubernetes.io/hostname")))) }}
+  {{- end }}
+  {{- /* Node affinity */}}
+  {{- if and $ha.nodeAffinityPreset.type (gt (len ($ha.nodeAffinityPreset.values | default (list))) 0) }}
+    {{- $nodeTerm := dict "matchExpressions" (list (dict "key" ($ha.nodeAffinityPreset.key | default "kubernetes.io/hostname") "operator" "In" "values" $ha.nodeAffinityPreset.values)) }}
+    {{- if eq $ha.nodeAffinityPreset.type "hard" }}
+      {{- $_ := set $aff "nodeAffinity" (dict "requiredDuringSchedulingIgnoredDuringExecution" (dict "nodeSelectorTerms" (list $nodeTerm))) }}
+    {{- else if eq $ha.nodeAffinityPreset.type "soft" }}
+      {{- $_ := set $aff "nodeAffinity" (dict "preferredDuringSchedulingIgnoredDuringExecution" (list (dict "weight" 100 "preference" $nodeTerm))) }}
+    {{- end }}
+  {{- end }}
+  {{- if gt (len $aff) 0 }}
+{{ toYaml $aff }}
+  {{- end }}
+{{- end }}
+{{- end }}
+
+{{/*
+Render the full Pod template spec shared across workloads
+*/}}
+{{- define "platform.podTemplateSpec" -}}
+{{- $ctx := . -}}
+metadata:
+  labels:
+    {{- include "platform.selectorLabels" $ctx | nindent 4 }}
+    {{- range $k, $v := $ctx.Values.commonLabels }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+    {{- range $k, $v := $ctx.Values.podLabels }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+  {{- if or $ctx.Values.commonAnnotations $ctx.Values.podAnnotations }}
+  annotations:
+    {{- range $k, $v := $ctx.Values.commonAnnotations }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+    {{- range $k, $v := $ctx.Values.podAnnotations }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+  {{- end }}
+spec:
+  serviceAccountName: {{ include "platform.serviceAccountName" $ctx }}
+  {{- $pullSecrets := list -}}
+  {{- range $ctx.Values.global.imagePullSecrets }}
+    {{- $pullSecrets = append $pullSecrets . -}}
+  {{- end }}
+  {{- range $ctx.Values.image.pullSecrets }}
+    {{- $pullSecrets = append $pullSecrets . -}}
+  {{- end }}
+  {{- if gt (len $pullSecrets) 0 }}
+  imagePullSecrets:
+    {{- range $name := $pullSecrets }}
+    - name: {{ $name }}
+    {{- end }}
+  {{- end }}
+  {{- if $ctx.Values.podSecurityContext.enabled }}
+  securityContext: {{- omit $ctx.Values.podSecurityContext "enabled" | toYaml | nindent 4 }}
+  {{- end }}
+  {{- if and $ctx.Values.initContainers.enabled $ctx.Values.initContainers.containers }}
+  initContainers: {{- toYaml $ctx.Values.initContainers.containers | nindent 4 }}
+  {{- end }}
+  containers:
+    - name: {{ $ctx.Chart.Name }}
+      {{- if $ctx.Values.containerSecurityContext.enabled }}
+      securityContext: {{- omit $ctx.Values.containerSecurityContext "enabled" | toYaml | nindent 8 }}
+      {{- end }}
+      image: {{ include "platform.image" $ctx }}
+      imagePullPolicy: {{ include "platform.imagePullPolicy" $ctx }}
+      {{- if $ctx.Values.command }}
+      command: {{- toYaml $ctx.Values.command | nindent 8 }}
+      {{- end }}
+      {{- if $ctx.Values.args }}
+      args: {{- toYaml $ctx.Values.args | nindent 8 }}
+      {{- end }}
+      {{- if $ctx.Values.envVars }}
+      env:
+        {{- include "platform.envVars" $ctx | nindent 8 }}
+      {{- end }}
+      {{- if or $ctx.Values.envVarsConfigMap $ctx.Values.envVarsSecret }}
+      envFrom:
+        {{- if $ctx.Values.envVarsConfigMap }}
+        - configMapRef:
+            name: {{ $ctx.Values.envVarsConfigMap }}
+        {{- end }}
+        {{- if $ctx.Values.envVarsSecret }}
+        - secretRef:
+            name: {{ $ctx.Values.envVarsSecret }}
+        {{- end }}
+      {{- end }}
+      {{- if $ctx.Values.ports }}
+      ports: {{- toYaml $ctx.Values.ports | nindent 8 }}
+      {{- end }}
+      {{- if and $ctx.Values.livenessProbe.enabled (omit $ctx.Values.livenessProbe "enabled") }}
+      livenessProbe: {{- toYaml (omit $ctx.Values.livenessProbe "enabled") | nindent 8 }}
+      {{- end }}
+      {{- if and $ctx.Values.readinessProbe.enabled (omit $ctx.Values.readinessProbe "enabled") }}
+      readinessProbe: {{- toYaml (omit $ctx.Values.readinessProbe "enabled") | nindent 8 }}
+      {{- end }}
+      {{- if and $ctx.Values.startupProbe.enabled (omit $ctx.Values.startupProbe "enabled") }}
+      startupProbe: {{- toYaml (omit $ctx.Values.startupProbe "enabled") | nindent 8 }}
+      {{- end }}
+      {{- if $ctx.Values.lifecycleHooks }}
+      lifecycle: {{- toYaml $ctx.Values.lifecycleHooks | nindent 8 }}
+      {{- end }}
+      {{- if or (and $ctx.Values.resources.requests (not (empty $ctx.Values.resources.requests))) (and $ctx.Values.resources.limits (not (empty $ctx.Values.resources.limits))) }}
+      resources: {{- toYaml $ctx.Values.resources | nindent 8 }}
+      {{- end }}
+      {{- $mounts := list -}}
+      {{- if and $ctx.Values.configMap.enabled $ctx.Values.configMap.mounted }}
+        {{- $configMount := dict "name" "config" "mountPath" $ctx.Values.configMap.mountPath -}}
+        {{- if $ctx.Values.configMap.subPath }}
+          {{- $_ := set $configMount "subPath" $ctx.Values.configMap.subPath -}}
+        {{- end }}
+        {{- $mounts = append $mounts $configMount -}}
+      {{- end }}
+      {{- if $ctx.Values.persistence.enabled }}
+        {{- $dataMount := dict "name" "data" "mountPath" $ctx.Values.persistence.mountPath -}}
+        {{- if $ctx.Values.persistence.subPath }}
+          {{- $_ := set $dataMount "subPath" $ctx.Values.persistence.subPath -}}
+        {{- end }}
+        {{- $mounts = append $mounts $dataMount -}}
+      {{- end }}
+      {{- if $ctx.Values.extraVolumeMounts }}
+        {{- range $ctx.Values.extraVolumeMounts }}
+          {{- $mounts = append $mounts . -}}
+        {{- end }}
+      {{- end }}
+      {{- if gt (len $mounts) 0 }}
+      volumeMounts: {{- toYaml $mounts | nindent 8 }}
+      {{- end }}
+    {{- if and $ctx.Values.sidecars.enabled $ctx.Values.sidecars.containers }}
+    {{- toYaml $ctx.Values.sidecars.containers | nindent 4 }}
+    {{- end }}
+  {{- $volumes := list -}}
+  {{- if $ctx.Values.configMap.enabled }}
+    {{- $volumes = append $volumes (dict "name" "config" "configMap" (dict "name" (printf "%s-config" (include "platform.fullname" $ctx)))) -}}
+  {{- end }}
+  {{- if $ctx.Values.persistence.enabled }}
+    {{- $claimName := default (printf "%s-data" (include "platform.fullname" $ctx)) $ctx.Values.persistence.existingClaim -}}
+    {{- $volumes = append $volumes (dict "name" "data" "persistentVolumeClaim" (dict "claimName" $claimName)) -}}
+  {{- end }}
+  {{- if $ctx.Values.extraVolumes }}
+    {{- range $ctx.Values.extraVolumes }}
+      {{- $volumes = append $volumes . -}}
+    {{- end }}
+  {{- end }}
+  {{- if gt (len $volumes) 0 }}
+  volumes: {{- toYaml $volumes | nindent 4 }}
+  {{- end }}
+  {{- $affinity := include "platform.buildAffinity" $ctx | trim }}
+  {{- if $affinity }}
+  affinity:
+{{ $affinity | nindent 4 }}
+  {{- end }}
+  {{- $topologyHolder := dict "value" $ctx.Values.topologySpreadConstraints -}}
+  {{- if and (not (index $topologyHolder "value")) (and $ctx.Values.highAvailability $ctx.Values.highAvailability.enabled) $ctx.Values.highAvailability.topologySpreadConstraints }}
+    {{- $_ := set $topologyHolder "value" $ctx.Values.highAvailability.topologySpreadConstraints -}}
+  {{- end }}
+  {{- if index $topologyHolder "value" }}
+  topologySpreadConstraints: {{- toYaml (index $topologyHolder "value") | nindent 4 }}
+  {{- end }}
+  {{- $nodeSelector := dict -}}
+  {{- range $k, $v := $ctx.Values.nodeSelector }}
+    {{- $_ := set $nodeSelector $k $v -}}
+  {{- end }}
+  {{- if and (eq $ctx.Values.workload.type "DaemonSet") $ctx.Values.daemonSet.nodeSelector }}
+    {{- range $k, $v := $ctx.Values.daemonSet.nodeSelector }}
+      {{- $_ := set $nodeSelector $k $v -}}
+    {{- end }}
+  {{- end }}
+  {{- if gt (len $nodeSelector) 0 }}
+  nodeSelector:
+    {{- range $k, $v := $nodeSelector }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+  {{- end }}
+  {{- $tolerations := list -}}
+  {{- if $ctx.Values.tolerations }}
+    {{- range $ctx.Values.tolerations }}
+      {{- $tolerations = append $tolerations . -}}
+    {{- end }}
+  {{- end }}
+  {{- if and (eq $ctx.Values.workload.type "DaemonSet") $ctx.Values.daemonSet.tolerations }}
+    {{- range $ctx.Values.daemonSet.tolerations }}
+      {{- $tolerations = append $tolerations . -}}
+    {{- end }}
+  {{- end }}
+  {{- if gt (len $tolerations) 0 }}
+  tolerations: {{- toYaml $tolerations | nindent 4 }}
+  {{- end }}
+  {{- if $ctx.Values.priorityClassName }}
+  priorityClassName: {{ $ctx.Values.priorityClassName | quote }}
+  {{- end }}
+  {{- if $ctx.Values.schedulerName }}
+  schedulerName: {{ $ctx.Values.schedulerName | quote }}
+  {{- end }}
+  {{- if $ctx.Values.terminationGracePeriodSeconds }}
+  terminationGracePeriodSeconds: {{ $ctx.Values.terminationGracePeriodSeconds }}
+  {{- end }}
+  {{- if $ctx.Values.podRestartPolicy }}
+  restartPolicy: {{ $ctx.Values.podRestartPolicy }}
+  {{- end }}
+  {{- if $ctx.Values.hostAliases }}
+  hostAliases: {{- toYaml $ctx.Values.hostAliases | nindent 4 }}
+  {{- end }}
+{{- end }}
+
+{{/*
 Create the name of the service account to use
 */}}
 {{- define "platform.serviceAccountName" -}}
@@ -97,13 +385,31 @@ spec:
     name: {{ include "platform.fullname" . }}
   minReplicas: {{ .Values.autoscaling.minReplicas }}
   maxReplicas: {{ .Values.autoscaling.maxReplicas }}
+  {{- if .Values.autoscaling.behavior }}
+  behavior: {{- toYaml .Values.autoscaling.behavior | nindent 4 }}
+  {{- end }}
+  {{- if or .Values.autoscaling.targetCPU .Values.autoscaling.targetMemory .Values.autoscaling.metrics }}
   metrics:
-  - type: Resource
-    resource:
-      name: cpu
-      target:
-        type: Utilization
-        averageUtilization: {{ .Values.autoscaling.targetCPUUtilizationPercentage }}
+  {{- if .Values.autoscaling.targetCPU }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.targetCPU }}
+  {{- end }}
+  {{- if .Values.autoscaling.targetMemory }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.targetMemory }}
+  {{- end }}
+  {{- range .Values.autoscaling.metrics }}
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- end }}
 {{- end }}
 {{- end }}
 
@@ -120,133 +426,14 @@ Workload template selector
 {{- end }}
 {{- end }}
 
-{{/*
-Pre-install job template
-*/}}
-{{- define "platform.job.preinstall" -}}
-{{- if .Values.job.preInstall.enabled }}
-{{- $jobValues := .Values }}
-{{- $_ := set $jobValues.job "type" "preinstall" }}
-{{- $_ := set $jobValues.job "hookAnnotations" (dict "helm.sh/hook" "pre-install,pre-upgrade" "helm.sh/hook-weight" (toString (.Values.job.preInstall.hookWeight | default "-5")) "helm.sh/hook-delete-policy" "before-hook-creation,hook-succeeded") }}
-{{- if .Values.job.preInstall.image }}
-{{- $_ := set $jobValues.job "image" .Values.job.preInstall.image }}
-{{- end }}
-{{- if .Values.job.preInstall.command }}
-{{- $_ := set $jobValues.job "command" .Values.job.preInstall.command }}
-{{- end }}
-{{- if .Values.job.preInstall.args }}
-{{- $_ := set $jobValues.job "args" .Values.job.preInstall.args }}
-{{- end }}
-{{- if .Values.job.preInstall.env }}
-{{- $_ := set $jobValues.job "env" .Values.job.preInstall.env }}
-{{- end }}
-{{- if .Values.job.preInstall.resources }}
-{{- $_ := set $jobValues.job "resources" .Values.job.preInstall.resources }}
-{{- end }}
-{{- if .Values.job.preInstall.backoffLimit }}
-{{- $_ := set $jobValues.job "backoffLimit" .Values.job.preInstall.backoffLimit }}
-{{- end }}
-{{- if .Values.job.preInstall.completions }}
-{{- $_ := set $jobValues.job "completions" .Values.job.preInstall.completions }}
-{{- end }}
-{{- if .Values.job.preInstall.parallelism }}
-{{- $_ := set $jobValues.job "parallelism" .Values.job.preInstall.parallelism }}
-{{- end }}
-{{- if .Values.job.preInstall.restartPolicy }}
-{{- $_ := set $jobValues.job "restartPolicy" .Values.job.preInstall.restartPolicy }}
-{{- end }}
-{{- if .Values.job.preInstall.activeDeadlineSeconds }}
-{{- $_ := set $jobValues.job "activeDeadlineSeconds" .Values.job.preInstall.activeDeadlineSeconds }}
-{{- end }}
-{{- if .Values.job.preInstall.volumeMounts }}
-{{- $_ := set $jobValues.job "volumeMounts" .Values.job.preInstall.volumeMounts }}
-{{- end }}
-{{- if .Values.job.preInstall.volumes }}
-{{- $_ := set $jobValues.job "volumes" .Values.job.preInstall.volumes }}
-{{- end }}
-{{- include "platform.job" $jobValues }}
-{{- end }}
-{{- end }}
-
-{{/*
-Post-install job template
-*/}}
-{{- define "platform.job.postinstall" -}}
-{{- if .Values.job.postInstall.enabled }}
-{{- $jobValues := .Values }}
-{{- $_ := set $jobValues.job "type" "postinstall" }}
-{{- $_ := set $jobValues.job "hookAnnotations" (dict "helm.sh/hook" "post-install,post-upgrade" "helm.sh/hook-weight" (toString (.Values.job.postInstall.hookWeight | default "5")) "helm.sh/hook-delete-policy" "before-hook-creation,hook-succeeded") }}
-{{- if .Values.job.postInstall.image }}
-{{- $_ := set $jobValues.job "image" .Values.job.postInstall.image }}
-{{- end }}
-{{- if .Values.job.postInstall.command }}
-{{- $_ := set $jobValues.job "command" .Values.job.postInstall.command }}
-{{- end }}
-{{- if .Values.job.postInstall.args }}
-{{- $_ := set $jobValues.job "args" .Values.job.postInstall.args }}
-{{- end }}
-{{- if .Values.job.postInstall.script }}
-{{- $_ := set $jobValues.job "script" .Values.job.postInstall.script }}
-{{- end }}
-{{- if .Values.job.postInstall.scriptFile }}
-{{- $_ := set $jobValues.job "scriptFile" .Values.job.postInstall.scriptFile }}
-{{- end }}
-{{- if .Values.job.postInstall.env }}
-{{- $_ := set $jobValues.job "env" .Values.job.postInstall.env }}
-{{- end }}
-{{- if .Values.job.postInstall.resources }}
-{{- $_ := set $jobValues.job "resources" .Values.job.postInstall.resources }}
-{{- end }}
-{{- if .Values.job.postInstall.backoffLimit }}
-{{- $_ := set $jobValues.job "backoffLimit" .Values.job.postInstall.backoffLimit }}
-{{- end }}
-{{- if .Values.job.postInstall.completions }}
-{{- $_ := set $jobValues.job "completions" .Values.job.postInstall.completions }}
-{{- end }}
-{{- if .Values.job.postInstall.parallelism }}
-{{- $_ := set $jobValues.job "parallelism" .Values.job.postInstall.parallelism }}
-{{- end }}
-{{- if .Values.job.postInstall.restartPolicy }}
-{{- $_ := set $jobValues.job "restartPolicy" .Values.job.postInstall.restartPolicy }}
-{{- end }}
-{{- if .Values.job.postInstall.activeDeadlineSeconds }}
-{{- $_ := set $jobValues.job "activeDeadlineSeconds" .Values.job.postInstall.activeDeadlineSeconds }}
-{{- end }}
-{{- if .Values.job.postInstall.volumeMounts }}
-{{- $_ := set $jobValues.job "volumeMounts" .Values.job.postInstall.volumeMounts }}
-{{- end }}
-{{- if .Values.job.postInstall.volumes }}
-{{- $_ := set $jobValues.job "volumes" .Values.job.postInstall.volumes }}
-{{- end }}
-{{- include "platform.job" $jobValues }}
-{{- end }}
-{{- end }}
-
-{{/*
-Post-install script ConfigMap template
-*/}}
-{{- define "platform.configmap.postinstall-script" -}}
-{{- if .Values.job.postInstall.enabled }}
-{{- if or .Values.job.postInstall.script .Values.job.postInstall.scriptFile }}
-{{- $jobValues := .Values }}
-{{- $_ := set $jobValues.job "type" "postinstall" }}
-{{- if .Values.job.postInstall.script }}
-{{- $_ := set $jobValues.job "script" .Values.job.postInstall.script }}
-{{- end }}
-{{- if .Values.job.postInstall.scriptFile }}
-{{- $_ := set $jobValues.job "scriptFile" .Values.job.postInstall.scriptFile }}
-{{- end }}
-{{- include "platform.configmap.script" $jobValues }}
-{{- end }}
-{{- end }}
-{{- end }}
 
 {{/*
 Get service endpoint for this service
 */}}
 {{- define "platform.service.endpoint" -}}
 {{- $serviceName := include "platform.fullname" . }}
-{{- $servicePort := .Values.service.port | default 80 }}
+{{- $primary := (include "platform.primaryServicePort" . | fromYaml) }}
+{{- $servicePort := $primary.port | default 80 }}
 {{- $namespace := .Values.global.namespace | default "default" }}
 {{- printf "%s.%s.svc.cluster.local:%d" $serviceName $namespace $servicePort }}
 {{- end }}
@@ -264,7 +451,13 @@ Get service endpoint for a specific subchart (for umbrella charts)
     {{- if $subchartContext.service.name -}}
       {{- $subserviceName = $subchartContext.service.name -}}
     {{- end -}}
-    {{- $subservicePort := $subchartContext.service.port | default 80 -}}
+    {{- $subservicePort := 80 -}}
+    {{- if and $subchartContext.service $subchartContext.service.ports }}
+      {{- $first := index $subchartContext.service.ports 0 -}}
+      {{- if $first.port }}
+        {{- $subservicePort = $first.port -}}
+      {{- end -}}
+    {{- end -}}
     {{- $namespace := $subchartContext.global.namespace | default $rootContext.Values.global.namespace | default "default" -}}
     {{- printf "%s.%s.svc.cluster.local:%d" $subserviceName $namespace $subservicePort -}}
   {{- end -}}
@@ -301,7 +494,13 @@ Get all service endpoints dynamically
         {{- if $chartValues.service.name -}}
           {{- $subserviceName = $chartValues.service.name -}}
         {{- end -}}
-        {{- $subservicePort := $chartValues.service.port | default 80 -}}
+        {{- $subservicePort := 80 -}}
+        {{- if and $chartValues.service $chartValues.service.ports }}
+          {{- $first := index $chartValues.service.ports 0 -}}
+          {{- if $first.port }}
+            {{- $subservicePort = $first.port -}}
+          {{- end -}}
+        {{- end -}}
         {{- if $subservicePort -}}
           {{- $namespace := $chartValues.global.namespace | default $.Values.global.namespace | default "default" -}}
           {{- $endpoint := printf "%s.%s.svc.cluster.local:%d" $subserviceName $namespace $subservicePort -}}
@@ -349,4 +548,117 @@ data:
   service-endpoints.yaml: |
     {{- include "global.allEndpointsDynamic" . | nindent 4 }}
 {{- end -}}
+
+{{/*
+Render hook jobs (pre/post install)
+*/}}
+{{- define "platform.renderHookJob" -}}
+{{- $ctx := .ctx -}}
+{{- $job := .job -}}
+{{- $type := .type -}}
+{{- $defaults := $ctx.Values.jobs -}}
+{{- $imageCfg := dict "repository" ($defaults.image.repository | default "") "tag" ($defaults.image.tag | default "latest") "pullPolicy" ($defaults.image.pullPolicy | default "IfNotPresent") -}}
+{{- if $job.image }}
+  {{- range $k, $v := $job.image }}
+    {{- $_ := set $imageCfg $k $v -}}
+  {{- end }}
+{{- end }}
+{{- if not $imageCfg.repository }}
+  {{- $_ := set $imageCfg "repository" $ctx.Values.image.repository -}}
+{{- end }}
+{{- if and (eq $imageCfg.tag "latest") $ctx.Values.image.tag }}
+  {{- $_ := set $imageCfg "tag" $ctx.Values.image.tag -}}
+{{- end }}
+{{- $registry := $imageCfg.registry | default "" -}}
+{{- if not $registry }}
+  {{- if $ctx.Values.global.imageRegistry }}
+    {{- $registry = $ctx.Values.global.imageRegistry -}}
+  {{- else if $ctx.Values.image.registry }}
+    {{- $registry = $ctx.Values.image.registry -}}
+  {{- end }}
+{{- end }}
+{{- if and $registry $imageCfg.repository (not (hasPrefix $imageCfg.repository (printf "%s/" $registry))) }}
+  {{- $_ := set $imageCfg "repository" (printf "%s/%s" $registry (trimPrefix "/" $imageCfg.repository)) -}}
+{{- end }}
+{{- $image := printf "%s:%s" $imageCfg.repository $imageCfg.tag -}}
+{{- $pullPolicy := $imageCfg.pullPolicy | default "IfNotPresent" -}}
+{{- $command := coalesce $job.command nil -}}
+{{- $args := coalesce $job.args nil -}}
+{{- $env := coalesce $job.env list -}}
+{{- $volumeMounts := coalesce $job.volumeMounts list -}}
+{{- $volumes := coalesce $job.volumes list -}}
+{{- $resources := coalesce $job.resources $defaults.resources -}}
+{{- $backoffLimit := default $defaults.backoffLimit $job.backoffLimit -}}
+{{- $completions := default $defaults.completions $job.completions -}}
+{{- $parallelism := default $defaults.parallelism $job.parallelism -}}
+{{- $restartPolicy := default $defaults.restartPolicy $job.restartPolicy -}}
+{{- $activeDeadlineSeconds := default $defaults.activeDeadlineSeconds $job.activeDeadlineSeconds -}}
+{{- $useScript := or $job.script $job.scriptFile -}}
+{{- if and $useScript (not $command) }}
+  {{- $command = list "/bin/sh" "/scripts/script.sh" -}}
+{{- end }}
+{{- if and $useScript (not $job.command) }}
+  {{- $args = list -}}
+{{- end }}
+{{- if $useScript }}
+  {{- $volumeMounts = append $volumeMounts (dict "name" "job-script" "mountPath" "/scripts" "readOnly" true) -}}
+  {{- $volumes = append $volumes (dict "name" "job-script" "configMap" (dict "name" (printf "%s-%s-script" (include "platform.fullname" $ctx) $type) "defaultMode" 0555)) -}}
+{{- end }}
+{{- $defaultWeight := ternary -5 5 (eq $type "preinstall") -}}
+{{- $hookWeight := default $defaultWeight $job.hookWeight -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ printf "%s-%s" (include "platform.fullname" $ctx) $type }}
+  namespace: {{ $ctx.Values.global.namespace }}
+  labels:
+    {{- include "platform.labels" $ctx | nindent 4 }}
+    {{- range $k, $v := $ctx.Values.commonLabels }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+  annotations:
+    helm.sh/hook: {{ if eq $type "preinstall" }}pre-install,pre-upgrade{{ else }}post-install,post-upgrade{{ end }}
+    helm.sh/hook-weight: "{{ $hookWeight }}"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: {{ $backoffLimit }}
+  completions: {{ $completions }}
+  parallelism: {{ $parallelism }}
+  activeDeadlineSeconds: {{ $activeDeadlineSeconds }}
+  template:
+    metadata:
+      labels:
+        {{- include "platform.selectorLabels" $ctx | nindent 8 }}
+    spec:
+      restartPolicy: {{ $restartPolicy }}
+      serviceAccountName: {{ include "platform.serviceAccountName" $ctx }}
+      {{- if $ctx.Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range $ctx.Values.global.imagePullSecrets }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      containers:
+        - name: {{ printf "%s-%s" (include "platform.name" $ctx) $type }}
+          image: {{ $image }}
+          imagePullPolicy: {{ $pullPolicy }}
+          {{- if $command }}
+          command: {{- toYaml $command | nindent 12 }}
+          {{- end }}
+          {{- if $args }}
+          args: {{- toYaml $args | nindent 12 }}
+          {{- end }}
+          {{- if $env }}
+          env: {{- toYaml $env | nindent 12 }}
+          {{- end }}
+          {{- if $volumeMounts }}
+          volumeMounts: {{- toYaml $volumeMounts | nindent 12 }}
+          {{- end }}
+          {{- if $resources }}
+          resources: {{- toYaml $resources | nindent 12 }}
+          {{- end }}
+      {{- if $volumes }}
+      volumes: {{- toYaml $volumes | nindent 8 }}
+      {{- end }}
+{{- end }}
 

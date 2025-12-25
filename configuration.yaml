@@ -1,320 +1,131 @@
-# =================================================================
-# Comprehensive Service Configuration Template
-# =================================================================
-# This configuration template provides all available options for 
-# service teams to configure their Helm charts based on the
-# platform-library chart. Copy this file and customize as needed.
+# =============================================================================
+# Service Configuration Template
+# =============================================================================
+# This file is the single source of truth for your service's Helm chart.
+# Configure the sections below to enable/disable features for your application.
+# Most features are disabled by default - enable only what you need.
+# =============================================================================
 
-# =================================================================
+# -----------------------------------------------------------------------------
+# Naming Configuration
+# -----------------------------------------------------------------------------
+# Override auto-generated names if needed
+nameOverride: ""
+fullnameOverride: ""
+
+# -----------------------------------------------------------------------------
 # Global Configuration
-# =================================================================
+# -----------------------------------------------------------------------------
+# Shared settings that apply across all resources and subcharts
 global:
-
-  
-  # Environment identifier (development, staging, production)
+  # Docker registry for all images (can be overridden per-image)
+  imageRegistry: ""
+  # Global image pull policy: Always, IfNotPresent, Never
+  imagePullPolicy: ""
+  # Global image pull secrets (array of secret names)
+  imagePullSecrets: []
+  # Default namespace for resources
+  namespace: default
+  # Environment identifier
   environment: production
-  
-  # Global labels and annotations that will be applied to all resources
-  labels: {}
-  annotations: {}
+  # Global storage class for PVCs
+  storageClass: ""
 
-# =================================================================
-# Service Basic Configuration
-# =================================================================
-service:
-  # Name of the service (will be auto-generated if not specified)
-  name: ""
-
-  # Service version (will be used for Helm chart version and appVersion)
-  version: "0.1.0"
-  
-  # Service type: ClusterIP, NodePort, LoadBalancer
-  type: ClusterIP
-  
-  # Service port configuration
-  port: 80
-  targetPort: 8080
-  
-  # Additional service configuration (optional)
-  # Additional ports can be specified:
-  # additionalPorts:
-  #   - name: metrics
-  #     port: 9090
-  #     targetPort: 9090
-  #   - name: admin
-  #     port: 8081
-  #     targetPort: 8081
-
-# =================================================================
-# Workload Type Configuration
-# =================================================================
-# Choose one of: Deployment, StatefulSet, DaemonSet
+# -----------------------------------------------------------------------------
+# Workload Type Selection
+# -----------------------------------------------------------------------------
+# Choose ONE workload type for your application
+# Options: Deployment (default), StatefulSet, DaemonSet
 workload:
   type: Deployment
 
-# =================================================================
-# Deployment Configuration (for Deployment and StatefulSet)
-# =================================================================
-deployment:
-  # Number of replicas (for Deployment only)
-  replicas: 2
-  
-  # Container image configuration
-  image:
-    repository: ""  # REQUIRED: e.g., myregistry/myapp
-    tag: "latest"   # REQUIRED: e.g., "v1.0.0"
-    pullPolicy: IfPresent  # One of: Always, IfNotPresent, Never
-  
-  # Container resource limits and requests
-  resources:
-    requests:
-      cpu: 100m
-      memory: 128Mi
-    limits:
-      cpu: 500m
-      memory: 512Mi
-  
-  # Health check configuration
-  livenessProbe:
-    enabled: true
-    path: /health
-    port: 8080
-    initialDelaySeconds: 30
-    periodSeconds: 10
-    timeoutSeconds: 5
-    failureThreshold: 3
-    successThreshold: 1
-  
-  readinessProbe:
-    enabled: true
-    path: /ready
-    port: 8080
-    initialDelaySeconds: 10
-    periodSeconds: 5
-    timeoutSeconds: 3
-    failureThreshold: 3
-    successThreshold: 1
-  
-  # Environment variables for the container
-  env: []
-  # Example:
-  # env:
-  #   - name: DATABASE_URL
-  #     value: "postgresql://user:pass@db:5432/mydb"
-  #   - name: LOG_LEVEL
-  #     value: "info"
-  
-  # Environment variables from ConfigMaps or Secrets
-  envFrom: []
-  # Example:
-  # envFrom:
-  #   - configMapRef:
-  #       name: my-config
-  #   - secretRef:
-  #       name: my-secrets
-  
-  # Container ports specification
-  containerPorts:
+# -----------------------------------------------------------------------------
+# Container Image Configuration
+# -----------------------------------------------------------------------------
+image:
+  registry: docker.io
+  repository: ""           # REQUIRED: e.g., myorg/myapp
+  tag: "latest"           # REQUIRED: recommend using immutable tags
+  digest: ""              # Optional: sha256:... overrides tag if set
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+
+# -----------------------------------------------------------------------------
+# Replica Configuration
+# -----------------------------------------------------------------------------
+# Number of pod replicas (ignored when autoscaling is enabled)
+replicaCount: 1
+# Revision history limit for rollbacks
+revisionHistoryLimit: 10
+
+# -----------------------------------------------------------------------------
+# Container Ports
+# -----------------------------------------------------------------------------
+# Ports exposed by the container
+ports:
+  - name: http
+    containerPort: 8080
+    protocol: TCP
+
+# -----------------------------------------------------------------------------
+# Service Configuration
+# -----------------------------------------------------------------------------
+service:
+  enabled: false
+  type: ClusterIP              # ClusterIP, NodePort, LoadBalancer, ExternalName
+  ports:
     - name: http
-      containerPort: 8080
+      port: 80
+      targetPort: http
       protocol: TCP
-  
-  # Volume mounts for the container
-  volumeMounts: []
-  # Example:
-  # volumeMounts:
-  #   - name: data
-  #     mountPath: /app/data
-  #   - name: config
-  #     mountPath: /app/config
-  #     readOnly: true
-  
-  # Security context for containers
-  securityContext:
-    capabilities:
-      drop:
-      - ALL
-    readOnlyRootFilesystem: false
-    runAsNonRoot: true
-    runAsUser: 1000
-    allowPrivilegeEscalation: false
-  
-  # Node selector for pod placement
-  nodeSelector: {}
-  # Example:
-  # nodeSelector:
-  #   kubernetes.io/os: linux
-  #   node-type: application
-  
-  # Tolerations for pod placement
-  tolerations: []
-  # Example:
-  # tolerations:
-  #   - key: "node-role.kubernetes.io/master"
-  #     operator: "Exists"
-  #     effect: "NoSchedule"
-  
-  # Affinity rules for pod placement
-  affinity: {}
-  # Example:
-  # affinity:
-  #   podAntiAffinity:
-  #     preferredDuringSchedulingIgnoredDuringExecution:
-  #       - weight: 100
-  #         podAffinityTerm:
-  #           labelSelector:
-  #             matchExpressions:
-  #               - key: app.kubernetes.io/name
-  #                 operator: In
-  #                 values:
-  #                   - myapp
-  #           topologyKey: kubernetes.io/hostname
-
-# =================================================================
-# StatefulSet Specific Configuration
-# =================================================================
-statefulset:
-  # Volume claim templates for persistent storage
-  volumeClaimTemplates: []
-  # Example:
-  # volumeClaimTemplates:
-  #   - name: data
-  #     storageClassName: fast-ssd
-  #     accessModes:
-  #       - ReadWriteOnce
-  #     storage: 10Gi
-  #   - name: logs
-  #     storageClassName: standard
-  #     accessModes:
-  #       - ReadWriteOnce
-  #     storage: 5Gi
-  
-  # StatefulSet update strategy
-  updateStrategy:
-    type: RollingUpdate
-    rollingUpdate:
-      partition: 0
-  
-  # Pod management policy
-  podManagementPolicy: OrderedReady  # One of: OrderedReady, Parallel
-
-# =================================================================
-# DaemonSet Specific Configuration
-# =================================================================
-daemonset:
-  # DaemonSet update strategy
-  updateStrategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxUnavailable: 1
-  
-  # Node selector (typically more specific for DaemonSets)
-  nodeSelector: {}
-  # Example for node-specific DaemonSets:
-  # nodeSelector:
-  #   kubernetes.io/os: linux
-  #   node-role.kubernetes.io/worker: "true"
-
-# =================================================================
-# Ingress Configuration
-# =================================================================
-ingress:
-  enabled: false
-  
-  # Ingress controller class (nginx, traefik, etc.)
-  className: nginx
-  
-  # Ingress annotations
+  # Session affinity: None, ClientIP
+  sessionAffinity: None
+  sessionAffinityConfig: {}
+  clusterIP: ""
+  loadBalancerIP: ""
+  loadBalancerSourceRanges: []
+  externalTrafficPolicy: Cluster
   annotations: {}
-  # Example:
-  # annotations:
-  #   cert-manager.io/cluster-issuer: factory-self-ca
-  #   nginx.ingress.kubernetes.io/ssl-redirect: "true"
-  #   nginx.ingress.kubernetes.io/rewrite-target: /$2
-  
-  # Host configuration
-  hosts:
-    - host: ""  # REQUIRED if enabled: e.g., myapp.example.com
-      paths:
-        - path: /  # Path prefix for the service
-          pathType: Prefix
-          # Optional backend service configuration
-          # backend:
-          #   service:
-          #     name: myservice
-          #     port:
-          #       number: 80
-        # Additional paths for the same host:
-        # - path: /api
-        #   pathType: Prefix
-        # - path: /admin(/|$)(.*)
-        #   pathType: ImplementationSpecific
-  
-  # TLS configuration
-  tls: []
-  # Example:
-  # tls:
-  #   - secretName: myapp-tls
-  #     hosts:
-  #       - myapp.example.com
-  #       - api.myapp.example.com
-  
-  # Ingress rule priority
-  # priority: 100
 
-# =================================================================
-# Certificate Management (cert-manager)
-# =================================================================
-certificate:
+# -----------------------------------------------------------------------------
+# High Availability Configuration
+# -----------------------------------------------------------------------------
+highAvailability:
   enabled: false
-  
-  # Certificate issuer
-  issuer: factory-self-ca  # Must match a cert-manager ClusterIssuer
-  
-  # Certificate secret name (will be auto-generated if not specified)
-  secretName: ""
-  
-  # Additional certificate configuration
-  # secretTemplate: {}
-  # duration: 2160h  # 90 days
-  # renewBefore: 360h  # 15 days
-  # dnsNames: []
-  # ipAddresses: []
-  # usages:
-  #   - server auth
-  #   - client auth
+  # Pod anti-affinity preset: soft, hard (spreads pods across nodes)
+  podAntiAffinityPreset: soft
+  # Pod affinity preset: soft, hard
+  podAffinityPreset: ""
+  # Node affinity preset
+  nodeAffinityPreset:
+    type: ""              # soft, hard
+    key: ""               # e.g., kubernetes.io/e2e-az-name
+    values: []            # e.g., [e2e-az1, e2e-az2]
+  # Topology spread constraints for zone/node distribution
+  topologySpreadConstraints: []
+  # Example:
+  # topologySpreadConstraints:
+  #   - maxSkew: 1
+  #     topologyKey: topology.kubernetes.io/zone
+  #     whenUnsatisfiable: DoNotSchedule
+  #     labelSelector:
+  #       matchLabels:
+  #         app.kubernetes.io/instance: myapp
 
-# =================================================================
-# TLS/mTLS Configuration
-# =================================================================
-mtls:
-  enabled: false
-  
-  # mTLS policy for service mesh (e.g., Istio, Linkerd)
-  policy: STRICT  # One of: DISABLE, PERMISSIVE, STRICT
-  
-  # Additional mTLS configuration
-  # portLevelMtls:
-  #   8080:
-  #     cipherSuites:
-  #       - TLS_DHE_RSA_WITH_AES_128_GCM_SHA256
-  #       - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
-
-# =================================================================
+# -----------------------------------------------------------------------------
 # Horizontal Pod Autoscaler
-# =================================================================
+# -----------------------------------------------------------------------------
 autoscaling:
   enabled: false
-  
-  # Replica limits
   minReplicas: 2
   maxReplicas: 10
-  
-  # Target metrics for scaling
-  targetCPUUtilizationPercentage: 80
-  # targetMemoryUtilizationPercentage: 75  # Requires metrics server
-  
-  # Advanced scaling configuration
+  targetCPU: 80              # Target CPU utilization percentage
+  targetMemory: ""           # Target memory utilization percentage (optional)
+  # Custom metrics for scaling
+  metrics: []
+  # Scaling behavior configuration
+  behavior: {}
+  # Example:
   # behavior:
   #   scaleDown:
   #     stabilizationWindowSeconds: 300
@@ -323,44 +134,238 @@ autoscaling:
   #         value: 10
   #         periodSeconds: 60
   #   scaleUp:
-  #     stabilizationWindowSeconds: 60
+  #     stabilizationWindowSeconds: 0
   #     policies:
   #       - type: Percent
   #         value: 100
   #         periodSeconds: 15
 
-# =================================================================
-# Service Account Configuration
-# =================================================================
-serviceAccount:
-  create: true
-  
-  # Service account name (will be auto-generated if not specified)
-  name: ""
-  
-  # Annotations for service account (e.g., for IAM roles)
-  annotations: {}
+# -----------------------------------------------------------------------------
+# Update Strategy
+# -----------------------------------------------------------------------------
+updateStrategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 25%
+    maxUnavailable: 25%
+
+# -----------------------------------------------------------------------------
+# Pod Disruption Budget
+# -----------------------------------------------------------------------------
+podDisruptionBudget:
+  enabled: false
+  # Specify ONE of minAvailable or maxUnavailable
+  minAvailable: 1
+  # maxUnavailable: 1
+
+# -----------------------------------------------------------------------------
+# Resource Configuration
+# -----------------------------------------------------------------------------
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# -----------------------------------------------------------------------------
+# Probes Configuration
+# -----------------------------------------------------------------------------
+# Startup Probe - delays other probes until startup succeeds
+startupProbe:
+  enabled: false
+  # httpGet, tcpSocket, exec, or grpc
+  httpGet:
+    path: /healthz
+    port: http
+  initialDelaySeconds: 0
+  periodSeconds: 10
+  timeoutSeconds: 1
+  failureThreshold: 30
+  successThreshold: 1
+
+# Liveness Probe - restarts container if fails
+livenessProbe:
+  enabled: false
+  httpGet:
+    path: /healthz
+    port: http
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+  successThreshold: 1
+
+# Readiness Probe - removes from service if fails
+readinessProbe:
+  enabled: false
+  httpGet:
+    path: /ready
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+  successThreshold: 1
+
+# -----------------------------------------------------------------------------
+# Init Containers
+# -----------------------------------------------------------------------------
+initContainers:
+  enabled: false
+  containers: []
   # Example:
+  # containers:
+  #   - name: init-db
+  #     image: busybox:1.35
+  #     command: ['sh', '-c', 'until nc -z db 5432; do sleep 1; done']
+  #     resources:
+  #       requests:
+  #         cpu: 10m
+  #         memory: 32Mi
+
+# -----------------------------------------------------------------------------
+# Sidecar Containers
+# -----------------------------------------------------------------------------
+sidecars:
+  enabled: false
+  containers: []
+  # Example:
+  # containers:
+  #   - name: log-collector
+  #     image: fluent/fluent-bit:2.0
+  #     volumeMounts:
+  #       - name: varlog
+  #         mountPath: /var/log
+  #     resources:
+  #       requests:
+  #         cpu: 50m
+  #         memory: 64Mi
+
+# -----------------------------------------------------------------------------
+# ConfigMap Configuration
+# -----------------------------------------------------------------------------
+configMap:
+  enabled: false
+  # Mount the ConfigMap as a volume in the container
+  mounted: false
+  mountPath: /app/config
+  subPath: ""
+  # ConfigMap data (key-value pairs)
+  data: {}
+  # Example:
+  # data:
+  #   config.yaml: |
+  #     server:
+  #       port: 8080
+  #   LOG_LEVEL: info
+  annotations: {}
+  labels: {}
+
+# -----------------------------------------------------------------------------
+# Secret Configuration
+# -----------------------------------------------------------------------------
+secret:
+  enabled: false
+  type: Opaque              # Opaque, kubernetes.io/tls, etc.
+  # Base64 encoded data
+  data: {}
+  # Plain text data (will be encoded)
+  stringData: {}
+  annotations: {}
+  labels: {}
+
+# -----------------------------------------------------------------------------
+# Environment Variables
+# -----------------------------------------------------------------------------
+# Direct environment variables
+envVars: {}
+# Example:
+# envVars:
+#   LOG_LEVEL: info
+#   DATABASE_HOST: db.example.com
+#   API_KEY:
+#     valueFrom:
+#       secretKeyRef:
+#         name: api-secrets
+#         key: api-key
+
+# ConfigMap reference for env vars
+envVarsConfigMap: ""
+# Secret reference for env vars
+envVarsSecret: ""
+
+# -----------------------------------------------------------------------------
+# Ingress Configuration
+# -----------------------------------------------------------------------------
+ingress:
+  enabled: false
+  ingressClassName: ""      # nginx, traefik, etc.
+  hostname: app.local
+  path: /
+  pathType: ImplementationSpecific
+  annotations: {}
+  # Example for cert-manager:
   # annotations:
-  #   eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/myapp-role
+  #   cert-manager.io/cluster-issuer: letsencrypt-prod
+  #   nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  tls: false
+  # Use existing TLS secret
+  existingSecret: ""
+  # Generate self-signed certificate
+  selfSigned: false
+  # Additional hosts
+  extraHosts: []
+  # Example:
+  # extraHosts:
+  #   - name: api.example.com
+  #     path: /
+  extraPaths: []
+  extraTls: []
+  extraRules: []
+  # Provide your own certificates
+  secrets: []
 
-# =================================================================
-# Pod Security Context
-# =================================================================
-podSecurityContext:
-  fsGroup: 2000
-  # runAsUser: 1000
-  # runAsGroup: 2000
-  # supplementalGroups:
-  #   - 3000
+# -----------------------------------------------------------------------------
+# Certificate Management (cert-manager)
+# -----------------------------------------------------------------------------
+certificate:
+  enabled: false
+  issuer: ""               # ClusterIssuer name
+  secretName: ""           # Will be auto-generated if not set
+  duration: 2160h          # 90 days
+  renewBefore: 360h        # 15 days
+  dnsNames: []
+  ipAddresses: []
+  usages:
+    - server auth
+    - client auth
 
-# =================================================================
-# Job Configuration (Hooks)
-# =================================================================
-job:
-  # Common job settings (used by both preInstall and postInstall)
+# -----------------------------------------------------------------------------
+# TLS / Self-Signed Certificate Generation
+# -----------------------------------------------------------------------------
+# Generate self-signed TLS certificates
+tlsSelfSigned:
+  enabled: false
+  commonName: ""
+  dnsNames: []
+  validityDays: 365
+
+# -----------------------------------------------------------------------------
+# mTLS Configuration
+# -----------------------------------------------------------------------------
+mtls:
+  enabled: false
+  policy: STRICT
+
+# -----------------------------------------------------------------------------
+# Jobs Configuration (Pre-install / Post-install Helm Hooks)
+# -----------------------------------------------------------------------------
+jobs:
+  # Common settings for all jobs
   image:
-    repository: ""  # Default job image repository
+    repository: ""
     tag: "latest"
     pullPolicy: IfNotPresent
   backoffLimit: 3
@@ -368,9 +373,6 @@ job:
   parallelism: 1
   restartPolicy: Never
   activeDeadlineSeconds: 300
-  command: []
-  args: []
-  env: []
   resources:
     requests:
       cpu: 100m
@@ -378,275 +380,290 @@ job:
     limits:
       cpu: 500m
       memory: 512Mi
-  volumeMounts: []
-  volumes: []
-  
-  # Pre-install job (runs before deployment)
+
+  # Pre-install job (runs before main deployment)
   preInstall:
     enabled: false
-    hookWeight: -5  # Lower weight = runs earlier
-    
-    # Option 1: Inline script (creates ConfigMap automatically)
-    # script: |
-    #   #!/bin/sh
-    #   echo "Running pre-install setup"
-    #   # Add your script commands here
-    #   exit 0
-    
-    # Option 2: Script as array
-    # script:
-    #   - "#!/bin/sh"
-    #   - "echo 'Running pre-install setup'"
-    #   - "exit 0"
-    
-    # Option 3: Script file from repository (relative to chart root)
-    # scriptFile: scripts/pre-install.sh
-    
-    # Option 4: Custom command and args
-    # command:
-    #   - /bin/sh
-    #   - -c
-    # args:
-    #   - echo "Running pre-install job"
-    
-    # Override common job settings if needed
-    # image:
-    #   repository: myregistry/pre-install-job
-    #   tag: "v1.0.0"
-    # env:
-    #   - name: ENV_VAR
-    #     value: "value"
-    # resources:
-    #   requests:
-    #     cpu: 200m
-    #     memory: 256Mi
-  
-  # Post-install job (runs after deployment)
+    hookWeight: -5         # Lower = runs earlier
+    # Inline script
+    script: ""
+    # Or reference a script file
+    scriptFile: ""
+    # Or custom command/args
+    command: []
+    args: []
+    env: []
+    volumeMounts: []
+    volumes: []
+    # Override common job settings
+    # image: {}
+    # resources: {}
+
+  # Post-install job (runs after main deployment)
   postInstall:
     enabled: false
-    hookWeight: 5  # Higher weight = runs later
-    
-    # Same script options as preInstall:
-    # script: |
-    #   #!/bin/sh
-    #   echo "Running post-install verification"
-    #   exit 0
-    
-    # scriptFile: scripts/post-install.sh
-    
-    # command:
-    #   - /bin/sh
-    #   - -c
-    # args:
-    #   - echo "Running post-install job"
-    
-    # Override common job settings if needed
-    # image:
-    #   repository: myregistry/post-install-job
-    #   tag: "v1.0.0"
+    hookWeight: 5          # Higher = runs later
+    script: ""
+    scriptFile: ""
+    command: []
+    args: []
+    env: []
+    volumeMounts: []
+    volumes: []
 
-# =================================================================
-# Volumes and Storage Configuration
-# =================================================================
-# Volumes that can be mounted by pods
-volumes: []
+# -----------------------------------------------------------------------------
+# CronJob Configuration
+# -----------------------------------------------------------------------------
+cronJob:
+  enabled: false
+  schedule: "0 * * * *"    # Every hour
+  concurrencyPolicy: Allow  # Allow, Forbid, Replace
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  startingDeadlineSeconds: 200
+  suspend: false
+  # Job template (inherits from jobs section by default)
+  containers: []
+  initContainers: []
+  volumes: []
+  annotations: {}
+  podAnnotations: {}
+  podLabels: {}
+  nodeSelector: {}
+  tolerations: []
+
+# -----------------------------------------------------------------------------
+# Persistence / Storage
+# -----------------------------------------------------------------------------
+persistence:
+  enabled: false
+  mountPath: /data
+  subPath: ""
+  storageClass: ""
+  accessModes:
+    - ReadWriteOnce
+  size: 8Gi
+  existingClaim: ""
+  selector: {}
+  dataSource: {}
+  annotations: {}
+
+# -----------------------------------------------------------------------------
+# StatefulSet Specific Configuration
+# -----------------------------------------------------------------------------
+statefulSet:
+  # Service name for stable network identities
+  serviceName: ""
+  # Pod management policy: OrderedReady, Parallel
+  podManagementPolicy: OrderedReady
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      partition: 0
+  # Volume claim templates for StatefulSet
+  volumeClaimTemplates: []
+  # Example:
+  # volumeClaimTemplates:
+  #   - name: data
+  #     storageClassName: fast-ssd
+  #     accessModes: [ReadWriteOnce]
+  #     storage: 10Gi
+
+# -----------------------------------------------------------------------------
+# DaemonSet Specific Configuration
+# -----------------------------------------------------------------------------
+daemonSet:
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+  # DaemonSets often need specific node selectors
+  nodeSelector: {}
+  # Example:
+  # nodeSelector:
+  #   kubernetes.io/os: linux
+
+# -----------------------------------------------------------------------------
+# Service Account Configuration
+# -----------------------------------------------------------------------------
+serviceAccount:
+  create: false
+  name: ""
+  automountServiceAccountToken: true
+  annotations: {}
+  # Example for AWS IAM roles:
+  # annotations:
+  #   eks.amazonaws.com/role-arn: arn:aws:iam::123456789:role/myapp
+  labels: {}
+
+# -----------------------------------------------------------------------------
+# Security Context
+# -----------------------------------------------------------------------------
+# Pod-level security context
+podSecurityContext:
+  enabled: false
+  fsGroup: 1001
+  # runAsUser: 1001
+  # runAsGroup: 1001
+  # runAsNonRoot: true
+  # seccompProfile:
+  #   type: RuntimeDefault
+
+# Container-level security context
+containerSecurityContext:
+  enabled: false
+  runAsUser: 1001
+  runAsNonRoot: true
+  readOnlyRootFilesystem: false
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+# -----------------------------------------------------------------------------
+# Pod Scheduling
+# -----------------------------------------------------------------------------
+# Node selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity (overrides HA presets if set)
+affinity: {}
+
+# Priority class name
+priorityClassName: ""
+
+# Scheduler name
+schedulerName: ""
+
+# Termination grace period
+terminationGracePeriodSeconds: 30
+
+# Pod restart policy (for non-controller pods)
+podRestartPolicy: Always
+
+# Host aliases (/etc/hosts entries)
+hostAliases: []
+
+# -----------------------------------------------------------------------------
+# Volumes
+# -----------------------------------------------------------------------------
+extraVolumes: []
 # Example:
-# volumes:
-#   - name: config-volume
+# extraVolumes:
+#   - name: config-vol
 #     configMap:
 #       name: my-config
-#   - name: secret-volume
+#   - name: secret-vol
 #     secret:
-#       secretName: my-secrets
-#   - name: data-volume
-#     persistentVolumeClaim:
-#       claimName: my-pvc
+#       secretName: my-secret
 
-# =================================================================
-# Network Policies
-# =================================================================
+extraVolumeMounts: []
+# Example:
+# extraVolumeMounts:
+#   - name: config-vol
+#     mountPath: /etc/config
+#     readOnly: true
+
+# -----------------------------------------------------------------------------
+# Command and Args Override
+# -----------------------------------------------------------------------------
+command: []
+args: []
+
+# -----------------------------------------------------------------------------
+# Lifecycle Hooks
+# -----------------------------------------------------------------------------
+lifecycleHooks: {}
+# Example:
+# lifecycleHooks:
+#   postStart:
+#     exec:
+#       command: ["/bin/sh", "-c", "echo Hello"]
+#   preStop:
+#     httpGet:
+#       path: /shutdown
+#       port: 8080
+
+# -----------------------------------------------------------------------------
+# Service Monitor (Prometheus Operator)
+# -----------------------------------------------------------------------------
+serviceMonitor:
+  enabled: false
+  namespace: ""
+  port: http
+  path: /metrics
+  interval: ""
+  scrapeTimeout: ""
+  labels: {}
+  annotations: {}
+  jobLabel: ""
+  honorLabels: false
+  relabelings: []
+  metricRelabelings: []
+  selector: {}
+  namespaceSelector: {}
+
+# -----------------------------------------------------------------------------
+# Pod Monitor (Prometheus Operator)
+# -----------------------------------------------------------------------------
+podMonitor:
+  enabled: false
+  namespace: ""
+  port: http
+  path: /metrics
+  interval: 30s
+  scrapeTimeout: 10s
+  labels: {}
+  annotations: {}
+  jobLabel: ""
+  honorLabels: false
+  relabelings: []
+  metricRelabelings: []
+  selector: {}
+  namespaceSelector: {}
+
+# -----------------------------------------------------------------------------
+# Network Policy
+# -----------------------------------------------------------------------------
 networkPolicy:
   enabled: false
-  
-  # Ingress rules (what can connect to this service)
+  policyTypes:
+    - Ingress
+    - Egress
+  podSelector: {}
+  # Ingress rules
   ingress: []
   # Example:
   # ingress:
   #   - from:
   #       - namespaceSelector:
   #           matchLabels:
-  #             name: ingress-controllers
-  #       - podSelector:
-  #           matchLabels:
-  #             app.kubernetes.io/name: frontend
+  #             name: ingress-nginx
   #     ports:
-  #       - protocol: TCP
-  #         port: 8080
-  
-  # Egress rules (what this service can connect to)
+  #       - port: 8080
+  # Egress rules
   egress: []
-  # Example:
-  # egress:
-  #   - to:
-  #       - namespaceSelector:
-  #           matchLabels:
-  #             name: database
-  #     ports:
-  #       - protocol: TCP
-  #         port: 5432
 
-# =================================================================
-# Pod Disruption Budget
-# =================================================================
-podDisruptionBudget:
-  enabled: false
-  
-  # Minimum available pods during disruptions
-  minAvailable: 1
-  
-  # Or maximum unavailable pods
-  # maxUnavailable: 1
-  
-  # PDB selector (defaults to app selector)
-  # selector: {}
+# -----------------------------------------------------------------------------
+# Labels and Annotations
+# -----------------------------------------------------------------------------
+# Labels applied to all resources
+commonLabels: {}
 
-# =================================================================
-# Init Containers
-# =================================================================
-initContainers: []
-# Example:
-# initContainers:
-#   - name: init-db
-#     image: busybox:1.35
-#     command:
-#       - sh
-#       - -c
-#       - |
-#         echo "Waiting for database..."
-#         until nc -z db 5432; do
-#           sleep 1
-#         done
-#         echo "Database is ready!"
-#     resources:
-#       requests:
-#         cpu: 10m
-#         memory: 32Mi
+# Annotations applied to all resources
+commonAnnotations: {}
 
-# =================================================================
-# Sidecar Containers
-# =================================================================
-sidecars: []
-# Example:
-# sidecars:
-#   - name: log-collector
-#     image: fluent/fluent-bit:1.9
-#     volumeMounts:
-#       - name: varlog
-#         mountPath: /var/log
-#       - name: varlibdockercontainers
-#         mountPath: /var/lib/docker/containers
-#         readOnly: true
-#     resources:
-#       requests:
-#         cpu: 50m
-#         memory: 64Mi
-
-# =================================================================
-# Pod Annotations and Labels
-# =================================================================
-# Additional labels that will be applied to pods
+# Labels for the workload (Deployment/StatefulSet/DaemonSet)
 labels: {}
-# Example:
-# labels:
-#   app.kubernetes.io/component: backend
-#   app.kubernetes.io/part-of: platform
-#   team: my-team
 
-# Additional annotations that will be applied to pods
+# Annotations for the workload
 annotations: {}
-# Example:
-# annotations:
-#   deployment.kubernetes.io/revision: "1"
-#   prometheus.io/scrape: "true"
-#   prometheus.io/port: "8080"
-#   prometheus.io/path: "/metrics"
 
-# =================================================================
-# Example Complete Configuration
-# =================================================================
-# Below is an example of a complete configuration for a web service
-# with external access, TLS certificates, and autoscaling:
-#
-# service:
-#   name: myapp
-#   type: ClusterIP
-#   port: 80
-#   targetPort: 8080
-#
-# workload:
-#   type: Deployment
-#
-# deployment:
-#   replicas: 3
-#   image:
-#     repository: myregistry/myapp
-#     tag: "v1.2.0"
-#     pullPolicy: Always
-#   resources:
-#     requests:
-#       cpu: 200m
-#       memory: 256Mi
-#     limits:
-#       cpu: 1000m
-#       memory: 1Gi
-#   livenessProbe:
-#     enabled: true
-#     path: /health
-#     port: 8080
-#   readinessProbe:
-#     enabled: true
-#     path: /ready
-#     port: 8080
-#
-# ingress:
-#   enabled: true
-#   className: nginx
-#   annotations:
-#     cert-manager.io/cluster-issuer: factory-self-ca
-#     nginx.ingress.kubernetes.io/ssl-redirect: "true"
-#   hosts:
-#     - host: myapp.example.com
-#       paths:
-#         - path: /
-#           pathType: Prefix
-#   tls:
-#     - secretName: myapp-tls
-#       hosts:
-#         - myapp.example.com
-#
-# certificate:
-#   enabled: true
-#   issuer: factory-self-ca
-#   secretName: myapp-tls
-#
-# autoscaling:
-#   enabled: true
-#   minReplicas: 2
-#   maxReplicas: 10
-#   targetCPUUtilizationPercentage: 70
-#
-# labels:
-#   app.kubernetes.io/component: web
-#   app.kubernetes.io/part-of: myplatform
-#
-# env:
-#   - name: DATABASE_URL
-#     valueFrom:
-#       secretKeyRef:
-#         name: db-credentials
-#         key: url
-#   - name: LOG_LEVEL
-#     value: "info"
-#
-# version: "1.0.0"
-# appVersion: "1.2.0"
+# Labels for pods only
+podLabels: {}
+
+# Annotations for pods only
+podAnnotations: {}

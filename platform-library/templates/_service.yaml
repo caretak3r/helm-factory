@@ -1,4 +1,5 @@
 {{- define "platform.service" -}}
+{{- if .Values.service.enabled }}
 apiVersion: v1
 kind: Service
 metadata:
@@ -6,14 +7,52 @@ metadata:
   namespace: {{ .Values.global.namespace }}
   labels:
     {{- include "platform.labels" . | nindent 4 }}
+    {{- range $k, $v := .Values.commonLabels }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+  {{- $annotations := dict -}}
+  {{- range $k, $v := .Values.commonAnnotations }}
+    {{- $_ := set $annotations $k $v -}}
+  {{- end }}
+  {{- range $k, $v := .Values.service.annotations }}
+    {{- $_ := set $annotations $k $v -}}
+  {{- end }}
+  {{- if gt (len $annotations) 0 }}
+  annotations:
+    {{- range $k, $v := $annotations }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+  {{- end }}
 spec:
   type: {{ .Values.service.type }}
-  ports:
-    - port: {{ .Values.service.port }}
-      targetPort: http
-      protocol: TCP
-      name: http
+  {{- if .Values.service.sessionAffinity }}
+  sessionAffinity: {{ .Values.service.sessionAffinity }}
+  {{- end }}
+  {{- if .Values.service.sessionAffinityConfig }}
+  sessionAffinityConfig: {{- toYaml .Values.service.sessionAffinityConfig | nindent 4 }}
+  {{- end }}
+  {{- if and (eq .Values.service.type "ClusterIP") .Values.service.clusterIP }}
+  clusterIP: {{ .Values.service.clusterIP }}
+  {{- end }}
+  {{- if and (eq .Values.service.type "LoadBalancer") .Values.service.loadBalancerIP }}
+  loadBalancerIP: {{ .Values.service.loadBalancerIP }}
+  {{- end }}
+  {{- if and (eq .Values.service.type "LoadBalancer") .Values.service.loadBalancerSourceRanges }}
+  loadBalancerSourceRanges: {{- toYaml .Values.service.loadBalancerSourceRanges | nindent 4 }}
+  {{- end }}
+  {{- if or (eq .Values.service.type "LoadBalancer") (eq .Values.service.type "NodePort") }}
+  externalTrafficPolicy: {{ .Values.service.externalTrafficPolicy | default "Cluster" }}
+  {{- end }}
+  {{- $servicePorts := dict "value" .Values.service.ports -}}
+  {{- if not (index $servicePorts "value") }}
+    {{- $_ := set $servicePorts "value" (list (include "platform.primaryServicePort" . | fromYaml)) -}}
+  {{- end }}
+  ports: {{- toYaml (index $servicePorts "value") | nindent 4 }}
   selector:
     {{- include "platform.selectorLabels" . | nindent 4 }}
+    {{- range $k, $v := .Values.commonLabels }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+{{- end }}
 {{- end }}
 

@@ -1,5 +1,7 @@
 {{- define "platform.ingress" -}}
 {{- if .Values.ingress.enabled -}}
+{{- $primaryPort := (include "platform.primaryServicePort" . | fromYaml) }}
+{{- $backendPort := default $primaryPort.name $primaryPort.port }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -7,39 +9,72 @@ metadata:
   namespace: {{ .Values.global.namespace }}
   labels:
     {{- include "platform.labels" . | nindent 4 }}
-  {{- with .Values.ingress.annotations }}
+  {{- $annotations := merge (dict) .Values.commonAnnotations .Values.ingress.annotations }}
+  {{- if $annotations }}
   annotations:
-    {{- toYaml . | nindent 4 }}
-  {{- end }}
-spec:
-  {{- if .Values.ingress.className }}
-  ingressClassName: {{ .Values.ingress.className }}
-  {{- end }}
-  {{- if .Values.ingress.tls }}
-  tls:
-    {{- range .Values.ingress.tls }}
-    - hosts:
-        {{- range .hosts }}
-        - {{ . | quote }}
-        {{- end }}
-      secretName: {{ .secretName }}
+    {{- range $k, $v := $annotations }}
+    {{ $k }}: {{ $v | quote }}
     {{- end }}
   {{- end }}
+spec:
+  {{- if .Values.ingress.ingressClassName }}
+  ingressClassName: {{ .Values.ingress.ingressClassName }}
+  {{- end }}
+  {{- $rules := list -}}
+  {{- if .Values.ingress.hostname }}
+    {{- $paths := list (dict "path" (.Values.ingress.path | default "/") "pathType" (.Values.ingress.pathType | default "ImplementationSpecific") "servicePort" $backendPort) -}}
+    {{- if .Values.ingress.extraPaths }}
+      {{- $paths = concat $paths .Values.ingress.extraPaths -}}
+    {{- end }}
+    {{- $rules = append $rules (dict "host" .Values.ingress.hostname "paths" $paths) -}}
+  {{- end }}
+  {{- if .Values.ingress.extraHosts }}
+    {{- range .Values.ingress.extraHosts }}
+      {{- $paths := list (dict "path" (default "/" .path) "pathType" (default "ImplementationSpecific" .pathType) "servicePort" (default $backendPort .servicePort)) -}}
+      {{- if .paths }}
+        {{- $paths = .paths -}}
+      {{- end }}
+      {{- $rules = append $rules (dict "host" .name "paths" $paths) -}}
+    {{- end }}
+  {{- end }}
+  {{- if .Values.ingress.extraRules }}
+    {{- $rules = concat $rules .Values.ingress.extraRules }}
+  {{- end }}
+  {{- if gt (len $rules) 0 }}
   rules:
-    {{- range .Values.ingress.hosts }}
+    {{- range $rules }}
     - host: {{ .host | quote }}
       http:
         paths:
           {{- range .paths }}
           - path: {{ .path }}
-            pathType: {{ .pathType }}
+            pathType: {{ .pathType | default "ImplementationSpecific" }}
             backend:
               service:
                 name: {{ include "platform.fullname" $ }}
                 port:
-                  number: {{ $.Values.service.port }}
+                  {{- if (kindIs "string" .servicePort) }}
+                  name: {{ .servicePort }}
+                  {{- else }}
+                  number: {{ .servicePort }}
+                  {{- end }}
           {{- end }}
     {{- end }}
+  {{- end }}
+  {{- $tls := list -}}
+  {{- if and .Values.ingress.tls .Values.ingress.hostname }}
+    {{- $secretName := default (printf "%s-tls" .Values.ingress.hostname) .Values.ingress.existingSecret -}}
+    {{- $tls = append $tls (dict "hosts" (list .Values.ingress.hostname) "secretName" $secretName) -}}
+  {{- end }}
+  {{- if .Values.ingress.extraTls }}
+    {{- range .Values.ingress.extraTls }}
+      {{- $tls = append $tls . -}}
+    {{- end }}
+  {{- end }}
+  {{- if $tls }}
+  tls:
+    {{- toYaml $tls | nindent 4 }}
+  {{- end }}
 {{- end }}
 {{- end }}
 

@@ -1,0 +1,78 @@
+{{- if .Values.cronJob.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "platform.fullname" . }}-cron
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+    {{- range $k, $v := .Values.commonLabels }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+  {{- if .Values.cronJob.annotations }}
+  annotations:
+    {{- range $k, $v := .Values.cronJob.annotations }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+  {{- end }}
+spec:
+  schedule: {{ .Values.cronJob.schedule | quote }}
+  concurrencyPolicy: {{ .Values.cronJob.concurrencyPolicy | default "Allow" }}
+  {{- if .Values.cronJob.successfulJobsHistoryLimit }}
+  successfulJobsHistoryLimit: {{ .Values.cronJob.successfulJobsHistoryLimit }}
+  {{- end }}
+  {{- if .Values.cronJob.failedJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.cronJob.failedJobsHistoryLimit }}
+  {{- end }}
+  {{- if .Values.cronJob.startingDeadlineSeconds }}
+  startingDeadlineSeconds: {{ .Values.cronJob.startingDeadlineSeconds }}
+  {{- end }}
+  suspend: {{ .Values.cronJob.suspend | default false }}
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            {{- include "platform.selectorLabels" . | nindent 12 }}
+            {{- range $k, $v := .Values.commonLabels }}
+            {{ $k }}: {{ $v | quote }}
+            {{- end }}
+            {{- range $k, $v := .Values.cronJob.podLabels }}
+            {{ $k }}: {{ $v | quote }}
+            {{- end }}
+          {{- if .Values.cronJob.podAnnotations }}
+          annotations:
+            {{- range $k, $v := .Values.cronJob.podAnnotations }}
+            {{ $k }}: {{ $v | quote }}
+            {{- end }}
+          {{- end }}
+        spec:
+          serviceAccountName: {{ include "platform.serviceAccountName" . }}
+          restartPolicy: OnFailure
+          {{- if .Values.global.imagePullSecrets }}
+          imagePullSecrets:
+            {{- range .Values.global.imagePullSecrets }}
+            - name: {{ . }}
+            {{- end }}
+          {{- end }}
+          {{- if .Values.cronJob.initContainers }}
+          initContainers: {{- toYaml .Values.cronJob.initContainers | nindent 10 }}
+          {{- end }}
+          {{- if .Values.cronJob.containers }}
+          containers: {{- toYaml .Values.cronJob.containers | nindent 10 }}
+          {{- else }}
+          containers:
+            - name: {{ include "platform.name" . }}-cron
+              image: {{ include "platform.image" . }}
+              imagePullPolicy: {{ include "platform.imagePullPolicy" . }}
+          {{- end }}
+          {{- if .Values.cronJob.volumes }}
+          volumes: {{- toYaml .Values.cronJob.volumes | nindent 10 }}
+          {{- end }}
+          {{- if .Values.cronJob.nodeSelector }}
+          nodeSelector: {{- toYaml .Values.cronJob.nodeSelector | nindent 10 }}
+          {{- end }}
+          {{- if .Values.cronJob.tolerations }}
+          tolerations: {{- toYaml .Values.cronJob.tolerations | nindent 10 }}
+          {{- end }}
+{{- end }}
