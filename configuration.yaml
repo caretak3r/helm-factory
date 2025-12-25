@@ -9,8 +9,6 @@
 # Global Configuration
 # =================================================================
 global:
-
-  
   # Environment identifier (development, staging, production)
   environment: production
   

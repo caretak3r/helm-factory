@@ -1,0 +1,2236 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+examples/
+  simple/
+    templates/
+      app.yaml
+    Chart.lock
+    Chart.yaml
+    values.yaml
+templates/
+  _app.yaml
+  _configmap.yaml
+  _cronjob.yaml
+  _deployment.yaml
+  _helpers.tpl
+  _hpa.yaml
+  _ingress.yaml
+  _NOTES.txt
+  _podmonitor.yaml
+  _pvc.yaml
+  _secret.yaml
+  _service.yaml
+  _serviceaccount.yaml
+  _servicemonitor.yaml
+  _tls-secrets.yaml
+  _tls-selfsigned.yaml
+.helmignore
+Chart.lock
+Chart.yaml
+README.md
+values.yaml
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="examples/simple/templates/app.yaml">
+{{ include "helmet.app" . }}
+</file>
+
+<file path="examples/simple/Chart.lock">
+dependencies:
+- name: helmet
+  repository: https://charts.companyinfo.dev
+  version: 0.11.0
+digest: sha256:f27ed66e08c40451ab3214ae3137813e536582a29533daba9ea45966f0a84f0d
+generated: "2024-02-06T20:52:06.33940339+01:00"
+</file>
+
+<file path="examples/simple/Chart.yaml">
+apiVersion: v2
+name: simple
+description: Simple Helm application chart sample
+type: application
+version: "0.1.0"
+appVersion: "0.1.0"
+
+maintainers:
+  - name: Company.info Developers
+    url: https://company.info
+
+dependencies:
+  - name: helmet
+    version: ^0
+    repository: https://charts.companyinfo.dev
+    import-values:
+      - defaults
+</file>
+
+<file path="examples/simple/values.yaml">
+image:
+  repository: nginx
+
+ports:
+  - name: http
+    containerPort: 80
+    protocol: TCP
+
+ingress:
+  enabled: true
+</file>
+
+<file path="templates/_app.yaml">
+{{- define "helmet.app" -}}
+{{- if .Values.configMap.data }}
+{{ include "helmet.configmap" . }}
+{{- end }}
+
+{{- if .Values.image.repository }}
+{{ include "helmet.deployment" . }}
+{{- end }}
+
+{{ include "helmet.persistence" . }}
+
+{{ include "helmet.hpa" . }}
+{{ include "helmet.ingress" . }}
+
+{{- if or .Values.secret.data .Values.secret.stringData }}
+{{ include "helmet.secret" . }}
+{{- end }}
+
+{{ include "helmet.tls.secrets" . }}
+{{ include "helmet.tls.selfsigned" . }}
+
+{{- if and .Values.ports .Values.service.ports }}
+{{ include "helmet.service" . }}
+{{- end }}
+
+{{ include "helmet.serviceaccount" . }}
+{{ include "helmet.servicemonitor" . }}
+{{ include "helmet.cronjob" . }}
+{{ include "helmet.podmonitor" . }}
+{{- end }}
+</file>
+
+<file path="templates/_configmap.yaml">
+{{- define "helmet.configmap" -}}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "common.names.fullname" . }}
+  namespace: {{ include "common.names.namespace" . | quote }}
+  {{- $labels := include "common.tplvalues.merge" (dict "values" (list .Values.configMap.labels .Values.commonLabels) "context" .) | fromYaml }}
+  labels: {{- include "common.labels.standard" ( dict "customLabels" $labels "context" $ ) | nindent 4 }}
+  {{- $annotations := include "common.tplvalues.merge" (dict "values" (list .Values.configMap.annotations .Values.commonAnnotations) "context" .) | fromYaml }}
+  {{- if $annotations }}
+  annotations: {{- include "common.tplvalues.render" ( dict "value" $annotations "context" $ ) | nindent 4 }}
+  {{- end }}
+{{- if .Values.configMap.data }}
+data:
+  {{- range $k, $v := .Values.configMap.data }}
+  {{- $configKey := (include "common.tplvalues.render" (dict "value" $k "context" $)) }}
+  {{- $configValue := (include "common.tplvalues.render" (dict "value" $v "context" $)) }}
+  {{- if or (typeIs "map[string]interface {}" $v) (typeIs "string" $v) }}
+  {{ $configKey }}: |- {{ $configValue | nindent 4 }}
+  {{- else }}
+  {{ $configKey }}: {{ $configValue }}
+  {{- end }}
+  {{- end }}
+{{- end }}
+{{- end -}}
+</file>
+
+<file path="templates/_cronjob.yaml">
+{{- define "helmet.cronjob" -}}
+{{- if .Values.cronjob.enabled -}}
+---
+apiVersion: {{ include "common.capabilities.cronjob.apiVersion" . }}
+kind: CronJob
+metadata:
+  name: {{ include "common.names.fullname" . }}
+  namespace: {{ include "common.names.namespace" . | quote }}
+  labels: {{- include "common.labels.standard" ( dict "customLabels" .Values.commonLabels "context" $ ) | nindent 4 }}
+  {{- if .Values.commonAnnotations }}
+  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
+  {{- end }}
+spec:
+  concurrencyPolicy: {{ .Values.cronjob.concurrencyPolicy | quote }}
+  schedule: {{ .Values.cronjob.schedule | quote }}
+  successfulJobsHistoryLimit: {{ .Values.cronjob.successfulJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels: {{- include "common.labels.standard" ( dict "customLabels" .Values.commonLabels "context" $ ) | nindent 12 }}
+          {{- if .Values.cronjob.podAnnotations }}
+          annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.cronjob.podAnnotations "context" $) | nindent 12 }}
+          {{- end }}
+        spec:
+          {{- include "common.images.pullSecrets" (dict "images" (list .Values.image) "global" .Values.global) | indent 10 }}
+          {{- if and .Values.cronjob.nodeSelector .Values.nodeSelector }}
+          nodeSelector: {{- default (toYaml .Values.nodeSelector) (toYaml .Values.cronjob.nodeSelector) | nindent 12  }}
+          {{- end }}
+          {{- if and .Values.cronjob.tolerations .Values.tolerations }}
+          tolerations: {{- default (toYaml .Values.tolerations) (toYaml .Values.cronjob.tolerations) | nindent 12 }}
+          {{- end }}
+          restartPolicy: OnFailure
+          {{- if .Values.podSecurityContext.enabled }}
+          securityContext: {{- omit .Values.podSecurityContext "enabled" | toYaml | nindent 12 }}
+          {{- end }}
+          {{- if .Values.cronjob.initContainers }}
+          initContainers: {{- include "common.tplvalues.render" (dict "value" .Values.cronjob.initContainers "context" $) | nindent 12 }}
+          {{- end }}
+          {{- if .Values.cronjob.containers }}
+          containers: {{- include "common.tplvalues.render" (dict "value" .Values.cronjob.containers "context" $) | nindent 12 }}
+          {{- end }}
+          {{- if .Values.cronjob.volumes }}
+          volumes:  {{- include "common.tplvalues.render" (dict "value" .Values.cronjob.volumes "context" $) | nindent 12 }}
+          {{- end }}
+{{- end }}
+{{- end }}
+</file>
+
+<file path="templates/_deployment.yaml">
+{{- define "helmet.deployment" -}}
+---
+apiVersion: {{ include "common.capabilities.deployment.apiVersion" . }}
+kind: Deployment
+metadata:
+  name: {{ include "common.names.fullname" . }}
+  namespace: {{ include "common.names.namespace" . | quote }}
+  {{- $labels := include "common.tplvalues.merge" (dict "values" (list .Values.labels .Values.commonLabels) "context" .) | fromYaml }}
+  labels: {{- include "common.labels.standard" ( dict "customLabels" $labels "context" $ ) | nindent 4 }}
+  {{- $annotations := include "common.tplvalues.merge" (dict "values" (list .Values.annotations .Values.commonAnnotations) "context" .) | fromYaml }}
+  {{- if $annotations }}
+  annotations: {{- include "common.tplvalues.render" ( dict "value" $annotations "context" $ ) | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  revisionHistoryLimit: {{ .Values.revisionHistoryLimit }}
+  {{- $podLabels := include "common.tplvalues.merge" (dict "values" (list .Values.podLabels .Values.commonLabels) "context" .) | fromYaml }}
+  selector:
+    matchLabels: {{- include "common.labels.matchLabels" ( dict "customLabels" $podLabels "context" $ ) | nindent 6 }}
+  {{- if .Values.updateStrategy }}
+  strategy: {{- toYaml .Values.updateStrategy | nindent 4 }}
+  {{- end }}
+  template:
+    metadata:
+      annotations:
+      {{- if .Values.podAnnotations }}
+      {{- include "common.tplvalues.render" (dict "value" .Values.podAnnotations "context" $) | nindent 8 }}
+      {{- end }}
+        {{- if .Values.configMap.data }}
+        checksum/configMap: {{ include "helmet.configmap" . | sha256sum }}
+        {{- end }}
+        {{- if or .Values.secret.data .Values.secret.stringData }}
+        checksum/secret: {{ include "helmet.secret" . | sha256sum }}
+        {{- end }}
+      labels: {{- include "common.labels.standard" ( dict "customLabels" $podLabels "context" $ ) | nindent 8 }}
+    spec:
+      {{- if .Values.initContainers }}
+      initContainers: {{- include "common.tplvalues.render" (dict "value" .Values.initContainers "context" $) | nindent 8 }}
+      {{- end }}
+      {{- if .Values.podRestartPolicy }}
+      restartPolicy: {{ .Values.podRestartPolicy }}
+      {{- end }}
+      containers:
+        - name: {{ .Chart.Name }}
+          {{- if .Values.containerSecurityContext.enabled }}
+          securityContext: {{- omit .Values.containerSecurityContext "enabled" | toYaml | nindent 12 }}
+          {{- end }}
+          image: {{ include "common.images.image" (dict "imageRoot" .Values.image "global" .Values.global) }}
+          imagePullPolicy: {{ default (eq .Values.image.tag "latest" | ternary "Always" "IfNotPresent") .Values.image.pullPolicy }}
+          {{- if .Values.command }}
+          command: {{- include "common.tplvalues.render" (dict "value" .Values.command "context" $) | nindent 12 }}
+          {{- end }}
+          {{- if .Values.args }}
+          args: {{- include "common.tplvalues.render" (dict "value" .Values.args "context" $) | nindent 12 }}
+          {{- end }}
+          {{- if .Values.envVars }}
+          env: {{- include "helmet.toEnvArray" (dict "envVars" .Values.envVars "context" $) | indent 12 }}
+          {{- end }}
+          {{- if or .Values.envVarsConfigMap .Values.envVarsSecret }}
+          envFrom:
+            {{- if .Values.envVarsConfigMap }}
+            - configMapRef:
+                name: {{ include "common.tplvalues.render" (dict "value" .Values.envVarsConfigMap "context" $) }}
+            {{- end }}
+            {{- if .Values.envVarsSecret }}
+            - secretRef:
+                name: {{ include "common.tplvalues.render" (dict "value" .Values.envVarsSecret "context" $) }}
+            {{- end }}
+          {{- end }}
+          {{- if .Values.ports }}
+          ports: {{- include "common.tplvalues.render" (dict "value" .Values.ports "context" $) | nindent 12 }}
+          {{- end }}
+          {{- if and .Values.livenessProbe.enabled (omit .Values.livenessProbe "enabled") }}
+          livenessProbe: {{- include "common.tplvalues.render" (dict "value" (omit .Values.livenessProbe "enabled") "context" $) | nindent 12 }}
+          {{- end }}
+          {{- if and .Values.readinessProbe.enabled (omit .Values.readinessProbe "enabled") }}
+          readinessProbe: {{- include "common.tplvalues.render" (dict "value" (omit .Values.readinessProbe "enabled") "context" $) | nindent 12 }}
+          {{- end }}
+          {{- if and .Values.startupProbe.enabled (omit .Values.startupProbe "enabled") }}
+          startupProbe: {{- include "common.tplvalues.render" (dict "value" (omit .Values.startupProbe "enabled") "context" $) | nindent 12 }}
+          {{- end }}
+          {{- if .Values.lifecycleHooks }}
+          lifecycle: {{- include "common.tplvalues.render" (dict "value" .Values.lifecycleHooks "context" $) | nindent 12 }}
+          {{- end }}
+          {{- if .Values.resources }}
+          resources: {{- toYaml .Values.resources | nindent 12 }}
+          {{- end }}
+          {{- if or .Values.configMap.mounted .Values.extraVolumeMounts .Values.persistence.enabled }}
+          volumeMounts:
+            {{- if .Values.configMap.mounted }}
+            - name: {{ include "common.names.fullname" . }}
+              mountPath: {{ .Values.configMap.mountPath }}
+              {{- if .Values.configMap.subPath }}
+              subPath: {{ .Values.configMap.subPath }}
+              {{- end }}
+            {{- end }}
+            {{- if .Values.persistence.enabled }}
+            - name: data
+              mountPath: {{ .Values.persistence.mountPath }}
+              {{- if .Values.persistence.subPath }}
+              subPath: {{ .Values.persistence.subPath }}
+              {{- end }}
+            {{- end }}
+            {{- if .Values.extraVolumeMounts }}
+            {{- include "common.tplvalues.render" (dict "value" .Values.extraVolumeMounts "context" $) | nindent 12 }}
+            {{- end }}
+          {{- end }}
+        {{- if .Values.sidecars }}
+        {{- include "common.tplvalues.render" (dict "value" .Values.sidecars "context" $) | nindent 8 }}
+        {{- end }}
+      {{- if or .Values.configMap.mounted .Values.extraVolumes .Values.persistence.enabled }}
+      volumes:
+        {{- if .Values.configMap.mounted }}
+        - name: {{ include "common.names.fullname" . }}
+          configMap:
+            name: {{ include "common.names.fullname" . }}
+        {{- end }}
+        {{- if .Values.persistence.enabled }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ default (include "common.names.fullname" .) .Values.persistence.existingClaim }}
+        {{- end }}
+        {{- if .Values.extraVolumes }}
+        {{- include "common.tplvalues.render" ( dict "value" .Values.extraVolumes "context" $) | nindent 8 }}
+        {{- end }}
+      {{- end }}
+      {{- include "common.images.renderPullSecrets" (dict "images" (list .Values.image) "context" $) | nindent 6 }}
+      {{- if .Values.hostAliases }}
+      hostAliases: {{- include "common.tplvalues.render" (dict "value" .Values.hostAliases "context" $) | nindent 8 }}
+      {{- end }}
+      {{- if .Values.affinity }}
+      affinity: {{- include "common.tplvalues.render" ( dict "value" .Values.affinity "context" $) | nindent 8 }}
+      {{- else if or .Values.podAffinityPreset .Values.podAntiAffinityPreset .Values.nodeAffinityPreset.type }}
+      affinity:
+        {{- if not (empty .Values.podAffinityPreset) }}
+        podAffinity: {{- include "common.affinities.pods" (dict "type" .Values.podAffinityPreset "customLabels" $podLabels "context" $) | nindent 10 }}
+        {{- end }}
+        {{- if not (empty .Values.podAntiAffinityPreset) }}
+        podAntiAffinity: {{- include "common.affinities.pods" (dict "type" .Values.podAntiAffinityPreset "customLabels" $podLabels "context" $) | nindent 10 }}
+        {{- end }}
+        {{- if not (empty .Values.nodeAffinityPreset.type) }}
+        nodeAffinity: {{- include "common.affinities.nodes" (dict "type" .Values.nodeAffinityPreset.type "key" .Values.nodeAffinityPreset.key "values" .Values.nodeAffinityPreset.values) | nindent 10 }}
+        {{- end }}
+      {{- end }}
+      {{- if .Values.nodeSelector }}
+      nodeSelector: {{- include "common.tplvalues.render" (dict "value" .Values.nodeSelector "context" $) | nindent 8 }}
+      {{- end }}
+      {{- if .Values.tolerations }}
+      tolerations: {{- include "common.tplvalues.render" (dict "value" .Values.tolerations "context" $) | nindent 8 }}
+      {{- end }}
+      {{- if .Values.priorityClassName }}
+      priorityClassName: {{ .Values.priorityClassName | quote }}
+      {{- end }}
+      {{- if .Values.topologySpreadConstraints }}
+      topologySpreadConstraints: {{- include "common.tplvalues.render" (dict "value" .Values.topologySpreadConstraints "context" $) | nindent 8 }}
+      {{- end }}
+      {{- if .Values.schedulerName }}
+      schedulerName: {{ .Values.schedulerName | quote }}
+      {{- end }}
+      {{- if .Values.podSecurityContext.enabled }}
+      securityContext: {{- omit .Values.podSecurityContext "enabled" | toYaml | nindent 8 }}
+      {{- end }}
+      {{- if .Values.terminationGracePeriodSeconds }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      {{- end }}
+      serviceAccountName: {{ include "helmet.serviceAccountName" . }}
+{{- end -}}
+</file>
+
+<file path="templates/_helpers.tpl">
+{{/*
+Create the name of the service account to use
+*/}}
+{{- define "helmet.serviceAccountName" -}}
+{{- if .Values.serviceAccount.create }}
+{{- default (include "common.names.fullname" .) .Values.serviceAccount.name }}
+{{- else }}
+{{- default "default" .Values.serviceAccount.name }}
+{{- end }}
+{{- end }}
+
+
+{{/*
+Render an array of env variables. The input can be a map or a slice.
+Values can be templates using the "common.tplvalues.render" helper, but changes to scope are not processed.
+Usage:
+{{ include "helmet.toEnvArray" ( dict "envVars" .Values.envVars "context" $ ) }}
+*/}}
+{{- define "helmet.toEnvArray" -}}
+{{- if kindIs "map" .envVars }}
+{{- range $key, $val := .envVars }}
+- name: {{ $key | quote }}
+{{- if kindIs "string" $val }}
+  value: {{ (include "common.tplvalues.render" (dict "value" $val "context" $.context)) | quote }}
+{{- else if kindIs "map" $val }}
+{{ include "common.tplvalues.render" (dict "value" (omit $val "name") "context" $.context) | indent 2 }}
+{{- end -}}
+{{- end -}}
+{{- else if kindIs "slice" .envVars }}
+{{ include "common.tplvalues.render" (dict "value" .envVars "context" $.context) }}
+{{- end }}
+{{- end -}}
+</file>
+
+<file path="templates/_hpa.yaml">
+{{- define "helmet.hpa" -}}
+{{- if .Values.autoscaling.enabled }}
+---
+apiVersion: {{ include "common.capabilities.hpa.apiVersion" ( dict "context" $ ) }}
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "common.names.fullname" . }}
+  namespace: {{ include "common.names.namespace" . | quote }}
+  labels: {{- include "common.labels.standard" ( dict "customLabels" .Values.commonLabels "context" $ ) | nindent 4 }}
+  {{- if .Values.commonAnnotations }}
+  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
+  {{- end }}
+spec:
+  scaleTargetRef:
+    apiVersion: {{ include "common.capabilities.deployment.apiVersion" . }}
+    kind: Deployment
+    name: {{ include "common.names.fullname" . }}
+  minReplicas: {{ .Values.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.autoscaling.maxReplicas }}
+  metrics:
+  {{- if .Values.autoscaling.targetCPU }}
+    - type: Resource
+      resource:
+        name: cpu
+      {{- if semverCompare "<1.23-0" (include "common.capabilities.kubeVersion" .) }}
+        targetAverageUtilization: {{ .Values.autoscaling.targetCPU }}
+      {{- else }}
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.targetCPU }}
+      {{- end }}
+  {{- end }}
+  {{- if .Values.autoscaling.targetMemory }}
+    - type: Resource
+      resource:
+        name: memory
+      {{- if semverCompare "<1.23-0" (include "common.capabilities.kubeVersion" .) }}
+        targetAverageUtilization: {{ .Values.autoscaling.targetMemory }}
+      {{- else }}
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.targetMemory }}
+      {{- end }}
+  {{- end }}
+  {{- if .Values.autoscaling.metrics }}
+  {{- include "common.tplvalues.render" (dict "value" .Values.autoscaling.metrics "context" $) | nindent 4 }}
+  {{- end }}
+{{- end }}
+{{- end -}}
+</file>
+
+<file path="templates/_ingress.yaml">
+{{- define "helmet.ingress" -}}
+{{- if .Values.ingress.enabled -}}
+---
+apiVersion: {{ include "common.capabilities.ingress.apiVersion" . }}
+kind: Ingress
+metadata:
+  name: {{ include "common.names.fullname" . }}
+  namespace: {{ include "common.names.namespace" . | quote }}
+  labels: {{- include "common.labels.standard" ( dict "customLabels" .Values.commonLabels "context" $ ) | nindent 4 }}
+  {{- $annotations := include "common.tplvalues.merge" (dict "values" (list .Values.ingress.annotations .Values.commonAnnotations) "context" .) | fromYaml }}
+  {{- if $annotations }}
+  annotations: {{- include "common.tplvalues.render" ( dict "value" $annotations "context" $ ) | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if and .Values.ingress.ingressClassName (eq "true" (include "common.ingress.supportsIngressClassname" .)) }}
+  ingressClassName: {{ include "common.tplvalues.render" (dict "value" .Values.ingress.ingressClassName "context" $) | quote }}
+  {{- end }}
+  rules:
+    {{- if .Values.ingress.hostname }}
+    - host: {{ include "common.tplvalues.render" (dict "value" .Values.ingress.hostname "context" $) }}
+      http:
+        paths:
+          {{- if .Values.ingress.extraPaths }}
+          {{- toYaml .Values.ingress.extraPaths | nindent 10 }}
+          {{- end }}
+          - path: {{ .Values.ingress.path }}
+            {{- if eq "true" (include "common.ingress.supportsPathType" .) }}
+            pathType: {{ .Values.ingress.pathType }}
+            {{- end }}
+            backend: {{- include "common.ingress.backend" (dict "serviceName" (include "common.names.fullname" .) "servicePort" "http" "context" $)  | nindent 14 }}
+    {{- end }}
+    {{- range .Values.ingress.extraHosts }}
+    - host: {{ include "common.tplvalues.render" (dict "value" .name "context" $) | quote }}
+      http:
+        paths:
+          - path: {{ default "/" .path }}
+            {{- if eq "true" (include "common.ingress.supportsPathType" $) }}
+            pathType: {{ default "ImplementationSpecific" .pathType }}
+            {{- end }}
+            backend: {{- include "common.ingress.backend" (dict "serviceName" (include "common.names.fullname" $) "servicePort" "http" "context" $) | nindent 14 }}
+    {{- end }}
+    {{- if .Values.ingress.extraRules }}
+    {{- include "common.tplvalues.render" (dict "value" .Values.ingress.extraRules "context" $) | nindent 4 }}
+    {{- end }}
+  {{- if or (and .Values.ingress.tls (or .Values.ingress.existingSecret (include "common.ingress.certManagerRequest" ( dict "annotations" .Values.ingress.annotations )) .Values.ingress.selfSigned)) .Values.ingress.extraTls }}
+  tls:
+    {{- if and .Values.ingress.tls (or .Values.ingress.existingSecret (include "common.ingress.certManagerRequest" ( dict "annotations" .Values.ingress.annotations )) .Values.ingress.selfSigned) }}
+    - hosts:
+        - {{ include "common.tplvalues.render" (dict "value" .Values.ingress.hostname "context" $) | quote }}
+      {{- if .Values.ingress.existingSecret }}
+      secretName: {{ .Values.ingress.existingSecret }}
+      {{- else }}
+      secretName: {{ include "common.tplvalues.render" (dict "value" (printf "%s-tls" .Values.ingress.hostname) "context" $) }}
+      {{- end }}
+    {{- end }}
+    {{- if .Values.ingress.extraTls }}
+    {{- include "common.tplvalues.render" ( dict "value" .Values.ingress.extraTls "context" $ ) | nindent 4 }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+{{- end -}}
+</file>
+
+<file path="templates/_NOTES.txt">
+{{- define "helmet.notes" -}}
+CHART NAME: {{ .Chart.Name }}
+CHART VERSION: {{ .Chart.Version }}
+APP VERSION: {{ .Chart.AppVersion }}
+
+1. Get the "{{ .Chart.Name }}" URL by running these commands:
+{{- if .Values.ingress.enabled }}
+
+  You should be able to access your new "{{ .Chart.Name }}" installation through:
+  http://{{- .Values.ingress.hostname }}/
+{{- else if eq .Values.service.type "NodePort" }}
+
+  export NODE_PORT=$(kubectl get --namespace {{ include "common.names.namespace" . }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ include "common.names.fullname" . }})
+  export NODE_IP=$(kubectl get nodes --namespace {{ include "common.names.namespace" . }} -o jsonpath="{.items[0].status.addresses[0].address}")
+  echo http://$NODE_IP:$NODE_PORT
+{{- else if eq .Values.service.type "LoadBalancer" }}
+
+  NOTE: It may take a few minutes for the LoadBalancer IP to be available.
+        Watch the status with: 'kubectl get svc --namespace {{ include "common.names.namespace" . }} -w {{ include "common.names.fullname" . }}'
+  export SERVICE_IP=$(kubectl get svc --namespace {{ include "common.names.namespace" . }} {{ include "common.names.fullname" . }} --template "{{ "{{ range (index .status.loadBalancer.ingress 0) }}{{ . }}{{ end }}" }}")
+{{- $port:=(coalesce .Values.service.ports.http .Values.service.port) | toString }}
+  echo "{{ .Chart.Name }} URL: http://$SERVICE_IP{{- if ne $port "80" }}:{{ coalesce .Values.service.ports.http .Values.service.port }}{{ end }}/"
+{{- else if eq .Values.service.type "ClusterIP" }}
+
+  export POD_NAME=$(kubectl get pods --namespace {{ include "common.names.namespace" . }} -l "app.kubernetes.io/name={{ include "common.names.name" . }},app.kubernetes.io/instance={{ .Release.Name }}" -o jsonpath="{.items[0].metadata.name}")
+  export CONTAINER_PORT=$(kubectl get pod --namespace {{ include "common.names.namespace" . }} $POD_NAME -o jsonpath="{.spec.containers[0].ports[0].containerPort}")
+  echo "Visit http://127.0.0.1:8080 to use your application"
+  kubectl --namespace {{ include "common.names.namespace" . }} port-forward $POD_NAME 8080:$CONTAINER_PORT
+{{- end }}
+{{- end }}
+</file>
+
+<file path="templates/_podmonitor.yaml">
+{{- define "helmet.podmonitor" -}}
+{{- if .Values.podMonitor.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: {{ include "common.names.fullname" . }}
+  {{- if .Values.podMonitor.namespace }}
+  namespace: {{ .Values.podMonitor.namespace | quote }}
+  {{- else }}
+  namespace: {{ include "common.names.namespace" . | quote }}
+  {{- end }}
+  {{- $labels := include "common.tplvalues.merge" (dict "values" (list .Values.podMonitor.labels .Values.commonLabels) "context" .) | fromYaml }}
+  labels: {{- include "common.labels.standard" ( dict "customLabels" $labels "context" $ ) | nindent 4 }}
+  {{- $annotations := include "common.tplvalues.merge" (dict "values" (list .Values.podMonitor.annotations .Values.commonAnnotations) "context" .) | fromYaml }}
+  {{- if $annotations }}
+  annotations: {{- include "common.tplvalues.render" ( dict "value" $annotations "context" $ ) | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.podMonitor.jobLabel }}
+  jobLabel: {{ .Values.podMonitor.jobLabel }}
+  {{- end }}
+  podMetricsEndpoints:
+    - port:  {{ .Values.podMonitor.port  | quote }}
+      path: {{ .Values.podMonitor.path | quote }}
+      {{- if .Values.podMonitor.interval }}
+      interval: {{ .Values.podMonitor.interval }}
+      {{- end }}
+      {{- if .Values.podMonitor.scrapeTimeout }}
+      scrapeTimeout: {{ .Values.podMonitor.scrapeTimeout }}
+      {{- end }}
+      {{- if .Values.podMonitor.relabelings }}
+      relabelings: {{- include "common.tplvalues.render" ( dict "value" .Values.podMonitor.relabelings "context" $) | nindent 6 }}
+      {{- end }}
+      {{- if .Values.podMonitor.metricRelabelings }}
+      metricRelabelings: {{- include "common.tplvalues.render" ( dict "value" .Values.podMonitor.metricRelabelings "context" $) | nindent 6 }}
+      {{- end }}
+      {{- if .Values.podMonitor.honorLabels }}
+      honorLabels: {{ .Values.podMonitor.honorLabels }}
+      {{- end }}
+  namespaceSelector:
+  {{- if .Values.podMonitor.namespaceSelector }}
+  {{- include "common.tplvalues.render" (dict "value" .Values.podMonitor.namespaceSelector "context" $) | indent 4 }}
+  {{- else }}
+    matchNames:
+      - {{ include "common.names.namespace" . | quote }}
+  {{- end }}
+  selector:
+    matchLabels: {{ include "common.labels.matchLabels" . | nindent 6 }}
+      {{- if .Values.podMonitor.selector }}
+      {{- include "common.tplvalues.render" (dict "value" .Values.podMonitor.selector "context" $) | nindent 6 }}
+      {{- end }}
+{{- end }}
+{{- end -}}
+</file>
+
+<file path="templates/_pvc.yaml">
+{{- define "helmet.persistence" -}}
+{{- if and .Values.persistence.enabled (not .Values.persistence.existingClaim) -}}
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: {{ include "common.names.fullname" . }}
+  namespace: {{ include "common.names.namespace" . | quote }}
+  labels: {{- include "common.labels.standard" ( dict "customLabels" .Values.commonLabels "context" $ ) | nindent 4 }}
+  {{- if or .Values.persistence.annotations .Values.commonAnnotations }}
+  {{- $annotations := include "common.tplvalues.merge" (dict "values" (list .Values.persistence.annotations .Values.commonAnnotations) "context" .) }}
+  annotations: {{- include "common.tplvalues.render" ( dict "value" $annotations "context" $ ) | nindent 4 }}
+  {{- end }}
+spec:
+  accessModes:
+  {{- range .Values.persistence.accessModes }}
+    - {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.size | quote }}
+  {{- if .Values.persistence.selector }}
+  selector: {{- include "common.tplvalues.render" (dict "value" .Values.persistence.selector "context" $) | nindent 4 }}
+  {{- end }}
+  {{- if .Values.persistence.dataSource }}
+  dataSource: {{- include "common.tplvalues.render" (dict "value" .Values.persistence.dataSource "context" $) | nindent 4 }}
+  {{- end }}
+  {{- include "common.storage.class" (dict "persistence" .Values.persistence "global" .Values.global) | nindent 2 }}
+{{- end -}}
+{{- end -}}
+</file>
+
+<file path="templates/_secret.yaml">
+{{- define "helmet.secret" -}}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "common.names.fullname" . }}
+  namespace: {{ include "common.names.namespace" . | quote }}
+  {{- $labels := include "common.tplvalues.merge" (dict "values" (list .Values.secret.labels .Values.commonLabels) "context" .) | fromYaml }}
+  labels: {{- include "common.labels.standard" ( dict "customLabels" $labels "context" $ ) | nindent 4 }}
+  {{- $annotations := include "common.tplvalues.merge" (dict "values" (list .Values.secret.annotations .Values.commonAnnotations) "context" .) | fromYaml }}
+  {{- if $annotations }}
+  annotations: {{- include "common.tplvalues.render" ( dict "value" $annotations "context" $ ) | nindent 4 }}
+  {{- end }}
+type: {{ .Values.secret.type }}
+{{- if .Values.secret.data }}
+data: {{- include "common.tplvalues.render" (dict "value" .Values.secret.data "context" $) | nindent 2 }}
+{{- end }}
+{{- if .Values.secret.stringData }}
+stringData: {{- include "common.tplvalues.render" (dict "value" .Values.secret.stringData "context" $) | nindent 2 }}
+{{- end }}
+{{- end -}}
+</file>
+
+<file path="templates/_service.yaml">
+{{- define "helmet.service" -}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "common.names.fullname" . }}
+  namespace: {{ include "common.names.namespace" . | quote }}
+  labels: {{- include "common.labels.standard" ( dict "customLabels" .Values.commonLabels "context" $ ) | nindent 4 }}
+  {{- $annotations := include "common.tplvalues.merge" (dict "values" (list .Values.service.annotations .Values.commonAnnotations) "context" .) | fromYaml }}
+  {{- if $annotations }}
+  annotations: {{- include "common.tplvalues.render" ( dict "value" $annotations "context" $ ) | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.service.type }}
+  {{- if .Values.service.sessionAffinity }}
+  sessionAffinity: {{ .Values.service.sessionAffinity }}
+  {{- end }}
+  {{- if .Values.service.sessionAffinityConfig }}
+  sessionAffinityConfig: {{- include "common.tplvalues.render" (dict "value" .Values.service.sessionAffinityConfig "context" $) | nindent 4 }}
+  {{- end }}
+  {{- if and .Values.service.clusterIP (eq .Values.service.type "ClusterIP") }}
+  clusterIP: {{ .Values.service.clusterIP }}
+  {{- end }}
+  {{- if (and (eq .Values.service.type "LoadBalancer") (not (empty .Values.service.loadBalancerIP))) }}
+  loadBalancerIP: {{ .Values.service.loadBalancerIP }}
+  {{- end }}
+  {{- if and (eq .Values.service.type "LoadBalancer") .Values.service.loadBalancerSourceRanges }}
+  loadBalancerSourceRanges: {{- toYaml .Values.service.loadBalancerSourceRanges | nindent 4 }}
+  {{- end }}
+  {{- if or (eq .Values.service.type "LoadBalancer") (eq .Values.service.type "NodePort") }}
+  externalTrafficPolicy: {{ .Values.service.externalTrafficPolicy | quote }}
+  {{- end }}
+  ports: {{- include "common.tplvalues.render" (dict "value" .Values.service.ports "context" $) | nindent 4 }}
+  {{- $podLabels := include "common.tplvalues.merge" (dict "values" (list .Values.podLabels .Values.commonLabels) "context" .) | fromYaml }}
+  selector: {{- include "common.labels.matchLabels" ( dict "customLabels" $podLabels "context" $ ) | nindent 4 }}
+{{- end -}}
+</file>
+
+<file path="templates/_serviceaccount.yaml">
+{{- define "helmet.serviceaccount" -}}
+{{- if .Values.serviceAccount.create }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "helmet.serviceAccountName" . }}
+  namespace: {{ include "common.names.namespace" . | quote }}
+  {{- $labels := include "common.tplvalues.merge" (dict "values" (list .Values.serviceAccount.labels .Values.commonLabels) "context" .) | fromYaml }}
+  labels: {{- include "common.labels.standard" ( dict "customLabels" $labels "context" $ ) | nindent 4 }}
+  {{- $annotations := include "common.tplvalues.merge" (dict "values" (list .Values.serviceAccount.annotations .Values.commonAnnotations) "context" .) | fromYaml }}
+  {{- if $annotations }}
+  annotations: {{- include "common.tplvalues.render" ( dict "value" $annotations "context" $ ) | nindent 4 }}
+  {{- end }}
+automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+{{- end }}
+{{- end -}}
+</file>
+
+<file path="templates/_servicemonitor.yaml">
+{{- define "helmet.servicemonitor" -}}
+{{- if .Values.serviceMonitor.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "common.names.fullname" . }}
+  {{- if .Values.serviceMonitor.namespace }}
+  namespace: {{ .Values.serviceMonitor.namespace | quote }}
+  {{- else }}
+  namespace: {{ include "common.names.namespace" . | quote }}
+  {{- end }}
+  {{- $labels := include "common.tplvalues.merge" (dict "values" (list .Values.serviceMonitor.labels .Values.commonLabels) "context" .) | fromYaml }}
+  labels: {{- include "common.labels.standard" ( dict "customLabels" $labels "context" $ ) | nindent 4 }}
+  {{- $annotations := include "common.tplvalues.merge" (dict "values" (list .Values.serviceMonitor.annotations .Values.commonAnnotations) "context" .) | fromYaml }}
+  {{- if $annotations }}
+  annotations: {{- include "common.tplvalues.render" ( dict "value" $annotations "context" $ ) | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.serviceMonitor.jobLabel }}
+  jobLabel: {{ .Values.serviceMonitor.jobLabel }}
+  {{- end }}
+  endpoints:
+    - port:  {{ .Values.serviceMonitor.port  | quote }}
+      path: {{ .Values.serviceMonitor.path | quote }}
+      {{- if .Values.serviceMonitor.interval }}
+      interval: {{ .Values.serviceMonitor.interval }}
+      {{- end }}
+      {{- if .Values.serviceMonitor.scrapeTimeout }}
+      scrapeTimeout: {{ .Values.serviceMonitor.scrapeTimeout }}
+      {{- end }}
+      {{- if .Values.serviceMonitor.relabelings }}
+      relabelings: {{- include "common.tplvalues.render" ( dict "value" .Values.serviceMonitor.relabelings "context" $) | nindent 6 }}
+      {{- end }}
+      {{- if .Values.serviceMonitor.metricRelabelings }}
+      metricRelabelings: {{- include "common.tplvalues.render" ( dict "value" .Values.serviceMonitor.metricRelabelings "context" $) | nindent 6 }}
+      {{- end }}
+      {{- if .Values.serviceMonitor.honorLabels }}
+      honorLabels: {{ .Values.serviceMonitor.honorLabels }}
+      {{- end }}
+  namespaceSelector:
+  {{- if .Values.serviceMonitor.namespaceSelector }}
+  {{- include "common.tplvalues.render" (dict "value" .Values.serviceMonitor.namespaceSelector "context" $) | indent 4 }}
+  {{- else }}
+    matchNames:
+      - {{ include "common.names.namespace" . | quote }}
+  {{- end }}
+  selector:
+    matchLabels: {{- include "common.labels.matchLabels" ( dict "customLabels" .Values.commonLabels "context" $ ) | nindent 6 }}
+      {{- if .Values.serviceMonitor.selector }}
+      {{- include "common.tplvalues.render" (dict "value" .Values.serviceMonitor.selector "context" $) | nindent 6 }}
+      {{- end }}
+{{- end }}
+{{- end -}}
+</file>
+
+<file path="templates/_tls-secrets.yaml">
+{{- define "helmet.tls.secrets" -}}
+{{- if .Values.ingress.enabled }}
+{{- if .Values.ingress.secrets }}
+{{- range .Values.ingress.secrets }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ .name }}
+  namespace: {{ include "common.names.namespace" $ | quote }}
+  labels: {{- include "common.labels.standard" ( dict "customLabels" $.Values.commonLabels "context" $ ) | nindent 4 }}
+  {{- if $.Values.commonAnnotations }}
+  annotations: {{- include "common.tplvalues.render" ( dict "value" $.Values.commonAnnotations "context" $ ) | nindent 4 }}
+  {{- end }}
+type: kubernetes.io/tls
+data:
+  tls.crt: {{ .certificate | b64enc }}
+  tls.key: {{ .key | b64enc }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+</file>
+
+<file path="templates/_tls-selfsigned.yaml">
+{{- define "helmet.tls.selfsigned" -}}
+{{- if .Values.ingress.enabled }}
+{{- if and .Values.ingress.tls .Values.ingress.selfSigned (not .Values.ingress.secrets) }}
+{{- $ca := genCA "helmet-ca" 365 }}
+{{- $cert := genSignedCert (include "common.tplvalues.render" (dict "value" .Values.ingress.hostname "context" $) | quote) nil (list .Values.ingress.hostname) 365 $ca }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "common.tplvalues.render" (dict "value" (printf "%s-tls" .Values.ingress.hostname) "context" $) }}
+  namespace: {{ include "common.names.namespace" . | quote }}
+  labels: {{- include "common.labels.standard" ( dict "customLabels" $.Values.commonLabels "context" $ ) | nindent 4 }}
+  {{- if .Values.commonAnnotations }}
+  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
+  {{- end }}
+type: kubernetes.io/tls
+data:
+  tls.crt: {{ $cert.Cert | b64enc | quote }}
+  tls.key: {{ $cert.Key | b64enc | quote }}
+  ca.crt: {{ $ca.Cert | b64enc | quote }}
+{{- end }}
+{{- end }}
+{{- end }}
+</file>
+
+<file path=".helmignore">
+examples
+</file>
+
+<file path="Chart.lock">
+dependencies:
+- name: common
+  repository: oci://registry-1.docker.io/bitnamicharts
+  version: 2.29.1
+digest: sha256:7bf3bb546e534cd64cc861f46fcfe30e11055c6083df54a64539744ecbab018a
+generated: "2025-01-24T10:40:17.531952014+01:00"
+</file>
+
+<file path="Chart.yaml">
+apiVersion: v2
+name: helmet
+description: Helmet is a library Helm Chart for grouping common logics. This chart is not deployable by itself.
+home: https://github.com/companyinfo/helm-charts/blob/main/charts/helmet
+type: library
+version: "0.14.0"
+appVersion: "0.14.0"
+keywords:
+  - common
+  - helper
+  - template
+  - function
+maintainers:
+  - name: Company.info Developers
+    url: https://company.info
+dependencies:
+  - name: common
+    version: "2.29.1"
+    repository: "oci://registry-1.docker.io/bitnamicharts"
+</file>
+
+<file path="README.md">
+# Helmet
+
+The Helmet is a [Helm Library Chart](https://helm.sh/docs/topics/library_charts/) that defines many chart templates like Deployment, Service, Ingress, etc which can used in other application charts.
+
+## Background
+
+In Helm 3, their team introduced the concept of a
+[Library chart](https://helm.sh/docs/topics/library_charts/).
+
+> A library chart is a type of Helm chart that defines chart primitives or
+definitions which can be shared by Helm templates in other charts. This
+allows users to share snippets of code that can be re-used across charts,
+avoiding repetition and keeping charts DRY.
+
+The Helmet library was created because we saw many charts requiring only a
+few select configuration options in their Helm charts.
+
+In order to stay somewhat DRY (Don't Repeat Yourself) and keeping with Helm 3
+usage for a Library chart, we saw this pattern and decided it was worth it for
+us to create a library. This means each one of application charts has a
+dependency on what we call the `Helmet` library.
+
+## Prerequisites
+
+- Kubernetes 1.23+
+- Helm 3.9.0+
+
+## Getting started
+1. Add the Helmet as a dependency to your chart.
+```yaml
+# file: Chart.yaml
+
+dependencies:
+  - name: helmet
+    version: 0.12.0
+    repository: https://charts.companyinfo.dev
+    import-values: # <== It is mandatory if you want to import the Helmet default values.
+      - defaults
+```
+
+2. Update the Helm dependencies:
+```shell
+$ helm dependency update
+```
+
+3. Include the app template:
+```yaml
+# file: templates/app.yaml
+
+{{ include "helmet.app" . }}
+```
+
+4. Configure your chart
+```yaml
+# file: values.yaml
+
+image:
+  repository: nginx
+
+ports:
+  - name: http
+    containerPort: 80
+    protocol: TCP
+
+ingress:
+  enabled: true
+```
+
+5. Install the chart:
+```shell
+$ helm install nginx .
+```
+
+## Parameters
+
+### Global parameters
+
+| Name                      | Description                                     | Value |
+|---------------------------|-------------------------------------------------|-------|
+| `global.imageRegistry`    | Global Docker image registry                    | `""`  |
+| `global.imagePullSecrets` | Global Docker registry secret names as an array | `[]`  |
+| `global.storageClass`     | Global StorageClass for Persistent Volume(s)    | `""`  |
+
+
+### Common parameters
+
+| Name                | Description                                                                                                | Value             |
+|---------------------|------------------------------------------------------------------------------------------------------------|-------------------|
+| `kubeVersion`       | Force target Kubernetes version (using Helm capabilities if not set)                                       | `""`              |
+| `nameOverride`      | String to partially override common.names.fullname template with a string (will maintain the release name) | `""`              |
+| `fullnameOverride`  | String to fully override common.names.fullname template with a string                                      | `""`              |
+| `namespaceOverride` | String to fully override common.names.namespace template with a string                                     | `""`              |
+| `clusterDomain`     | Kubernetes Cluster Domain name                                                                             | `"cluster.local"` |
+| `commonLabels`      | Labels to be added to all deployed resources                                                               | `{}`              |
+| `commonAnnotations` | Annotations to be added to all deployed resources                                                          | `{}`              |
+
+
+### Image parameters
+
+| Name                | Description                                                                                                  | Value       |
+|---------------------|--------------------------------------------------------------------------------------------------------------|-------------|
+| `image.registry`    | Image registry                                                                                               | `docker.io` |
+| `image.repository`  | Image repository                                                                                             | `""`        |
+| `image.tag`         | Image tag (immutable tags are recommended)                                                                   | `latest`    |
+| `image.digest`      | Image digest in the way sha256:aa.... Please note this parameter, if set, will override the tag              | `""`        |
+| `image.pullPolicy`  | Image pull policy, Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'                 | `Always`    |
+| `image.pullSecrets` | Image pull secrets, specify an array of imagePullSecrets (secrets must be manually created in the namespace) | `[]`        |
+
+
+### Deployment/Statefulset parameters
+
+| Name                                    | Description                                                                                                              | Value                                                            |
+|-----------------------------------------|--------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------|
+| `replicaCount`                          | Number of APP replicas                                                                                                   | `1`                                                              |
+| `revisionHistoryLimit`                  | The number of old history to retain to allow rollback                                                                    | `10`                                                             |
+| `ports`                                 | List of ports to expose from the container                                                                               | `[{"name": "http", "containerPort": "8080", "protocol": "TCP"}]` |
+| `livenessProbe.enabled`                 | Enable livenessProbe on APP container (only main container)                                                              | `false`                                                          |
+| `readinessProbe.enabled`                | Enable readinessProbe on APP container (only main container)                                                             | `false`                                                          |
+| `startupProbe.enabled`                  | Enable startupProbe on APP container (only main container)                                                               | `false`                                                          |
+| `podRestartPolicy`                      | Set restart policy for all containers within the pod                                                                     | `Always`                                                         |
+| `podSecurityContext.enabled`            | Enabled APP pods' Security Context                                                                                       | `false`                                                          |
+| `podSecurityContext.fsGroup`            | Set APP pod's Security Context fsGroup                                                                                   | `0`                                                              |
+| `containerSecurityContext.enabled`      | Enabled APP containers' Security Context (only main container)                                                           | `false`                                                          |
+| `containerSecurityContext.runAsUser`    | Set APP containers' Security Context runAsUser                                                                           | `1001`                                                           |
+| `containerSecurityContext.runAsNonRoot` | Set APP containers' Security Context runAsNonRoot                                                                        | `true`                                                           |
+| `lifecycleHooks`                        | for the APP main container to automate configuration before or after startup                                             | `{}`                                                             |
+| `resources.limits`                      | The resources limits for the APP container (only main container)                                                         | `{}`                                                             |
+| `resources.requests`                    | The resources requests for the APP container (only main container)                                                       | `{}`                                                             |
+| `hostAliases`                           | Add deployment host aliases                                                                                              | `[]`                                                             |
+| `podLabels`                             | Additional pods' labels                                                                                                  | `{}`                                                             |
+| `podAnnotations`                        | Additional pods' annotations                                                                                             | `{}`                                                             |
+| `podAffinityPreset`                     | Pod affinity preset. Ignored if `affinity` is set. Allowed values: `soft` or `hard`                                      | `""`                                                             |
+| `podAntiAffinityPreset`                 | Pod anti-affinity preset. Ignored if `affinity` is set. Allowed values: `soft` or `hard`                                 | `soft`                                                           |
+| `nodeAffinityPreset.type`               | Node affinity preset type. Ignored if `affinity` is set. Allowed values: `soft` or `hard`                                | `""`                                                             |
+| `nodeAffinityPreset.key`                | Node label key to match Ignored if `affinity` is set.                                                                    | `""`                                                             |
+| `nodeAffinityPreset.values`             | Node label values to match. Ignored if `affinity` is set.                                                                | `[]`                                                             |
+| `affinity`                              | Affinity for pod assignment                                                                                              | `{}`                                                             |
+| `nodeSelector`                          | Node labels for pod assignment                                                                                           | `{}`                                                             |
+| `tolerations`                           | Tolerations for pod assignment                                                                                           | `[]`                                                             |
+| `topologySpreadConstraints`             | Topology Spread Constraints for pod assignment spread across your cluster among failure-domains. Evaluated as a template | `{}`                                                             |
+| `priorityClassName`                     | Name of the existing priority class to be used by APP pods, priority class needs to be created beforehand                | `""`                                                             |
+| `schedulerName`                         | Use an alternate scheduler, e.g. "stork"                                                                                 | `""`                                                             |
+| `terminationGracePeriodSeconds`         | Seconds APP pod needs to terminate gracefully                                                                            | `""`                                                             |
+| `updateStrategy.type`                   | APP deployment strategy type                                                                                             | `RollingUpdate`                                                  |
+| `updateStrategy.rollingUpdate`          | APP deployment rolling update configuration parameters                                                                   | `{}`                                                             |
+| `extraVolumes`                          | Optionally specify extra list of additional volumes for the APP pod(s)                                                   | `[]`                                                             |
+| `extraVolumeMounts`                     | Optionally specify extra list of additional volumeMounts for the APP container(s)                                        | `[]`                                                             |
+| `sidecars`                              | Add additional sidecar containers to the APP pod(s)                                                                      | `[]`                                                             |
+| `initContainers`                        | Add additional init containers to the APP pod(s)                                                                         | `[]`                                                             |
+| `command`                               | Override main container's command                                                                                        | `[]`                                                             |
+| `args`                                  | Override main container's args                                                                                           | `[]`                                                             |
+| `envVars`                               | Environment variables to be set on APP container                                                                         | `{} or []`                                                             |
+| `envVarsConfigMap`                      | ConfigMap with environment variables                                                                                     | `""`                                                             |
+| `envVarsSecret`                         | Secret with environment variables                                                                                        | `""`                                                             |
+
+
+### Autoscaling parameters
+
+| Name                       | Description                                                                                        | Value   |
+|----------------------------|----------------------------------------------------------------------------------------------------|---------|
+| `autoscaling.enabled`      | Enable APP deployment autoscaling (Deploy a HorizontalPodAutoscaler object for the APP deployment) | `false` |
+| `autoscaling.minReplicas`  | Minimum number of replicas to scale back                                                           | `3`     |
+| `autoscaling.maxReplicas`  | Maximum number of replicas to scale out                                                            | `5`     |
+| `autoscaling.targetCPU`    | Define the CPU target to trigger the scaling actions (utilization percentage)                      | `80`    |
+| `autoscaling.targetMemory` | Define the memory target to trigger the scaling actions (utilization percentage)                   | `80`    |
+| `autoscaling.metrics`      | Metrics to use when deciding to scale the deployment (evaluated as a template)                     | `[]`    |
+
+
+### ConfigMap parameters
+
+| Name                    | Description                                     | Value         |
+|-------------------------|-------------------------------------------------|---------------|
+| `configMap.mounted`     | Mount the ConfigMap in the main container       | `false`       |
+| `configMap.mountPath`   | ConfigMap mount path                            | `/app/config` |
+| `configMap.subPath`     | ConfigMap sub path                              | `""`          |
+| `configMap.data`        | ConfigMap data                                  | `{}`          |
+| `configMap.annotations` | Additional custom annotations for the ConfigMap | `{}`          |
+| `configMap.labels`      | Additional custom labels for the ConfigMap      | `{}`          |
+
+
+### Secret parameters
+
+| Name                 | Description                                                             | Value    |
+|----------------------|-------------------------------------------------------------------------|----------|
+| `secret.type`        | The type is used to facilitate programmatic handling of the Secret data | `Opaque` |
+| `secret.data`        | Store data in key-value pairs (base64 encoded)                          | `{}`     |
+| `secret.stringData`  | Store data in key-value pairs                                           | `{}`     |
+| `secret.annotations` | Additional custom annotations for the Secret                            | `{}`     |
+| `secret.labels`      | Additional custom labels for the Secret                                 | `{}`     |
+
+
+### Traffic Exposure (Ingress) parameters
+
+| Name                       | Description                                                                                   | Value                    |
+|----------------------------|-----------------------------------------------------------------------------------------------|--------------------------|
+| `ingress.enabled`          | Enable ingress resource for the APP                                                           | `false`                  |
+| `ingress.path`             | Path for the default host                                                                     | `/`                      |
+| `ingress.apiVersion`       | Override API Version (automatically detected if not set)                                      | `""`                     |
+| `ingress.pathType`         | Ingress path type                                                                             | `ImplementationSpecific` |
+| `ingress.hostname`         | Default host for the ingress resource, a host pointing to this will be created                | `app.local`              |
+| `ingress.annotations`      | Additional annotations for the Ingress resource                                               | `{}`                     |
+| `ingress.ingressClassName` | Set the ingerssClassName on the ingress record for k8s 1.18+                                  | `""`                     |
+| `ingress.tls`              | Enable TLS configuration for the hostname defined at ingress.hostname parameter               | `false`                  |
+| `ingress.extraHosts`       | An array with additional hostname(s) to be covered with the ingress record                    | `[]`                     |
+| `ingress.extraPaths`       | Any additional arbitrary paths that may need to be added to the ingress under the main host   | `[]`                     |
+| `ingress.selfSigned`       | Create a TLS secret for this ingress record using self-signed certificates generated by Helm  | `false`                  |
+| `ingress.extraTls`         | TLS configuration for additional hostname(s) to be covered with this ingress record           | `[]`                     |
+| `ingress.secrets`          | If you're providing your own certificates, please use this to add the certificates as secrets | `[]`                     |
+| `ingress.existingSecret`   | It is you own the certificate as secret                                                       | `""`                     |
+| `ingress.extraRules`       | Additional rules to be covered with this ingress record                                       | `[]`                     |
+
+
+### Traffic Exposure (Service) parameters
+
+| Name                               | Description                                                      | Value                                                                     |
+|------------------------------------|------------------------------------------------------------------|---------------------------------------------------------------------------|
+| `service.type`                     | APP service type                                                 | `ClusterIP`                                                               |
+| `service.ports`                    | APP service ports                                                | `[{"name": "http", "protocol": "TCP", "port": 80, "targetPort": "http"}]` |
+| `service.sessionAffinity`          | Control where client requests go, to the same pod or round-robin | `None`                                                                    |
+| `service.clusterIP`                | APP service Cluster IP                                           | `""`                                                                      |
+| `service.loadBalancerIP`           | APP service Load Balancer IP                                     | `""`                                                                      |
+| `service.loadBalancerSourceRanges` | APP service Load Balancer sources                                | `[]`                                                                      |
+| `service.externalTrafficPolicy`    | APP service external traffic policy                              | `Cluster`                                                                 |
+| `service.annotations`              | Additional custom annotations for APP service                    | `{}`                                                                      |
+
+
+### Prometheus Operator ServiceMonitor parameters
+
+| Name                               | Description                                                                                     | Value     |
+|------------------------------------|-------------------------------------------------------------------------------------------------|-----------|
+| `serviceMonitor.enabled`           | Specify if a ServiceMonitor will be deployed for Prometheus Operator                            | `false`   |
+| `serviceMonitor.namespace`         | Namespace in which Prometheus is running                                                        | `""`      |
+| `serviceMonitor.labels`            | Additional ServiceMonitor labels (evaluated as a template)                                      | `{}`      |
+| `serviceMonitor.annotations`       | Additional ServiceMonitor annotations (evaluated as a template)                                 | `{}`      |
+| `serviceMonitor.jobLabel`          | The name of the label on the target service to use as the job name in Prometheus                | `""`      |
+| `serviceMonitor.honorLabels`       | The honorLabels chooses the metric's labels on collisions with target labels                    | `false`   |
+| `serviceMonitor.interval`          | How frequently to scrape metrics                                                                | `""`      |
+| `serviceMonitor.scrapeTimeout`     | Timeout after which the scrape is ended                                                         | `""`      |
+| `serviceMonitor.metricRelabelings` | Specify additional relabeling of metrics                                                        | `[]`      |
+| `serviceMonitor.relabelings`       | Specify general relabeling                                                                      | `[]`      |
+| `serviceMonitor.selector`          | Prometheus instance selector labels                                                             | `{}`      |
+| `serviceMonitor.namespaceSelector` | The namespaceSelector is a selector for selecting either all namespaces or a list of namespaces | `{}`      |
+| `serviceMonitor.port`              | The port used by ServiceMonitor                                                                 | `http`    |
+| `serviceMonitor.path`              | The path used by ServiceMonitor                                                                 | `metrics` |
+
+### Prometheus Operator PodMonitor parameters
+
+| Name                               | Description                                                                                     | Value     |
+|------------------------------------|-------------------------------------------------------------------------------------------------|-----------|
+| `podMonitor.enabled`           | Specify if a PodMonitor will be deployed for Prometheus Operator                                     | `false`   |
+| `podMonitor.namespace`         | Namespace in which Prometheus is running                                                             | `""`      |
+| `podMonitor.labels`            | Additional PodMonitor labels (evaluated as a template)                                               | `{}`      |
+| `podMonitor.annotations`       | Additional PodMonitor annotations (evaluated as a template)                                          | `{}`      |
+| `podMonitor.jobLabel`          | The name of the label on the target service to use as the job name in Prometheus                     | `""`      |
+| `podMonitor.honorLabels`       | The honorLabels chooses the metric's labels on collisions with target labels                         | `false`   |
+| `podMonitor.interval`          | How frequently to scrape metrics                                                                     | `""`      |
+| `podMonitor.scrapeTimeout`     | Timeout after which the scrape is ended                                                              | `""`      |
+| `podMonitor.metricRelabelings` | Specify additional relabeling of metrics                                                             | `[]`      |
+| `podMonitor.relabelings`       | Specify general relabeling                                                                           | `[]`      |
+| `podMonitor.selector`          | Prometheus instance selector labels                                                                  | `{}`      |
+| `podMonitor.namespaceSelector` | The namespaceSelector is a selector for selecting either all namespaces or a list of namespaces      | `{}`      |
+| `podMonitor.port`              | The port used by PodMonitor                                                                          | `http`    |
+| `podMonitor.path`              | The path used by PodMonitor                                                                          | `metrics` |
+
+### ServiceAccount parameters
+
+| Name                                          | Description                                                            | Value   |
+|-----------------------------------------------|------------------------------------------------------------------------|---------|
+| `serviceAccount.create`                       | Enable creation of ServiceAccount for APP pods                         | `false` |
+| `serviceAccount.name`                         | The name of the ServiceAccount to use                                  | `""`    |
+| `serviceAccount.automountServiceAccountToken` | Allows auto mount of ServiceAccountToken on the serviceAccount created | `true`  |
+| `serviceAccount.annotations`                  | Additional custom annotations for the ServiceAccount                   | `{}`    |
+| `serviceAccount.labels`                       | Additional custom labels for the ServiceAccount                        | `{}`    |
+
+
+Specify each parameter using the `--set key=value[,key=value]` argument to `helm install`. For example,
+
+```shell
+$ helm install my-release --set ingress.hostname=example.com,serviceMonitor.enabled=true company/app
+```
+
+The above command sets the APP Ingress hostname to `example.com` and enabled the ServiceMonitor.
+
+Alternatively, a YAML file that specifies the values for the above parameters can be provided while installing the chart. For example,
+
+```console
+$ helm install my-release -f values.yaml company/app
+```
+
+> **Tip**: You can use the default [values.yaml](values.yaml) just by [`import-values`](#Getting started)
+
+## Configuration and installation details
+
+It is strongly recommended to use immutable tags in a production environment. This ensures your deployment does not change automatically if the same tag is updated with a different image.
+
+### Ingress
+
+This chart provides support for ingress resources. If you have an ingress controller installed on your cluster, such as nginx-ingress or traefik you can utilize the ingress controller to serve your application.
+To enable ingress integration, please set `ingress.enabled` to `true`.
+
+#### Hosts
+
+Most likely you will only want to have one hostname that maps to this APP installation. If that's your case, the property `ingress.hostname` will set it. However, it is possible to have more than one host. To facilitate this, the `ingress.extraHosts` object can be specified as an array. You can also use `ingress.extraTLS` to add the TLS configuration for extra hosts.
+
+For each host indicated at `ingress.extraHosts`, please indicate a `name`, `path`, and any `annotations` that you may want the ingress controller to know about.
+
+For annotations, please see [this document](https://github.com/kubernetes/ingress-nginx/blob/master/docs/user-guide/nginx-configuration/annotations.md). Not all annotations are supported by all ingress controllers, but this document does a good job of indicating which annotation is supported by many popular ingress controllers.
+
+### TLS Secrets
+
+This chart will facilitate the creation of TLS secrets for use with the ingress controller, however, this is not required.  There are three common use cases:
+
+- Helm generates/manages certificate secrets
+- User generates/manages certificates separately
+- An additional tool (like cert-manager) manages the secrets for the application
+
+In the first two cases, one will need a certificate and a key.  We would expect them to look like this:
+
+- certificate files should look like (and there can be more than one certificate if there is a certificate chain)
+
+```
+-----BEGIN CERTIFICATE-----
+MIID6TCCAtGgAwIBAgIJAIaCwivkeB5EMA0GCSqGSIb3DQEBCwUAMFYxCzAJBgNV
+...
+jScrvkiBO65F46KioCL9h5tDvomdU1aqpI/CBzhvZn1c0ZTf87tGQR8NK7v7
+-----END CERTIFICATE-----
+```
+
+- keys should look like:
+
+```
+-----BEGIN RSA PRIVATE KEY-----
+MIIEogIBAAKCAQEAvLYcyu8f3skuRyUgeeNpeDvYBCDcgq+LsWap6zbX5f8oLqp4
+...
+wrj2wDbCDCFmfqnSJ+dKI3vFLlEz44sAV8jX/kd4Y6ZTQhlLbYc=
+-----END RSA PRIVATE KEY-----
+```
+
+If you are going to use Helm to manage the certificates, please copy these values into the `certificate` and `key` values for a given `ingress.secrets` entry.
+
+If you are going to manage TLS secrets outside of Helm, please know that you can create a TLS secret (named `app.local-tls` for example).
+
+Please see [this example](https://github.com/kubernetes/contrib/tree/master/ingress/controllers/nginx/examples/tls) for more information.
+
+### Adding environment variables
+
+In case you want to add extra environment variables (useful for advanced operations like custom init scripts), you can use the `envVars` property.
+
+```yaml
+envVars:
+  - name: LOG_LEVEL
+    value: error
+```
+
+Alternatively, you can use a ConfigMap or a Secret with the environment variables. To do so, use the `.envVarsConfigMap` or the `envVarsSecret` properties.
+
+### Setting Pod's affinity
+
+This chart allows you to set your custom affinity using the `affinity` parameter. Find more information about Pod's affinity in the [kubernetes documentation](https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity).
+
+As an alternative, you can use of the preset configurations for pod affinity, pod anti-affinity, and node affinity available at the [bitnami/common](https://github.com/bitnami/charts/tree/master/bitnami/common#affinities) chart. To do so, set the `podAffinityPreset`, `podAntiAffinityPreset`, or `nodeAffinityPreset` parameters.
+
+### Sidecars and Init Containers
+
+If you have a need for additional containers to run within the same pod as Redis&reg;, you can do so via the `sidecars` config parameter. Simply define your container according to the Kubernetes container spec.
+
+```yaml
+sidecars:
+  - name: your-image-name
+    image: your-image
+    imagePullPolicy: Always
+    ports:
+      - name: portName
+        containerPort: 1234
+```
+
+Similarly, you can add extra init containers using the `initContainers` parameter.
+
+```yaml
+initContainers:
+  - name: your-image-name
+    image: your-image
+    imagePullPolicy: Always
+    ports:
+      - name: portName
+        containerPort: 1234
+```
+</file>
+
+<file path="values.yaml">
+exports:
+  defaults:
+    ## @section Global parameters
+    ## Global Docker image parameters
+    ## Please, note that this will override the image parameters, including dependencies, configured to use the global value
+    ## Current available global Docker image parameters: imageRegistry, imagePullSecrets and storageClass
+
+    ## @param global.imageRegistry Global Docker image registry
+    ## @param global.imagePullSecrets Global Docker registry secret names as an array
+    ## @param global.storageClass Global StorageClass for Persistent Volume(s)
+    ##
+    global:
+      imageRegistry: ""
+      ## E.g.
+      ## imagePullSecrets:
+      ##   - myRegistryKeySecretName
+      ##
+      imagePullSecrets: []
+      defaultStorageClass: ""
+      ## Compatibility adaptations for Kubernetes platforms
+      ##
+      compatibility:
+        ## Compatibility adaptations for Openshift
+        ##
+        openshift:
+          ## @param global.compatibility.openshift.adaptSecurityContext Adapt the securityContext sections of the deployment to make them compatible with Openshift restricted-v2 SCC: remove runAsUser, runAsGroup and fsGroup and let the platform use their allowed default IDs. Possible values: auto (apply if the detected running cluster is Openshift), force (perform the adaptation always), disabled (do not perform adaptation)
+          ##
+          adaptSecurityContext: auto
+        ## @param global.compatibility.omitEmptySeLinuxOptions If set to true, removes the seLinuxOptions from the securityContexts when it is set to an empty object
+        ##
+        omitEmptySeLinuxOptions: false
+
+    ## @section Common parameters
+
+    ## @param kubeVersion Force target Kubernetes version (using Helm capabilities if not set)
+    ##
+    kubeVersion: ""
+
+    ## @param nameOverride String to partially override common.names.fullname template with a string (will maintain the release name)
+    ##
+    nameOverride: ""
+
+    ## @param fullnameOverride String to fully override common.names.fullname template with a string
+    ##
+    fullnameOverride: ""
+
+    ## @param namespaceOverride String to fully override common.names.namespace template with a string
+    ##
+    namespaceOverride: ""
+
+    ## @param clusterDomain Kubernetes Cluster Domain name
+    ##
+    clusterDomain: cluster.local
+
+    ## @param annotations Additional annotations to be added to the App Deployment or Statefulset. Evaluated as a template
+    ##
+    annotations: {}
+
+    ## @param labels Additional labels to be added to the App Deployment or Statefulset. Evaluated as a template
+    ##
+    labels: {}
+
+    ## @param commonLabels Labels to be added to all deployed resources
+    ##
+    commonLabels: {}
+
+    ## @param commonAnnotations Annotations to be added to all deployed resources
+    ##
+    commonAnnotations: {}
+
+    ## @section Helmet parameters
+
+    ## Helmet (App) image version
+    ## ref: https://kubernetes.io/docs/concepts/containers/images
+    ## @param image.registry Image registry
+    ## @param image.repository Image repository
+    ## @param image.tag Image tag (immutable tags are recommended)
+    ## @param image.digest Image digest in the way sha256:aa.... Please note this parameter, if set, will override the tag
+    ## @param image.pullPolicy Image pull policy
+    ## @param image.pullSecrets Image pull secrets
+    ##
+    image:
+      registry: docker.io
+      repository: ""
+      tag: latest
+      digest: ""
+
+      ## Specify a imagePullPolicy
+      ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
+      ## ref: https://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+      ##
+      pullPolicy: null
+
+      ## Optionally specify an array of imagePullSecrets (secrets must be manually created in the namespace)
+      ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
+      ## Example:
+      ## pullSecrets:
+      ##   - myRegistryKeySecretName
+      ##
+      pullSecrets: []
+
+    ## @param replicaCount Number of APP replicas
+    ## Note: ReadWriteMany PVCs are required to scale
+    ##
+    replicaCount: 1
+
+    ## @param revisionHistoryLimit The number of old history to retain to allow rollback
+    ##
+    revisionHistoryLimit: 10
+
+    ## List of ports to expose from the container.
+    ## ref: https://kubernetes.io/docs/concepts/services-networking/connect-applications-service
+    ##
+    ports:
+      - name: http
+        containerPort: 8080
+        protocol: TCP
+
+    ## Configure extra options for liveness probe
+    ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-probes/#configure-probes
+    ## @param livenessProbe.enabled Enable livenessProbe
+    ## @param livenessProbe.initialDelaySeconds Initial delay seconds for livenessProbe
+    ## @param livenessProbe.periodSeconds Period seconds for livenessProbe
+    ## @param livenessProbe.timeoutSeconds Timeout seconds for livenessProbe
+    ## @param livenessProbe.failureThreshold Failure threshold for livenessProbe
+    ## @param livenessProbe.successThreshold Success threshold for livenessProbe
+    ##
+    ## Example:
+    ## livenessProbe:
+    ##   enabled: true
+    ##   httpGet:
+    ##     path: /
+    ##     port: http
+    ##     httpHeaders:
+    ##       - name: Custom-Header
+    ##         value: Awesome
+    ##   grpc:
+    ##     port: 2379
+    ##   tcpSocket:
+    ##     port: http
+    ##   exec:
+    ##     command:
+    ##       - cat
+    ##       - /tmp/healthy
+    ##   initialDelaySeconds: 0
+    ##   periodSeconds: 10
+    ##   timeoutSeconds: 1
+    ##   failureThreshold: 3
+    ##   successThreshold: 1
+    ##
+    livenessProbe:
+      enabled: false
+
+    ## Configure extra options for readiness probe
+    ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-probes/#configure-probes
+    ## @param readinessProbe.enabled Enable readinessProbe
+    ## @param readinessProbe.initialDelaySeconds Initial delay seconds for readinessProbe
+    ## @param readinessProbe.periodSeconds Period seconds for readinessProbe
+    ## @param readinessProbe.timeoutSeconds Timeout seconds for readinessProbe
+    ## @param readinessProbe.failureThreshold Failure threshold for readinessProbe
+    ## @param readinessProbe.successThreshold Success threshold for readinessProbe
+    ##
+    ## Example:
+    ## readinessProbe:
+    ##   enabled: true
+    ##   httpGet:
+    ##     path: /
+    ##     port: http
+    ##     httpHeaders:
+    ##       - name: Custom-Header
+    ##         value: Awesome
+    ##   grpc:
+    ##     port: 2379
+    ##   tcpSocket:
+    ##     port: http
+    ##   exec:
+    ##     command:
+    ##       - cat
+    ##       - /tmp/healthy
+    ##   initialDelaySeconds: 0
+    ##   periodSeconds: 10
+    ##   timeoutSeconds: 1
+    ##   failureThreshold: 3
+    ##   successThreshold: 1
+    ##
+    readinessProbe:
+      enabled: false
+
+    ## Configure extra options for startup probe
+    ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-probes/#configure-probes
+    ## @param startupProbe.enabled Enable startupProbe
+    ## @param startupProbe.httpGet.path Request path for startupProbe
+    ## @param startupProbe.initialDelaySeconds Initial delay seconds for startupProbe
+    ## @param startupProbe.periodSeconds Period seconds for startupProbe
+    ## @param startupProbe.timeoutSeconds Timeout seconds for startupProbe
+    ## @param startupProbe.failureThreshold Failure threshold for startupProbe
+    ## @param startupProbe.successThreshold Success threshold for startupProbe
+    ##
+    ## Example:
+    ## startupProbe:
+    ##   enabled: true
+    ##   httpGet:
+    ##     path: /
+    ##     port: http
+    ##     httpHeaders:
+    ##       - name: Custom-Header
+    ##         value: Awesome
+    ##   grpc:
+    ##     port: 2379
+    ##   tcpSocket:
+    ##     port: http
+    ##   exec:
+    ##     command:
+    ##       - cat
+    ##       - /tmp/healthy
+    ##   initialDelaySeconds: 0
+    ##   periodSeconds: 10
+    ##   timeoutSeconds: 1
+    ##   failureThreshold: 3
+    ##   successThreshold: 1
+    ##
+    startupProbe:
+      enabled: false
+
+    ## Configure pod Restart Policy
+    ## ref: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#restart-policy
+    ## @param RestartPolicy Restart policy for all containers within the pod
+    podRestartPolicy: Always
+
+    ## Configure APP pods Security Context
+    ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#set-the-security-context-for-a-pod
+    ## @param podSecurityContext.enabled Enabled APP pods' Security Context
+    ## @param podSecurityContext.fsGroup Set APP pod's Security Context fsGroup
+    ##
+    podSecurityContext:
+      enabled: false
+      fsGroup: 0
+
+    ## Configure Container Security Context (only main container)
+    ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#set-the-security-context-for-a-container
+    ## @param containerSecurityContext.enabled Enabled APP containers' Security Context
+    ## @param containerSecurityContext.runAsUser Set APP containers' Security Context runAsUser
+    ## @param containerSecurityContext.runAsNonRoot Set APP container's Security Context runAsNonRoot
+    ##
+    containerSecurityContext:
+      enabled: false
+      runAsUser: 1001
+      runAsNonRoot: true
+
+    ## @param lifecycleHooks LifecycleHook to set additional configuration at startup Evaluated as a template
+    ##
+    lifecycleHooks: {}
+
+    ## APP's resource requests and limits
+    ## ref: https://kubernetes.io/docs/user-guide/compute-resources/
+    ## We usually recommend not to specify default resources and to leave this as a conscious
+    ## choice for the user. This also increases chances charts run on environments with little
+    ## resources, such as Minikube. If you do want to specify resources, uncomment the following
+    ## lines, adjust them as necessary, and remove the curly braces after 'resources:'.
+    ## @param resources.limits The resources limits for the container
+    ## @param resources.requests The requested resources for the container
+    ##
+    resources:
+      ## Example:
+      ## limits:
+      ##    cpu: 100m
+      ##    memory: 128Mi
+      limits: {}
+      ## Examples:
+      ## requests:
+      ##    cpu: 100m
+      ##    memory: 128Mi
+      requests: {}
+
+    ## @param hostAliases Add deployment host aliases
+    ## https://kubernetes.io/docs/concepts/services-networking/add-entries-to-pod-etc-hosts-with-host-aliases/
+    ##
+    hostAliases: []
+
+    ## @param podLabels Additional pod labels
+    ## ref: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
+    ##
+    podLabels: {}
+
+    ## @param podAnnotations Additional pod annotations
+    ## ref: https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/
+    ##
+    podAnnotations: {}
+
+    ## @param podAffinityPreset Pod affinity preset. Allowed values: soft, hard
+    ## ref: https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#inter-pod-affinity-and-anti-affinity
+    ##
+    podAffinityPreset: ""
+
+    ## @param podAntiAffinityPreset Pod anti-affinity preset. Ignored if `affinity` is set. Allowed values: `soft` or `hard`
+    ## Ref: https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#inter-pod-affinity-and-anti-affinity
+    ##
+    podAntiAffinityPreset: soft
+
+    ## Node affinity preset
+    ## Ref: https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity
+    ## @param nodeAffinityPreset.type Node affinity preset type. Ignored if `affinity` is set. Allowed values: `soft` or `hard`
+    ## @param nodeAffinityPreset.key Node label key to match Ignored if `affinity` is set.
+    ## @param nodeAffinityPreset.values Node label values to match. Ignored if `affinity` is set.
+    ##
+    nodeAffinityPreset:
+      type: ""
+      ## E.g.
+      ## key: "kubernetes.io/e2e-az-name"
+      ##
+      key: ""
+      ## E.g.
+      ## values:
+      ##   - e2e-az1
+      ##   - e2e-az2
+      ##
+      values: []
+
+    ## @param affinity Affinity for pod assignment
+    ## Ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
+    ## Note: podAffinityPreset, podAntiAffinityPreset, and  nodeAffinityPreset will be ignored when it's set
+    ##
+    affinity: {}
+
+    ## @param nodeSelector Node labels for pod assignment.
+    ## Ref: https://kubernetes.io/docs/user-guide/node-selection/
+    ##
+    nodeSelector: {}
+
+    ## @param tolerations Tolerations for pod assignment.
+    ## Ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
+    ##
+    tolerations: []
+
+    ## @param topologySpreadConstraints Topology Spread Constraints for pod assignment spread across your cluster among failure-domains. Evaluated as a template
+    ## Ref: https://kubernetes.io/docs/concepts/workloads/pods/pod-topology-spread-constraints/#spread-constraints-for-pods
+    ##
+    topologySpreadConstraints: []
+
+    ## @param priorityClassName Priority Class Name
+    ## ref: https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/#priorityclass
+    ##
+    priorityClassName: ""
+
+    ## @param schedulerName Use an alternate scheduler, e.g. "stork".
+    ## ref: https://kubernetes.io/docs/tasks/administer-cluster/configure-multiple-schedulers/
+    ##
+    schedulerName: ""
+
+    ## @param terminationGracePeriodSeconds Seconds APP pod needs to terminate gracefully
+    ## ref: https://kubernetes.io/docs/concepts/workloads/pods/pod/#termination-of-pods
+    ##
+    terminationGracePeriodSeconds: ""
+
+    ## @param updateStrategy.type APP deployment strategy type
+    ## @param updateStrategy.rollingUpdate APP deployment rolling update configuration parameters
+    ## ref: https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#strategy
+    ##
+    updateStrategy:
+      type: RollingUpdate
+
+    ## @param extraVolumes Array to add extra volumes (evaluated as a template)
+    ## Example:
+    ## extraVolumes:
+    ##   - name: vol-conf
+    ##     configMap:
+    ##       name: "configmap-name"
+    ##   - name: vol-secret
+    ##     secret:
+    ##       secretName: "secret-name"
+    ##
+    extraVolumes: []
+
+    ## @param extraVolumeMounts Array to add extra mounts (normally used with extraVolumes, evaluated as a template)
+    ## Example:
+    ## extraVolumeMounts:
+    ##   - name: vol-conf
+    ##     mountPath: "/app/config"
+    ##
+    extraVolumeMounts: []
+
+    ## @param sidecars Add additional sidecar containers to the APP pods
+    ## Example:
+    ## sidecars:
+    ##   - name: your-image-name
+    ##     image: your-image
+    ##     imagePullPolicy: Always
+    ##     ports:
+    ##       - name: portname
+    ##         containerPort: 1234
+    ##
+    sidecars: []
+
+    ## @param initContainers Add additional init containers to the APP pods
+    ## Example:
+    ## initContainers:
+    ##   - name: your-image-name
+    ##     image: your-image
+    ##     imagePullPolicy: Always
+    ##     ports:
+    ##       - name: portname
+    ##         containerPort: 1234
+    ##
+    initContainers: []
+
+    ## @param command Override default container command
+    ##
+    command: []
+
+    ## @param args Override default container args
+    ##
+    args: []
+
+    ## @param envVars Environment variables to be set on APP container
+    ## Example:
+    ## envVars:
+    ##   FOO: "foo"
+    ##   BAZ:
+    ##     valueFrom:
+    ##       configMapRef: ...
+    ##
+    envVars: null
+
+    ## @param envVarsConfigMap ConfigMap with environment variables
+    ##
+    envVarsConfigMap: ""
+
+    ## @param envVarsSecret Secret with environment variables
+    ##
+    envVarsSecret: ""
+
+    ## Add an horizontal pod autoscaler
+    ## ref: https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/
+    ## @param autoscaling.enabled Deploy a HorizontalPodAutoscaler object for the APP deployment
+    ## @param autoscaling.minReplicas Minimum number of replicas to scale back
+    ## @param autoscaling.maxReplicas Maximum number of replicas to scale out
+    ## @param autoscaling.targetCPU Define the CPU target to trigger the scaling actions (utilization percentage)
+    ## @param autoscaling.targetMemory Define the memory target to trigger the scaling actions (utilization percentage)
+    ## @param autoscaling.metrics [array] Metrics to use when deciding to scale the deployment (evaluated as a template)
+    ##
+    autoscaling:
+      enabled: false
+      minReplicas: 3
+      maxReplicas: 5
+      targetCPU: 80
+      targetMemory: 80
+      metrics: []
+
+    ## Configure the ConfigMap resource that allows you to store non-confidential data in key-value pairs.
+    ## ref: https://kubernetes.io/docs/concepts/configuration/configmap/
+    ##
+    configMap:
+      mounted: false
+      mountPath: "/app/config"
+      subPath: ""
+      ## @param configMap.data store data in key-value pairs
+      ##
+      ## e.g:
+      ## data:
+      ##   config.yaml:
+      ##     mode: production
+      ##   FOO: bar
+      ##   DEBUG: true
+      ##
+      data: {}
+
+      ## @param secret.annotations Additional custom annotations for the ConfigMap
+      ##
+      annotations: {}
+
+      ## @param secret.labels Additional custom labels for the ConfigMap
+      ##
+      labels: {}
+
+    ## Configure the Secret resource that allows you to store a small amount of sensitive data such as a password, a token, or a key.
+    ## ref: https://kubernetes.io/docs/concepts/configuration/secret
+    ##
+    secret:
+      ## @param secret.type the type is used to facilitate programmatic handling of the Secret data
+      type: "Opaque"
+      ## @param secret.data store data in key-value pairs
+      ##
+      ## e.g:
+      ## data:
+      ##   username: YWRtaW4=
+      ##   password: MWYyZDFlMmU2N2Rm
+      ##
+      data: {}
+      ## @param secret.stringData store data in key-value pairs
+      ##
+      ## e.g:
+      ## stringData:
+      ##   username: admin
+      ##   password: t0p-Secret
+      ##
+      stringData: {}
+
+      ## @param secret.annotations Additional custom annotations for the Secret
+      ##
+      annotations: {}
+
+      ## @param secret.labels Additional custom labels for the Secret
+      ##
+      labels: {}
+
+    ## Configure the ingress resource that allows you to access the APP
+    ## ref: https://kubernetes.io/docs/user-guide/ingress/
+    ##
+    ingress:
+      ## @param ingress.enabled Enable ingress resource for the APP
+      ##
+      enabled: false
+
+      ## @param ingress.path Path for the default host
+      ##
+      path: /
+
+      ## @param ingress.apiVersion Override API Version (automatically detected if not set)
+      ##
+      apiVersion: ""
+
+      ## @param ingress.pathType Ingress path type
+      ##
+      pathType: ImplementationSpecific
+
+      ## @param ingress.hostname Default host for the ingress resource, a host pointing to this will be created
+      ##
+      hostname: app.local
+
+      ## @param ingress.annotations Additional annotations for the Ingress resource. To enable certificate autogeneration, place here your cert-manager annotations.
+      ## For a full list of possible ingress annotations, please see
+      ## ref: https://github.com/kubernetes/ingress-nginx/blob/master/docs/user-guide/nginx-configuration/annotations.md
+      ## Use this parameter to set the required annotations for cert-manager, see
+      ## ref: https://cert-manager.io/docs/usage/ingress/#supported-annotations
+      ##
+      ## e.g:
+      ## annotations:
+      ##   kubernetes.io/ingress.class: nginx
+      ##   cert-manager.io/cluster-issuer: cluster-issuer-name
+      ##
+      annotations: {}
+
+      ## @param ingress.ingressClassName Set the ingerssClassName on the ingress record for k8s 1.18+
+      ## This is supported in Kubernetes 1.18+ and required if you have more than one IngressClass marked as the default for your cluster .
+      ## ref: https://kubernetes.io/blog/2020/04/02/improvements-to-the-ingress-api-in-kubernetes-1.18/
+      ##
+      ingressClassName: ""
+
+      ## @param ingress.tls Enable TLS configuration for the hostname defined at ingress.hostname parameter
+      ## TLS certificates will be retrieved from a TLS secret with name: {{- printf "%s-tls" .Values.ingress.hostname }}
+      ## or a custom one if you use the tls.existingSecret parameter
+      ## You can use the ingress.secrets parameter to create this TLS secret or relay on cert-manager to create it
+      ## Example:
+      ## existingSecret: name-of-existing-secret
+      ##
+      tls: false
+
+      ## @param ingress.extraHosts An array with additional hostname(s) to be covered with the ingress record
+      ## Most likely the hostname above will be enough, but in the event more hosts are needed, this is an array
+      ## extraHosts:
+      ## - name: app.local
+      ##   path: /
+      extraHosts: []
+
+      ## @param ingress.extraPaths Any additional arbitrary paths that may need to be added to the ingress under the main host.
+      ## For example: The ALB ingress controller requires a special rule for handling SSL redirection.
+      ## extraPaths:
+      ## - path: /*
+      ##   backend:
+      ##     serviceName: ssl-redirect
+      ##     servicePort: use-annotation
+      ##
+      extraPaths: []
+
+      ## @param ingress.selfSigned Create a TLS secret for this ingress record using self-signed certificates generated by Helm
+      ##
+      selfSigned: false
+
+      ## @param ingress.extraTls TLS configuration for additional hostname(s) to be covered with this ingress record
+      ## see: https://kubernetes.io/docs/concepts/services-networking/ingress/#tls
+      ## extraTls:
+      ## - hosts:
+      ##     - ap.local
+      ##   secretName: app.local-tls
+      ##
+      extraTls: []
+
+      ## @param ingress.secrets If you're providing your own certificates, please use this to add the certificates as secrets
+      ## key and certificate should start with -----BEGIN CERTIFICATE----- or
+      ## -----BEGIN RSA PRIVATE KEY-----
+      ##
+      ## name should line up with a tlsSecret set further up
+      ## If you're using cert-manager, this is unneeded, as it will create the secret for you if it is not set
+      ##
+      ## It is also possible to create and manage the certificates outside of this helm chart
+      ## Please see README.md for more information
+      ## Example:
+      ## - name: app.local-tls
+      ##   key:
+      ##   certificate:
+      ##
+      secrets: []
+
+      ## @param ingress.existingSecret It is you own the certificate as secret.
+      existingSecret: ""
+
+      ## @param ingress.extraRules Additional rules to be covered with this ingress record
+      ## ref: https://kubernetes.io/docs/concepts/services-networking/ingress/#ingress-rules
+      ## e.g:
+      ## extraRules:
+      ## - host: example.local
+      ##     http:
+      ##       path: /
+      ##       backend:
+      ##         service:
+      ##           name: example-svc
+      ##           port:
+      ##             name: http
+      ##
+      extraRules: []
+
+    ## Enable persistence using Persistent Volume Claims
+    ## ref: https://kubernetes.io/docs/concepts/storage/persistent-volumes/
+    ##
+    persistence:
+      ## @param persistence.enabled Enable persistence using Persistent Volume Claims
+      ##
+      enabled: false
+      ## @param persistence.mountPath Path to mount the volume at.
+      ##
+      mountPath: /data
+      ## @param persistence.subPath The subdirectory of the volume to mount to, useful in dev environments and one PV for multiple services
+      ##
+      subPath: ""
+      ## @param persistence.storageClass Storage class of backing PVC
+      ## If defined, storageClassName: <storageClass>
+      ## If set to "-", storageClassName: "", which disables dynamic provisioning
+      ## If undefined (the default) or set to null, no storageClassName spec is
+      ##   set, choosing the default provisioner.  (gp2 on AWS, standard on
+      ##   GKE, AWS & OpenStack)
+      ##
+      storageClass: ""
+      ## @param persistence.annotations Persistent Volume Claim annotations
+      ##
+      annotations: {}
+      ## @param persistence.accessModes Persistent Volume Access Modes
+      ##
+      accessModes:
+        - ReadWriteOnce
+      ## @param persistence.size Size of data volume
+      ##
+      size: 8Gi
+      ## @param persistence.existingClaim The name of an existing PVC to use for persistence
+      ##
+      existingClaim: ""
+      ## @param persistence.selector Selector to match an existing Persistent Volume for WordPress data PVC
+      ## If set, the PVC can't have a PV dynamically provisioned for it
+      ## E.g.
+      ## selector:
+      ##   matchLabels:
+      ##     app: my-app
+      ##
+      selector: {}
+      ## @param persistence.dataSource Custom PVC data source
+      ##
+      dataSource: {}
+
+    ## APP service parameters
+    ##
+    service:
+      ## @param service.type APP service type
+      ##
+      type: ClusterIP
+
+      ## @param service.ports APP service ports
+      ##
+      ports:
+        - name: http
+          protocol: TCP
+          port: 80
+          targetPort: http
+
+      ## @param service.sessionAffinity Control where client requests go, to the same pod or round-robin
+      ## Values: ClientIP or None
+      ## ref: https://kubernetes.io/docs/user-guide/services/
+      ##
+      sessionAffinity: None
+
+      ## @param service.clusterIP APP service Cluster IP
+      ## e.g.:
+      ## clusterIP: None
+      ##
+      clusterIP: ""
+
+      ## @param service.loadBalancerIP APP service Load Balancer IP
+      ## ref: https://kubernetes.io/docs/concepts/services-networking/service/#type-loadbalancer
+      ##
+      loadBalancerIP: ""
+
+      ## @param service.loadBalancerSourceRanges APP service Load Balancer sources
+      ## ref: https://kubernetes.io/docs/tasks/access-application-cluster/configure-cloud-provider-firewall/#restrict-access-for-loadbalancer-service
+      ## e.g:
+      ## loadBalancerSourceRanges:
+      ##   - 10.10.10.0/24
+      ##
+      loadBalancerSourceRanges: []
+
+      ## @param service.externalTrafficPolicy APP service external traffic policy
+      ## ref https://kubernetes.io/docs/tasks/access-application-cluster/create-external-load-balancer/#preserving-the-client-source-ip
+      ##
+      externalTrafficPolicy: Cluster
+
+      ## @param service.annotations Additional custom annotations for APP service
+      ##
+      annotations: {}
+
+    ## Prometheus Operator ServiceMonitor configuration
+    ##
+    serviceMonitor:
+      ## @param serviceMonitor.enabled Specify if a ServiceMonitor will be deployed for Prometheus Operator
+      ##
+      enabled: false
+
+      ## @param serviceMonitor.namespace Namespace in which Prometheus is running
+      ##
+      namespace: ""
+
+      ## @param serviceMonitor.labels Additional ServiceMonitor labels (evaluated as a template)
+      ##
+      labels: {}
+
+      ## @param serviceMonitor.annotations Additional ServiceMonitor annotations (evaluated as a template)
+      ##
+      annotations: {}
+
+      ## @param serviceMonitor.jobLabel The name of the label on the target service to use as the job name in Prometheus
+      ##
+      jobLabel: ""
+
+      ## @param serviceMonitor.honorLabels honorLabels chooses the metric's labels on collisions with target labels
+      ##
+      honorLabels: false
+
+      ## @param serviceMonitor.interval How frequently to scrape metrics
+      ## e.g:
+      ## interval: 10s
+      ##
+      interval: ""
+
+      ## @param serviceMonitor.scrapeTimeout Timeout after which the scrape is ended
+      ## e.g:
+      ## scrapeTimeout: 10s
+      ##
+      scrapeTimeout: ""
+
+      ## @param serviceMonitor.metricRelabelings [array] Specify additional relabeling of metrics
+      ##
+      metricRelabelings: []
+
+      ## @param serviceMonitor.relabelings [array] Specify general relabeling
+      ##
+      relabelings: []
+
+      ## @param serviceMonitor.selector Prometheus instance selector labels
+      ## ref: https://github.com/bitnami/charts/tree/master/bitnami/prometheus-operator#prometheus-configuration
+      ##
+      selector: {}
+
+      ## @param serviceMonitor.namespaceSelector is a selector for selecting either all namespaces or a list of namespaces.
+      ##
+      namespaceSelector: {}
+
+      ## @param serviceMonitor.port port used by serviceMonitor
+      ##
+      port: "http"
+
+      ## @param serviceMonitor.path path used by serviceMonitor
+      ##
+      path: "/metrics"
+
+    ## Prometheus Operator PodMonitor configuration
+    ##
+    podMonitor:
+      ## @param podMonitor.enabled - Whether or not the PodMonitor should be created.
+      ##
+      enabled: false
+
+      ## @param podMonitor.namespace Namespace in which Prometheus is running
+      ##
+      namespace: ""
+
+      ## @param podMonitor.jobLabel Namespace in which Prometheus is running
+      ##
+      jobLabel: ""
+
+      #@param podMonitor.port The port where metrics should be scraped.
+      port: "http"
+
+      ## @param podMonitor.path The path where metrics are exposed.
+      ##
+      path: "/metrics"
+
+      ## @param podMonitor.interval Scrape interval. Prometheus default used if not set.
+      ##
+      interval: "30s"
+
+      ## @param podMonitor.scrapeTimeout The timeout duration after which the scrape is ended.
+      ##
+      scrapeTimeout: "10s"
+
+      ## @param podMonitor.labels Additional PodMonitor labels (evaluated as a template)
+      ##
+      labels: {}
+
+      ## @param podMonitor.relabelings [array] Specify general relabeling
+      ##
+      relabelings: {}
+
+      ## @param podMonitor.metricRelabelings [array] Specify additional relabeling of metrics
+      ##
+      metricRelabelings: []
+
+      ## @param podMonitor.namespaceSelector is a selector for selecting either all namespaces or a list of namespaces.
+      ##
+      namespaceSelector: {}
+
+      ## @param podMonitor.selector is a selector to select which pods will be monitored.
+      ##
+      selector: {}
+
+    ## Service account for APP pods to use.
+    ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/
+    ##
+    serviceAccount:
+      ## @param serviceAccount.create Enable creation of ServiceAccount for APP pods
+      ##
+      create: false
+
+      ## @param serviceAccount.name The name of the ServiceAccount to use.
+      ## If not set and create is true, a name is generated using the common.names.fullname template
+      ##
+      name: ""
+
+      ## @param serviceAccount.automountServiceAccountToken Allows auto mount of ServiceAccountToken on the serviceAccount created
+      ## Can be set to false if pods using this serviceAccount do not need to use K8s API
+      ##
+      automountServiceAccountToken: true
+
+      ## @param serviceAccount.annotations Additional custom annotations for the ServiceAccount
+      ##
+      annotations: {}
+
+      ## @param serviceAccount.labels Additional custom labels for the ServiceAccount
+      ##
+      labels: {}
+
+    ## Cronjob: create jobs on a repeated schedule
+    ## Ref: https://kubernetes.io/docs/concepts/workloads/controllers/cron-jobs/
+    ##
+    cronjob:
+      ## @param cronjob.enabled
+      ##
+      enabled: false
+
+      ## @param cronjob.concurrencyPolicy Allow/Forbid/Replace concurrency
+      ##
+      concurrencyPolicy: Allow
+
+      ## @param cronjob.schedule run schedule for the cronjob
+      ## Cron format: "<minute> <hour> <day_of_month> <month> <day_of_week>"
+      ##
+      schedule: ""
+
+      ## @param cronjob.successfulJobsHistoryLimit
+      ##
+      successfulJobsHistoryLimit: 3
+
+      ## @param nodeSelector Node labels for pod assignment.
+      ## Ref: https://kubernetes.io/docs/user-guide/node-selection/
+      ##
+      nodeSelector: {}
+
+      ## @param tolerations Tolerations for pod assignment.
+      ## Ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
+      ##
+      tolerations: []
+
+      ## @param restartPolicy Restart conditions
+      ## Ref: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#restart-policy
+      ##
+      restartPolicy: OnFailure
+
+      ## Configure APP pods Security Context
+      ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#set-the-security-context-for-a-pod
+      ## @param podSecurityContext.enabled Enabled APP pods' Security Context
+      ## @param podSecurityContext.fsGroup Set APP pod's Security Context fsGroup
+      ##
+      podSecurityContext:
+        enabled: false
+        fsGroup: 0
+
+      ## @param initContainers Add additional init containers to the APP pods
+      ## Example:
+      ## initContainers:
+      ##   - name: your-image-name
+      ##     image: your-image
+      ##     imagePullPolicy: Always
+      ##     ports:
+      ##       - name: portname
+      ##         containerPort: 1234
+      ##
+      initContainers: []
+
+      ## @param containers Add additional containers to the APP pods
+      ## Example:
+      ## containers:
+      ##   - name: your-image-name
+      ##     image: your-image
+      ##     imagePullPolicy: Always
+      ##     ports:
+      ##       - name: portname
+      ##         containerPort: 1234
+      ##
+      containers: []
+
+      ## @param volumes Array to add volumes (evaluated as a template)
+      ## Example:
+      ## volumes:
+      ##   - name: vol-conf
+      ##     configMap:
+      ##       name: "configmap-name"
+      ##   - name: vol-secret
+      ##     secret:
+      ##       secretName: "secret-name"
+      ##
+      volumes: []
+</file>
+
+</files>
