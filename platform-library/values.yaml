@@ -19,8 +19,6 @@ global:
   imageRegistry: ""
   imagePullPolicy: ""
   imagePullSecrets: []
-  namespace: default
-  environment: production
   storageClass: ""
 
 # -----------------------------------------------------------------------------
@@ -117,13 +115,7 @@ podDisruptionBudget:
 # -----------------------------------------------------------------------------
 # Resources
 # -----------------------------------------------------------------------------
-resources:
-  requests:
-    cpu: 100m
-    memory: 128Mi
-  limits:
-    cpu: 500m
-    memory: 512Mi
+resources: {}
 
 # -----------------------------------------------------------------------------
 # Probes

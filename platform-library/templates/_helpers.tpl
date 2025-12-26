@@ -356,7 +356,7 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: {{ include "platform.serviceAccountName" . }}
-  namespace: {{ .Values.global.namespace }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "platform.labels" . | nindent 4 }}
   {{- with .Values.serviceAccount.annotations }}
@@ -375,7 +375,7 @@ apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: {{ include "platform.fullname" . }}
-  namespace: {{ .Values.global.namespace }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "platform.labels" . | nindent 4 }}
 spec:
@@ -434,7 +434,7 @@ Get service endpoint for this service
 {{- $serviceName := include "platform.fullname" . }}
 {{- $primary := (include "platform.primaryServicePort" . | fromYaml) }}
 {{- $servicePort := $primary.port | default 80 }}
-{{- $namespace := .Values.global.namespace | default "default" }}
+{{- $namespace := .Release.Namespace | default "default" }}
 {{- printf "%s.%s.svc.cluster.local:%d" $serviceName $namespace $servicePort }}
 {{- end }}
 
@@ -458,7 +458,10 @@ Get service endpoint for a specific subchart (for umbrella charts)
         {{- $subservicePort = $first.port -}}
       {{- end -}}
     {{- end -}}
-    {{- $namespace := $subchartContext.global.namespace | default $rootContext.Values.global.namespace | default "default" -}}
+    {{- $namespace := $rootContext.Release.Namespace | default "default" -}}
+    {{- if and $subchartContext.global $subchartContext.global.namespace }}
+      {{- $namespace = $subchartContext.global.namespace -}}
+    {{- end }}
     {{- printf "%s.%s.svc.cluster.local:%d" $subserviceName $namespace $subservicePort -}}
   {{- end -}}
 {{- end -}}
@@ -502,7 +505,10 @@ Get all service endpoints dynamically
           {{- end -}}
         {{- end -}}
         {{- if $subservicePort -}}
-          {{- $namespace := $chartValues.global.namespace | default $.Values.global.namespace | default "default" -}}
+          {{- $namespace := $.Release.Namespace | default "default" -}}
+          {{- if and $chartValues.global $chartValues.global.namespace }}
+            {{- $namespace = $chartValues.global.namespace -}}
+          {{- end }}
           {{- $endpoint := printf "%s.%s.svc.cluster.local:%d" $subserviceName $namespace $subservicePort -}}
           {{- $endpoints = set $endpoints $subserviceName $endpoint -}}
         {{- end -}}
@@ -528,7 +534,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: {{ include "platform.fullname" . }}-service-endpoints
-  namespace: {{ .Values.global.namespace | default "default" }}
+  namespace: {{ .Release.Namespace | default "default" }}
   labels:
     {{- include "platform.labels" . | nindent 4 }}
 data:
@@ -610,7 +616,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: {{ printf "%s-%s" (include "platform.fullname" $ctx) $type }}
-  namespace: {{ $ctx.Values.global.namespace }}
+  namespace: {{ $ctx.Release.Namespace }}
   labels:
     {{- include "platform.labels" $ctx | nindent 4 }}
     {{- range $k, $v := $ctx.Values.commonLabels }}

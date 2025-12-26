@@ -24,10 +24,6 @@ global:
   imagePullPolicy: ""
   # Global image pull secrets (array of secret names)
   imagePullSecrets: []
-  # Default namespace for resources
-  namespace: default
-  # Environment identifier
-  environment: production
   # Global storage class for PVCs
   storageClass: ""
 
@@ -161,13 +157,15 @@ podDisruptionBudget:
 # -----------------------------------------------------------------------------
 # Resource Configuration
 # -----------------------------------------------------------------------------
-resources:
-  requests:
-    cpu: 100m
-    memory: 128Mi
-  limits:
-    cpu: 500m
-    memory: 512Mi
+resources: {}
+# Example:
+# resources:
+#   requests:
+#     cpu: 100m
+#     memory: 128Mi
+#   limits:
+#     cpu: 500m
+#     memory: 512Mi
 
 # -----------------------------------------------------------------------------
 # Probes Configuration

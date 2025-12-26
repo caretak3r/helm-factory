@@ -3,7 +3,7 @@ apiVersion: monitoring.coreos.com/v1
 kind: PodMonitor
 metadata:
   name: {{ include "platform.fullname" . }}
-  namespace: {{ default .Values.global.namespace .Values.podMonitor.namespace }}
+  namespace: {{ default .Release.Namespace .Values.podMonitor.namespace }}
   labels:
     {{- include "platform.labels" . | nindent 4 }}
     {{- range $k, $v := .Values.podMonitor.labels }}
@@ -46,7 +46,7 @@ spec:
     {{- toYaml .Values.podMonitor.namespaceSelector | nindent 4 }}
     {{- else }}
     matchNames:
-      - {{ .Values.global.namespace | quote }}
+      - {{ .Release.Namespace | quote }}
     {{- end }}
   {{- if .Values.podMonitor.jobLabel }}
   jobLabel: {{ .Values.podMonitor.jobLabel }}

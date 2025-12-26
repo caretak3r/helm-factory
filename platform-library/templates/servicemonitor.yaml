@@ -3,7 +3,7 @@ apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   name: {{ include "platform.fullname" . }}
-  namespace: {{ default .Values.global.namespace .Values.serviceMonitor.namespace }}
+  namespace: {{ default .Release.Namespace .Values.serviceMonitor.namespace }}
   labels:
     {{- include "platform.labels" . | nindent 4 }}
     {{- range $k, $v := .Values.serviceMonitor.labels }}
@@ -49,7 +49,7 @@ spec:
     {{- toYaml .Values.serviceMonitor.namespaceSelector | nindent 4 }}
     {{- else }}
     matchNames:
-      - {{ .Values.global.namespace | quote }}
+      - {{ .Release.Namespace | quote }}
     {{- end }}
   {{- if .Values.serviceMonitor.jobLabel }}
   jobLabel: {{ .Values.serviceMonitor.jobLabel }}
