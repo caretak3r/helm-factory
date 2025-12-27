@@ -1,37 +1,42 @@
 {{- define "platform.configmap.script" -}}
-{{- if or .Values.job.script .Values.job.scriptFile }}
+{{- $root := .root -}}
+{{- $job := .job -}}
+{{- if or $job.script $job.scriptFile }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "platform.fullname" . }}-{{ .Values.job.type }}-script
-  namespace: {{ .Values.global.namespace }}
+  name: {{ include "platform.fullname" $root }}-{{ $job.type }}-script
+  namespace: {{ $root.Release.Namespace }}
   labels:
-    {{- include "platform.labels" . | nindent 4 }}
-    {{- with .Values.labels }}
+    {{- include "platform.labels" $root | nindent 4 }}
+    {{- range $k, $v := $root.Values.commonLabels }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+    {{- with $root.Values.labels }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
-    app.kubernetes.io/component: job-{{ .Values.job.type }}-script
+    app.kubernetes.io/component: job-{{ $job.type }}-script
 data:
-  {{- if .Values.job.script }}
+  {{- if $job.script }}
   script.sh: |
-{{- if kindIs "string" .Values.job.script }}
-{{ .Values.job.script | indent 4 }}
-{{- else if kindIs "slice" .Values.job.script }}
-{{- range .Values.job.script }}
+{{- if kindIs "string" $job.script }}
+{{ $job.script | indent 4 }}
+{{- else if kindIs "slice" $job.script }}
+{{- range $job.script }}
     {{ . }}
 {{- end }}
 {{- end }}
-  {{- else if .Values.job.scriptFile }}
+  {{- else if $job.scriptFile }}
   script.sh: |
-{{- $scriptPath := .Values.job.scriptFile }}
+{{- $scriptPath := $job.scriptFile }}
 {{- $scriptFile := $scriptPath }}
 {{- if not (hasPrefix "scripts/" $scriptFile) }}
 {{- $scriptFile = printf "scripts/%s" $scriptFile }}
 {{- end }}
-{{- if .Files.Get $scriptFile }}
-{{ .Files.Get $scriptFile | indent 4 }}
-{{- else if .Files.Get $scriptPath }}
-{{ .Files.Get $scriptPath | indent 4 }}
+{{- if $root.Files.Get $scriptFile }}
+{{ $root.Files.Get $scriptFile | indent 4 }}
+{{- else if $root.Files.Get $scriptPath }}
+{{ $root.Files.Get $scriptPath | indent 4 }}
 {{- else }}
     # Script file not found: {{ $scriptPath }}
     # Please ensure the script file exists in the chart's scripts/ directory

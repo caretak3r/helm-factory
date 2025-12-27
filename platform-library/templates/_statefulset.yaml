@@ -3,78 +3,41 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: {{ include "platform.fullname" . }}
-  namespace: {{ .Values.global.namespace }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "platform.labels" . | nindent 4 }}
-    {{- with .Values.labels }}
-    {{- toYaml . | nindent 4 }}
+    {{- range $k, $v := .Values.commonLabels }}
+    {{ $k }}: {{ $v | quote }}
     {{- end }}
-  {{- with .Values.annotations }}
+    {{- range $k, $v := .Values.labels }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+  {{- if or .Values.commonAnnotations .Values.annotations }}
   annotations:
-    {{- toYaml . | nindent 4 }}
+    {{- range $k, $v := .Values.commonAnnotations }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+    {{- range $k, $v := .Values.annotations }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
   {{- end }}
 spec:
-  serviceName: {{ include "platform.fullname" . }}
-  replicas: {{ .Values.deployment.replicas }}
+  serviceName: {{ default (include "platform.fullname" .) .Values.statefulSet.serviceName }}
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  podManagementPolicy: {{ .Values.statefulSet.podManagementPolicy | default "OrderedReady" }}
+  {{- if .Values.statefulSet.updateStrategy }}
+  updateStrategy: {{- toYaml .Values.statefulSet.updateStrategy | nindent 4 }}
+  {{- end }}
   selector:
     matchLabels:
       {{- include "platform.selectorLabels" . | nindent 6 }}
   template:
-    metadata:
-      labels:
-        {{- include "platform.selectorLabels" . | nindent 8 }}
-        {{- with .Values.labels }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
-    spec:
-      {{- with .Values.serviceAccount }}
-      {{- if .create }}
-      serviceAccountName: {{ include "platform.serviceAccountName" $ }}
-      {{- end }}
-      {{- end }}
-      securityContext:
-        {{- toYaml .Values.podSecurityContext | nindent 8 }}
-      containers:
-      - name: {{ .Chart.Name }}
-        securityContext:
-          {{- toYaml .Values.securityContext | nindent 10 }}
-        image: "{{ .Values.deployment.image.repository }}:{{ .Values.deployment.image.tag }}"
-        imagePullPolicy: {{ .Values.deployment.image.pullPolicy }}
-        ports:
-        - name: http
-          containerPort: {{ .Values.service.targetPort }}
-          protocol: TCP
-        {{- if .Values.deployment.livenessProbe.enabled }}
-        livenessProbe:
-          httpGet:
-            path: {{ .Values.deployment.livenessProbe.path }}
-            port: {{ .Values.deployment.livenessProbe.port }}
-          initialDelaySeconds: {{ .Values.deployment.livenessProbe.initialDelaySeconds }}
-          periodSeconds: {{ .Values.deployment.livenessProbe.periodSeconds }}
-        {{- end }}
-        {{- if .Values.deployment.readinessProbe.enabled }}
-        readinessProbe:
-          httpGet:
-            path: {{ .Values.deployment.readinessProbe.path }}
-            port: {{ .Values.deployment.readinessProbe.port }}
-          initialDelaySeconds: {{ .Values.deployment.readinessProbe.initialDelaySeconds }}
-          periodSeconds: {{ .Values.deployment.readinessProbe.periodSeconds }}
-        {{- end }}
-        resources:
-          {{- toYaml .Values.deployment.resources | nindent 10 }}
-        env:
-        - name: POD_NAME
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.name
-        - name: POD_NAMESPACE
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.namespace
-  {{- if .Values.statefulset }}
-  {{- if .Values.statefulset.volumeClaimTemplates }}
+    {{- include "platform.podTemplateSpec" . | nindent 4 }}
+  {{- if .Values.statefulSet.volumeClaimTemplates }}
   volumeClaimTemplates:
-    {{- range .Values.statefulset.volumeClaimTemplates }}
+    {{- range .Values.statefulSet.volumeClaimTemplates }}
     - metadata:
         name: {{ .name }}
       spec:
@@ -89,7 +52,6 @@ spec:
           requests:
             storage: {{ .storage | quote }}
     {{- end }}
-  {{- end }}
   {{- end }}
 {{- end }}
 

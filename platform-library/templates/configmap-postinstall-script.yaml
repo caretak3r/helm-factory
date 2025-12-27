@@ -1,14 +1,5 @@
-{{- if .Values.job.postInstall.enabled }}
-{{- if or .Values.job.postInstall.script .Values.job.postInstall.scriptFile }}
-{{- $jobValues := .Values }}
-{{- $_ := set $jobValues.job "type" "postinstall" }}
-{{- if .Values.job.postInstall.script }}
-{{- $_ := set $jobValues.job "script" .Values.job.postInstall.script }}
-{{- end }}
-{{- if .Values.job.postInstall.scriptFile }}
-{{- $_ := set $jobValues.job "scriptFile" .Values.job.postInstall.scriptFile }}
-{{- end }}
-{{- include "platform.configmap.script" $jobValues }}
-{{- end }}
+{{- if and .Values.jobs.postInstall.enabled (or .Values.jobs.postInstall.script .Values.jobs.postInstall.scriptFile) }}
+{{- $job := dict "type" "postinstall" "script" .Values.jobs.postInstall.script "scriptFile" .Values.jobs.postInstall.scriptFile -}}
+{{- include "platform.configmap.script" (dict "root" . "job" $job) }}
 {{- end }}
 

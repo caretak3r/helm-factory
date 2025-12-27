@@ -1,0 +1,46 @@
+{{- if and .Values.persistence.enabled (not .Values.persistence.existingClaim) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ printf "%s-data" (include "platform.fullname" .) }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+    {{- range $k, $v := .Values.commonLabels }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+  {{- $annotations := dict -}}
+  {{- range $k, $v := .Values.commonAnnotations }}
+    {{- $_ := set $annotations $k $v -}}
+  {{- end }}
+  {{- range $k, $v := .Values.persistence.annotations }}
+    {{- $_ := set $annotations $k $v -}}
+  {{- end }}
+  {{- if gt (len $annotations) 0 }}
+  annotations:
+    {{- range $k, $v := $annotations }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+  {{- end }}
+spec:
+  accessModes:
+    {{- range .Values.persistence.accessModes }}
+    - {{ . | quote }}
+    {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.size | quote }}
+  {{- if .Values.persistence.storageClass }}
+    {{- if eq .Values.persistence.storageClass "-" }}
+  storageClassName: ""
+    {{- else }}
+  storageClassName: {{ .Values.persistence.storageClass | quote }}
+    {{- end }}
+  {{- end }}
+  {{- if .Values.persistence.selector }}
+  selector: {{- toYaml .Values.persistence.selector | nindent 4 }}
+  {{- end }}
+  {{- if .Values.persistence.dataSource }}
+  dataSource: {{- toYaml .Values.persistence.dataSource | nindent 4 }}
+  {{- end }}
+{{- end }}

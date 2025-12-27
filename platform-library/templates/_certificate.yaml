@@ -1,10 +1,30 @@
 {{- define "platform.certificate" -}}
 {{- if .Values.certificate.enabled -}}
+{{- $dnsSet := dict -}}
+{{- $dnsNames := list -}}
+{{- if .Values.ingress.hostname }}
+  {{- if not (hasKey $dnsSet .Values.ingress.hostname) }}
+    {{- $_ := set $dnsSet .Values.ingress.hostname true -}}
+    {{- $dnsNames = append $dnsNames .Values.ingress.hostname -}}
+  {{- end }}
+{{- end }}
+{{- range .Values.ingress.extraHosts }}
+  {{- if and .name (not (hasKey $dnsSet .name)) }}
+    {{- $_ := set $dnsSet .name true -}}
+    {{- $dnsNames = append $dnsNames .name -}}
+  {{- end }}
+{{- end }}
+{{- range .Values.certificate.dnsNames }}
+  {{- if not (hasKey $dnsSet .) }}
+    {{- $_ := set $dnsSet . true -}}
+    {{- $dnsNames = append $dnsNames . -}}
+  {{- end }}
+{{- end }}
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
   name: {{ include "platform.fullname" . }}-tls
-  namespace: {{ .Values.global.namespace }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "platform.labels" . | nindent 4 }}
 spec:
@@ -12,10 +32,30 @@ spec:
   issuerRef:
     name: {{ .Values.certificate.issuer }}
     kind: ClusterIssuer
+  {{- if .Values.certificate.duration }}
+  duration: {{ .Values.certificate.duration }}
+  {{- end }}
+  {{- if .Values.certificate.renewBefore }}
+  renewBefore: {{ .Values.certificate.renewBefore }}
+  {{- end }}
+  {{- if $dnsNames }}
   dnsNames:
-    {{- range .Values.ingress.hosts }}
-    - {{ .host }}
+    {{- range $dnsNames }}
+    - {{ . | quote }}
     {{- end }}
+  {{- end }}
+  {{- if .Values.certificate.ipAddresses }}
+  ipAddresses:
+    {{- range .Values.certificate.ipAddresses }}
+    - {{ . | quote }}
+    {{- end }}
+  {{- end }}
+  {{- if .Values.certificate.usages }}
+  usages:
+    {{- range .Values.certificate.usages }}
+    - {{ . | quote }}
+    {{- end }}
+  {{- end }}
 {{- end }}
 {{- end }}
 

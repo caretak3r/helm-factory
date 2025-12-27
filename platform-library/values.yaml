@@ -1,207 +1,465 @@
-# Default values for platform library chart
-# These are overridden by service team configuration.yml
+exports:
+  defaults:
+    # =============================================================================
+    # Platform Library Chart - Default Values
+    # =============================================================================
+    # These defaults are designed to work with the service configuration.yaml
+    # template. Service teams should NOT modify this file directly - instead,
+    # customize the configuration.yaml file for their service.
+    # =============================================================================
 
-global:
-  namespace: default
-  environment: production
+    # -----------------------------------------------------------------------------
+    # Naming Defaults
+    # -----------------------------------------------------------------------------
+    nameOverride: ""
+    fullnameOverride: ""
 
-service:
-  name: ""
-  type: ClusterIP
-  port: 80
-  targetPort: 8080
+    # -----------------------------------------------------------------------------
+    # Global Configuration
+    # -----------------------------------------------------------------------------
+    global:
+      imageRegistry: ""
+      imagePullPolicy: ""
+      imagePullSecrets: []
+      storageClass: ""
 
-# Workload type: Deployment, StatefulSet, or DaemonSet
-# Default is Deployment
-workload:
-  type: Deployment
+    # -----------------------------------------------------------------------------
+    # Workload Type
+    # -----------------------------------------------------------------------------
+    workload:
+      type: Deployment
 
-deployment:
-  replicas: 2
-  image:
-    repository: ""
-    tag: "latest"
-    pullPolicy: IfNotPresent
-  resources:
-    requests:
-      cpu: 100m
-      memory: 128Mi
-    limits:
-      cpu: 500m
-      memory: 512Mi
-  livenessProbe:
-    enabled: true
-    path: /health
-    port: 8080
-    initialDelaySeconds: 30
-    periodSeconds: 10
-  readinessProbe:
-    enabled: true
-    path: /ready
-    port: 8080
-    initialDelaySeconds: 10
-    periodSeconds: 5
+    # -----------------------------------------------------------------------------
+    # Container Image
+    # -----------------------------------------------------------------------------
+    image:
+      registry: docker.io
+      repository: ""
+      tag: latest
+      digest: ""
+      pullPolicy: IfNotPresent
+      pullSecrets: []
 
-ingress:
-  enabled: false
-  className: nginx
-  annotations: {}
-  hosts:
-    - host: ""
-      paths:
-        - path: /
-          pathType: Prefix
-  tls: []
+    # -----------------------------------------------------------------------------
+    # Replica Configuration
+    # -----------------------------------------------------------------------------
+    replicaCount: 1
+    revisionHistoryLimit: 10
 
-mtls:
-  enabled: false
-  policy: STRICT
+    # -----------------------------------------------------------------------------
+    # Container Ports
+    # -----------------------------------------------------------------------------
+    ports:
+      - name: http
+        containerPort: 8080
+        protocol: TCP
 
-certificate:
-  enabled: false
-  issuer: factory-self-ca
-  secretName: ""
+    # -----------------------------------------------------------------------------
+    # Service
+    # -----------------------------------------------------------------------------
+    service:
+      enabled: false
+      type: ClusterIP
+      ports:
+        - name: http
+          port: 80
+          targetPort: http
+          protocol: TCP
+      sessionAffinity: None
+      sessionAffinityConfig: {}
+      clusterIP: ""
+      loadBalancerIP: ""
+      loadBalancerSourceRanges: []
+      externalTrafficPolicy: Cluster
+      annotations: {}
 
-autoscaling:
-  enabled: false
-  minReplicas: 2
-  maxReplicas: 10
-  targetCPUUtilizationPercentage: 80
+    # -----------------------------------------------------------------------------
+    # High Availability
+    # -----------------------------------------------------------------------------
+    highAvailability:
+      enabled: false
+      podAntiAffinityPreset: soft
+      podAffinityPreset: ""
+      nodeAffinityPreset:
+        type: ""
+        key: ""
+        values: []
+      topologySpreadConstraints: []
 
-serviceAccount:
-  create: true
-  annotations: {}
+    # -----------------------------------------------------------------------------
+    # Horizontal Pod Autoscaler
+    # -----------------------------------------------------------------------------
+    autoscaling:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 10
+      targetCPU: 80
+      targetMemory: ""
+      metrics: []
+      behavior: {}
 
-podSecurityContext:
-  fsGroup: 2000
+    # -----------------------------------------------------------------------------
+    # Update Strategy
+    # -----------------------------------------------------------------------------
+    updateStrategy:
+      type: RollingUpdate
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
 
-securityContext:
-  capabilities:
-    drop:
-    - ALL
-  readOnlyRootFilesystem: false
-  runAsNonRoot: true
-  runAsUser: 1000
+    # -----------------------------------------------------------------------------
+    # Pod Disruption Budget
+    # -----------------------------------------------------------------------------
+    podDisruptionBudget:
+      enabled: false
+      minAvailable: 1
 
-labels: {}
-annotations: {}
+    # -----------------------------------------------------------------------------
+    # Resources
+    # -----------------------------------------------------------------------------
+    resources: {}
 
-# StatefulSet specific configuration
-statefulset:
-  volumeClaimTemplates: []
-  # Example:
-  # volumeClaimTemplates:
-  #   - name: data
-  #     storageClassName: fast-ssd
-  #     accessModes:
-  #       - ReadWriteOnce
-  #     storage: 10Gi
+    # -----------------------------------------------------------------------------
+    # Probes
+    # -----------------------------------------------------------------------------
+    startupProbe:
+      enabled: false
+      httpGet:
+        path: /healthz
+        port: http
+      initialDelaySeconds: 0
+      periodSeconds: 10
+      timeoutSeconds: 1
+      failureThreshold: 30
+      successThreshold: 1
 
-# DaemonSet specific configuration
-daemonset:
-  nodeSelector: {}
-  # Example:
-  # nodeSelector:
-  #   kubernetes.io/os: linux
-  tolerations: []
-  # Example:
-  # tolerations:
-  #   - key: node-role.kubernetes.io/master
-  #     operator: Exists
-  #     effect: NoSchedule
+    livenessProbe:
+      enabled: false
+      httpGet:
+        path: /healthz
+        port: http
+      initialDelaySeconds: 30
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 3
+      successThreshold: 1
 
-# Job configuration for pre-install and post-install hooks
-job:
-  # Common job settings (used by both preInstall and postInstall)
-  image:
-    repository: ""
-    tag: "latest"
-    pullPolicy: IfNotPresent
-  backoffLimit: 3
-  completions: 1
-  parallelism: 1
-  restartPolicy: Never
-  activeDeadlineSeconds: 300
-  command: []
-  args: []
-  env: []
-  resources:
-    requests:
-      cpu: 100m
-      memory: 128Mi
-    limits:
-      cpu: 500m
-      memory: 512Mi
-  volumeMounts: []
-  volumes: []
-  
-  # Pre-install job (runs before deployment)
-  preInstall:
-    enabled: false
-    hookWeight: -5  # Lower weight = runs earlier
-    # Option 1: Inline script (creates ConfigMap automatically)
-    # script: |
-    #   #!/bin/sh
-    #   echo "Running pre-install setup"
-    #   # Add your script commands here
-    #   exit 0
-    # Or as array:
-    # script:
-    #   - "#!/bin/sh"
-    #   - "echo 'Running pre-install setup'"
-    #   - "exit 0"
-    # Option 2: Script file from repository (relative to chart root)
-    # scriptFile: scripts/pre-install.sh
-    # Option 3: Custom command and args (if neither script nor scriptFile is set)
-    # command:
-    #   - /bin/sh
-    #   - -c
-    # args:
-    #   - echo "Running pre-install job"
-    # Override common job settings if needed
-    # image:
-    #   repository: myregistry/pre-install-job
-    #   tag: "v1.0.0"
-    # env:
-    #   - name: ENV_VAR
-    #     value: "value"
-    # resources:
-    #   requests:
-    #     cpu: 200m
-    #     memory: 256Mi
-  
-  # Post-install job (runs after deployment)
-  postInstall:
-    enabled: false
-    hookWeight: 5  # Higher weight = runs later
-    # Option 1: Inline script (creates ConfigMap automatically)
-    # script: |
-    #   #!/bin/sh
-    #   echo "Running post-install verification"
-    #   # Add your script commands here
-    #   exit 0
-    # Or as array:
-    # script:
-    #   - "#!/bin/sh"
-    #   - "echo 'Running post-install verification'"
-    #   - "exit 0"
-    # Option 2: Script file from repository (relative to chart root)
-    # scriptFile: scripts/post-install.sh
-    # Option 3: Custom command and args (if neither script nor scriptFile is set)
-    # command:
-    #   - /bin/sh
-    #   - -c
-    # args:
-    #   - echo "Running post-install job"
-    # Override common job settings if needed
-    # image:
-    #   repository: myregistry/post-install-job
-    #   tag: "v1.0.0"
-    # env:
-    #   - name: ENV_VAR
-    #     value: "value"
-    # resources:
-    #   requests:
-    #     cpu: 200m
-    #     memory: 256Mi
+    readinessProbe:
+      enabled: false
+      httpGet:
+        path: /ready
+        port: http
+      initialDelaySeconds: 10
+      periodSeconds: 5
+      timeoutSeconds: 3
+      failureThreshold: 3
+      successThreshold: 1
 
+    # -----------------------------------------------------------------------------
+    # Init Containers
+    # -----------------------------------------------------------------------------
+    initContainers:
+      enabled: false
+      containers: []
+
+    # -----------------------------------------------------------------------------
+    # Sidecars
+    # -----------------------------------------------------------------------------
+    sidecars:
+      enabled: false
+      containers: []
+
+    # -----------------------------------------------------------------------------
+    # ConfigMap
+    # -----------------------------------------------------------------------------
+    configMap:
+      enabled: false
+      mounted: false
+      mountPath: /app/config
+      subPath: ""
+      data: {}
+      annotations: {}
+      labels: {}
+
+    # -----------------------------------------------------------------------------
+    # Secret
+    # -----------------------------------------------------------------------------
+    secret:
+      enabled: false
+      type: Opaque
+      data: {}
+      stringData: {}
+      annotations: {}
+      labels: {}
+
+    # -----------------------------------------------------------------------------
+    # Environment Variables
+    # -----------------------------------------------------------------------------
+    envVars: {}
+    envVarsConfigMap: ""
+    envVarsSecret: ""
+
+    # -----------------------------------------------------------------------------
+    # Ingress
+    # -----------------------------------------------------------------------------
+    ingress:
+      enabled: false
+      ingressClassName: ""
+      hostname: app.local
+      path: /
+      pathType: ImplementationSpecific
+      annotations: {}
+      tls: false
+      existingSecret: ""
+      selfSigned: false
+      extraHosts: []
+      extraPaths: []
+      extraTls: []
+      extraRules: []
+      secrets: []
+
+    # -----------------------------------------------------------------------------
+    # Certificate (cert-manager)
+    # -----------------------------------------------------------------------------
+    certificate:
+      enabled: false
+      issuer: ""
+      secretName: ""
+      duration: 2160h
+      renewBefore: 360h
+      dnsNames: []
+      ipAddresses: []
+      usages:
+        - server auth
+        - client auth
+
+    # -----------------------------------------------------------------------------
+    # mTLS Policy
+    # -----------------------------------------------------------------------------
+    mtls:
+      enabled: false
+      policy: STRICT
+
+    # -----------------------------------------------------------------------------
+    # Self-Signed TLS
+    # -----------------------------------------------------------------------------
+    tlsSelfSigned:
+      enabled: false
+      commonName: ""
+      dnsNames: []
+      validityDays: 365
+
+    # -----------------------------------------------------------------------------
+    # Jobs (Helm Hooks)
+    # -----------------------------------------------------------------------------
+    jobs:
+      image:
+        repository: ""
+        tag: "latest"
+        pullPolicy: IfNotPresent
+      backoffLimit: 3
+      completions: 1
+      parallelism: 1
+      restartPolicy: Never
+      activeDeadlineSeconds: 300
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+      preInstall:
+        enabled: false
+        hookWeight: -5
+        script: ""
+        scriptFile: ""
+        command: []
+        args: []
+        env: []
+        volumeMounts: []
+        volumes: []
+      postInstall:
+        enabled: false
+        hookWeight: 5
+        script: ""
+        scriptFile: ""
+        command: []
+        args: []
+        env: []
+        volumeMounts: []
+        volumes: []
+
+    # -----------------------------------------------------------------------------
+    # CronJob
+    # -----------------------------------------------------------------------------
+    cronJob:
+      enabled: false
+      schedule: "0 * * * *"
+      concurrencyPolicy: Allow
+      successfulJobsHistoryLimit: 3
+      failedJobsHistoryLimit: 1
+      startingDeadlineSeconds: 200
+      suspend: false
+      containers: []
+      initContainers: []
+      volumes: []
+      annotations: {}
+      podAnnotations: {}
+      podLabels: {}
+      nodeSelector: {}
+      tolerations: []
+
+    # -----------------------------------------------------------------------------
+    # Persistence
+    # -----------------------------------------------------------------------------
+    persistence:
+      enabled: false
+      mountPath: /data
+      subPath: ""
+      storageClass: ""
+      accessModes:
+        - ReadWriteOnce
+      size: 8Gi
+      existingClaim: ""
+      selector: {}
+      dataSource: {}
+      annotations: {}
+
+    # -----------------------------------------------------------------------------
+    # StatefulSet Specific
+    # -----------------------------------------------------------------------------
+    statefulSet:
+      serviceName: ""
+      podManagementPolicy: OrderedReady
+      updateStrategy:
+        type: RollingUpdate
+        rollingUpdate:
+          partition: 0
+      volumeClaimTemplates: []
+
+    # -----------------------------------------------------------------------------
+    # DaemonSet Specific
+    # -----------------------------------------------------------------------------
+    daemonSet:
+      updateStrategy:
+        type: RollingUpdate
+        rollingUpdate:
+          maxUnavailable: 1
+      nodeSelector: {}
+
+    # -----------------------------------------------------------------------------
+    # Service Account
+    # -----------------------------------------------------------------------------
+    serviceAccount:
+      create: false
+      name: ""
+      automountServiceAccountToken: true
+      annotations: {}
+      labels: {}
+
+    # -----------------------------------------------------------------------------
+    # Security Context
+    # -----------------------------------------------------------------------------
+    podSecurityContext:
+      enabled: false
+      fsGroup: 1001
+
+    containerSecurityContext:
+      enabled: false
+      runAsUser: 1001
+      runAsNonRoot: true
+      readOnlyRootFilesystem: false
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+          - ALL
+
+    # -----------------------------------------------------------------------------
+    # Pod Scheduling
+    # -----------------------------------------------------------------------------
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+    priorityClassName: ""
+    schedulerName: ""
+    terminationGracePeriodSeconds: 30
+    podRestartPolicy: Always
+    hostAliases: []
+
+    # -----------------------------------------------------------------------------
+    # Volumes
+    # -----------------------------------------------------------------------------
+    extraVolumes: []
+    extraVolumeMounts: []
+
+    # -----------------------------------------------------------------------------
+    # Command/Args Override
+    # -----------------------------------------------------------------------------
+    command: []
+    args: []
+
+    # -----------------------------------------------------------------------------
+    # Lifecycle Hooks
+    # -----------------------------------------------------------------------------
+    lifecycleHooks: {}
+
+    # -----------------------------------------------------------------------------
+    # Service Monitor (Prometheus)
+    # -----------------------------------------------------------------------------
+    serviceMonitor:
+      enabled: false
+      namespace: ""
+      port: http
+      path: /metrics
+      interval: ""
+      scrapeTimeout: ""
+      labels: {}
+      annotations: {}
+      jobLabel: ""
+      honorLabels: false
+      relabelings: []
+      metricRelabelings: []
+      selector: {}
+      namespaceSelector: {}
+
+    # -----------------------------------------------------------------------------
+    # Pod Monitor (Prometheus)
+    # -----------------------------------------------------------------------------
+    podMonitor:
+      enabled: false
+      namespace: ""
+      port: http
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+      labels: {}
+      annotations: {}
+      jobLabel: ""
+      honorLabels: false
+      relabelings: []
+      metricRelabelings: []
+      selector: {}
+      namespaceSelector: {}
+
+    # -----------------------------------------------------------------------------
+    # Network Policy
+    # -----------------------------------------------------------------------------
+    networkPolicy:
+      enabled: false
+      policyTypes:
+        - Ingress
+        - Egress
+      podSelector: {}
+      ingress: []
+      egress: []
+
+    # -----------------------------------------------------------------------------
+    # Labels and Annotations
+    # -----------------------------------------------------------------------------
+    commonLabels: {}
+    commonAnnotations: {}
+    labels: {}
+    annotations: {}
+    podLabels: {}
+    podAnnotations: {}

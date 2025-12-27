@@ -1,14 +1,5 @@
-{{- if .Values.job.preInstall.enabled }}
-{{- if or .Values.job.preInstall.script .Values.job.preInstall.scriptFile }}
-{{- $jobValues := .Values }}
-{{- $_ := set $jobValues.job "type" "preinstall" }}
-{{- if .Values.job.preInstall.script }}
-{{- $_ := set $jobValues.job "script" .Values.job.preInstall.script }}
-{{- end }}
-{{- if .Values.job.preInstall.scriptFile }}
-{{- $_ := set $jobValues.job "scriptFile" .Values.job.preInstall.scriptFile }}
-{{- end }}
-{{- include "platform.configmap.script" $jobValues }}
-{{- end }}
+{{- if and .Values.jobs.preInstall.enabled (or .Values.jobs.preInstall.script .Values.jobs.preInstall.scriptFile) }}
+{{- $job := dict "type" "preinstall" "script" .Values.jobs.preInstall.script "scriptFile" .Values.jobs.preInstall.scriptFile -}}
+{{- include "platform.configmap.script" (dict "root" . "job" $job) }}
 {{- end }}
 
