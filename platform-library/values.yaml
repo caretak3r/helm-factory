@@ -1,463 +1,465 @@
-# =============================================================================
-# Platform Library Chart - Default Values
-# =============================================================================
-# These defaults are designed to work with the service configuration.yaml
-# template. Service teams should NOT modify this file directly - instead,
-# customize the configuration.yaml file for their service.
-# =============================================================================
+exports:
+  defaults:
+    # =============================================================================
+    # Platform Library Chart - Default Values
+    # =============================================================================
+    # These defaults are designed to work with the service configuration.yaml
+    # template. Service teams should NOT modify this file directly - instead,
+    # customize the configuration.yaml file for their service.
+    # =============================================================================
 
-# -----------------------------------------------------------------------------
-# Naming Defaults
-# -----------------------------------------------------------------------------
-nameOverride: ""
-fullnameOverride: ""
+    # -----------------------------------------------------------------------------
+    # Naming Defaults
+    # -----------------------------------------------------------------------------
+    nameOverride: ""
+    fullnameOverride: ""
 
-# -----------------------------------------------------------------------------
-# Global Configuration
-# -----------------------------------------------------------------------------
-global:
-  imageRegistry: ""
-  imagePullPolicy: ""
-  imagePullSecrets: []
-  storageClass: ""
+    # -----------------------------------------------------------------------------
+    # Global Configuration
+    # -----------------------------------------------------------------------------
+    global:
+      imageRegistry: ""
+      imagePullPolicy: ""
+      imagePullSecrets: []
+      storageClass: ""
 
-# -----------------------------------------------------------------------------
-# Workload Type
-# -----------------------------------------------------------------------------
-workload:
-  type: Deployment
+    # -----------------------------------------------------------------------------
+    # Workload Type
+    # -----------------------------------------------------------------------------
+    workload:
+      type: Deployment
 
-# -----------------------------------------------------------------------------
-# Container Image
-# -----------------------------------------------------------------------------
-image:
-  registry: docker.io
-  repository: ""
-  tag: latest
-  digest: ""
-  pullPolicy: IfNotPresent
-  pullSecrets: []
+    # -----------------------------------------------------------------------------
+    # Container Image
+    # -----------------------------------------------------------------------------
+    image:
+      registry: docker.io
+      repository: ""
+      tag: latest
+      digest: ""
+      pullPolicy: IfNotPresent
+      pullSecrets: []
 
-# -----------------------------------------------------------------------------
-# Replica Configuration
-# -----------------------------------------------------------------------------
-replicaCount: 1
-revisionHistoryLimit: 10
+    # -----------------------------------------------------------------------------
+    # Replica Configuration
+    # -----------------------------------------------------------------------------
+    replicaCount: 1
+    revisionHistoryLimit: 10
 
-# -----------------------------------------------------------------------------
-# Container Ports
-# -----------------------------------------------------------------------------
-ports:
-  - name: http
-    containerPort: 8080
-    protocol: TCP
+    # -----------------------------------------------------------------------------
+    # Container Ports
+    # -----------------------------------------------------------------------------
+    ports:
+      - name: http
+        containerPort: 8080
+        protocol: TCP
 
-# -----------------------------------------------------------------------------
-# Service
-# -----------------------------------------------------------------------------
-service:
-  enabled: false
-  type: ClusterIP
-  ports:
-    - name: http
-      port: 80
-      targetPort: http
-      protocol: TCP
-  sessionAffinity: None
-  sessionAffinityConfig: {}
-  clusterIP: ""
-  loadBalancerIP: ""
-  loadBalancerSourceRanges: []
-  externalTrafficPolicy: Cluster
-  annotations: {}
+    # -----------------------------------------------------------------------------
+    # Service
+    # -----------------------------------------------------------------------------
+    service:
+      enabled: false
+      type: ClusterIP
+      ports:
+        - name: http
+          port: 80
+          targetPort: http
+          protocol: TCP
+      sessionAffinity: None
+      sessionAffinityConfig: {}
+      clusterIP: ""
+      loadBalancerIP: ""
+      loadBalancerSourceRanges: []
+      externalTrafficPolicy: Cluster
+      annotations: {}
 
-# -----------------------------------------------------------------------------
-# High Availability
-# -----------------------------------------------------------------------------
-highAvailability:
-  enabled: false
-  podAntiAffinityPreset: soft
-  podAffinityPreset: ""
-  nodeAffinityPreset:
-    type: ""
-    key: ""
-    values: []
-  topologySpreadConstraints: []
+    # -----------------------------------------------------------------------------
+    # High Availability
+    # -----------------------------------------------------------------------------
+    highAvailability:
+      enabled: false
+      podAntiAffinityPreset: soft
+      podAffinityPreset: ""
+      nodeAffinityPreset:
+        type: ""
+        key: ""
+        values: []
+      topologySpreadConstraints: []
 
-# -----------------------------------------------------------------------------
-# Horizontal Pod Autoscaler
-# -----------------------------------------------------------------------------
-autoscaling:
-  enabled: false
-  minReplicas: 2
-  maxReplicas: 10
-  targetCPU: 80
-  targetMemory: ""
-  metrics: []
-  behavior: {}
+    # -----------------------------------------------------------------------------
+    # Horizontal Pod Autoscaler
+    # -----------------------------------------------------------------------------
+    autoscaling:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 10
+      targetCPU: 80
+      targetMemory: ""
+      metrics: []
+      behavior: {}
 
-# -----------------------------------------------------------------------------
-# Update Strategy
-# -----------------------------------------------------------------------------
-updateStrategy:
-  type: RollingUpdate
-  rollingUpdate:
-    maxSurge: 25%
-    maxUnavailable: 25%
+    # -----------------------------------------------------------------------------
+    # Update Strategy
+    # -----------------------------------------------------------------------------
+    updateStrategy:
+      type: RollingUpdate
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
 
-# -----------------------------------------------------------------------------
-# Pod Disruption Budget
-# -----------------------------------------------------------------------------
-podDisruptionBudget:
-  enabled: false
-  minAvailable: 1
+    # -----------------------------------------------------------------------------
+    # Pod Disruption Budget
+    # -----------------------------------------------------------------------------
+    podDisruptionBudget:
+      enabled: false
+      minAvailable: 1
 
-# -----------------------------------------------------------------------------
-# Resources
-# -----------------------------------------------------------------------------
-resources: {}
+    # -----------------------------------------------------------------------------
+    # Resources
+    # -----------------------------------------------------------------------------
+    resources: {}
 
-# -----------------------------------------------------------------------------
-# Probes
-# -----------------------------------------------------------------------------
-startupProbe:
-  enabled: false
-  httpGet:
-    path: /healthz
-    port: http
-  initialDelaySeconds: 0
-  periodSeconds: 10
-  timeoutSeconds: 1
-  failureThreshold: 30
-  successThreshold: 1
+    # -----------------------------------------------------------------------------
+    # Probes
+    # -----------------------------------------------------------------------------
+    startupProbe:
+      enabled: false
+      httpGet:
+        path: /healthz
+        port: http
+      initialDelaySeconds: 0
+      periodSeconds: 10
+      timeoutSeconds: 1
+      failureThreshold: 30
+      successThreshold: 1
 
-livenessProbe:
-  enabled: false
-  httpGet:
-    path: /healthz
-    port: http
-  initialDelaySeconds: 30
-  periodSeconds: 10
-  timeoutSeconds: 5
-  failureThreshold: 3
-  successThreshold: 1
+    livenessProbe:
+      enabled: false
+      httpGet:
+        path: /healthz
+        port: http
+      initialDelaySeconds: 30
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 3
+      successThreshold: 1
 
-readinessProbe:
-  enabled: false
-  httpGet:
-    path: /ready
-    port: http
-  initialDelaySeconds: 10
-  periodSeconds: 5
-  timeoutSeconds: 3
-  failureThreshold: 3
-  successThreshold: 1
+    readinessProbe:
+      enabled: false
+      httpGet:
+        path: /ready
+        port: http
+      initialDelaySeconds: 10
+      periodSeconds: 5
+      timeoutSeconds: 3
+      failureThreshold: 3
+      successThreshold: 1
 
-# -----------------------------------------------------------------------------
-# Init Containers
-# -----------------------------------------------------------------------------
-initContainers:
-  enabled: false
-  containers: []
+    # -----------------------------------------------------------------------------
+    # Init Containers
+    # -----------------------------------------------------------------------------
+    initContainers:
+      enabled: false
+      containers: []
 
-# -----------------------------------------------------------------------------
-# Sidecars
-# -----------------------------------------------------------------------------
-sidecars:
-  enabled: false
-  containers: []
+    # -----------------------------------------------------------------------------
+    # Sidecars
+    # -----------------------------------------------------------------------------
+    sidecars:
+      enabled: false
+      containers: []
 
-# -----------------------------------------------------------------------------
-# ConfigMap
-# -----------------------------------------------------------------------------
-configMap:
-  enabled: false
-  mounted: false
-  mountPath: /app/config
-  subPath: ""
-  data: {}
-  annotations: {}
-  labels: {}
+    # -----------------------------------------------------------------------------
+    # ConfigMap
+    # -----------------------------------------------------------------------------
+    configMap:
+      enabled: false
+      mounted: false
+      mountPath: /app/config
+      subPath: ""
+      data: {}
+      annotations: {}
+      labels: {}
 
-# -----------------------------------------------------------------------------
-# Secret
-# -----------------------------------------------------------------------------
-secret:
-  enabled: false
-  type: Opaque
-  data: {}
-  stringData: {}
-  annotations: {}
-  labels: {}
+    # -----------------------------------------------------------------------------
+    # Secret
+    # -----------------------------------------------------------------------------
+    secret:
+      enabled: false
+      type: Opaque
+      data: {}
+      stringData: {}
+      annotations: {}
+      labels: {}
 
-# -----------------------------------------------------------------------------
-# Environment Variables
-# -----------------------------------------------------------------------------
-envVars: {}
-envVarsConfigMap: ""
-envVarsSecret: ""
+    # -----------------------------------------------------------------------------
+    # Environment Variables
+    # -----------------------------------------------------------------------------
+    envVars: {}
+    envVarsConfigMap: ""
+    envVarsSecret: ""
 
-# -----------------------------------------------------------------------------
-# Ingress
-# -----------------------------------------------------------------------------
-ingress:
-  enabled: false
-  ingressClassName: ""
-  hostname: app.local
-  path: /
-  pathType: ImplementationSpecific
-  annotations: {}
-  tls: false
-  existingSecret: ""
-  selfSigned: false
-  extraHosts: []
-  extraPaths: []
-  extraTls: []
-  extraRules: []
-  secrets: []
+    # -----------------------------------------------------------------------------
+    # Ingress
+    # -----------------------------------------------------------------------------
+    ingress:
+      enabled: false
+      ingressClassName: ""
+      hostname: app.local
+      path: /
+      pathType: ImplementationSpecific
+      annotations: {}
+      tls: false
+      existingSecret: ""
+      selfSigned: false
+      extraHosts: []
+      extraPaths: []
+      extraTls: []
+      extraRules: []
+      secrets: []
 
-# -----------------------------------------------------------------------------
-# Certificate (cert-manager)
-# -----------------------------------------------------------------------------
-certificate:
-  enabled: false
-  issuer: ""
-  secretName: ""
-  duration: 2160h
-  renewBefore: 360h
-  dnsNames: []
-  ipAddresses: []
-  usages:
-    - server auth
-    - client auth
+    # -----------------------------------------------------------------------------
+    # Certificate (cert-manager)
+    # -----------------------------------------------------------------------------
+    certificate:
+      enabled: false
+      issuer: ""
+      secretName: ""
+      duration: 2160h
+      renewBefore: 360h
+      dnsNames: []
+      ipAddresses: []
+      usages:
+        - server auth
+        - client auth
 
-# -----------------------------------------------------------------------------
-# mTLS Policy
-# -----------------------------------------------------------------------------
-mtls:
-  enabled: false
-  policy: STRICT
+    # -----------------------------------------------------------------------------
+    # mTLS Policy
+    # -----------------------------------------------------------------------------
+    mtls:
+      enabled: false
+      policy: STRICT
 
-# -----------------------------------------------------------------------------
-# Self-Signed TLS
-# -----------------------------------------------------------------------------
-tlsSelfSigned:
-  enabled: false
-  commonName: ""
-  dnsNames: []
-  validityDays: 365
+    # -----------------------------------------------------------------------------
+    # Self-Signed TLS
+    # -----------------------------------------------------------------------------
+    tlsSelfSigned:
+      enabled: false
+      commonName: ""
+      dnsNames: []
+      validityDays: 365
 
-# -----------------------------------------------------------------------------
-# Jobs (Helm Hooks)
-# -----------------------------------------------------------------------------
-jobs:
-  image:
-    repository: ""
-    tag: "latest"
-    pullPolicy: IfNotPresent
-  backoffLimit: 3
-  completions: 1
-  parallelism: 1
-  restartPolicy: Never
-  activeDeadlineSeconds: 300
-  resources:
-    requests:
-      cpu: 100m
-      memory: 128Mi
-    limits:
-      cpu: 500m
-      memory: 512Mi
-  preInstall:
-    enabled: false
-    hookWeight: -5
-    script: ""
-    scriptFile: ""
+    # -----------------------------------------------------------------------------
+    # Jobs (Helm Hooks)
+    # -----------------------------------------------------------------------------
+    jobs:
+      image:
+        repository: ""
+        tag: "latest"
+        pullPolicy: IfNotPresent
+      backoffLimit: 3
+      completions: 1
+      parallelism: 1
+      restartPolicy: Never
+      activeDeadlineSeconds: 300
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+      preInstall:
+        enabled: false
+        hookWeight: -5
+        script: ""
+        scriptFile: ""
+        command: []
+        args: []
+        env: []
+        volumeMounts: []
+        volumes: []
+      postInstall:
+        enabled: false
+        hookWeight: 5
+        script: ""
+        scriptFile: ""
+        command: []
+        args: []
+        env: []
+        volumeMounts: []
+        volumes: []
+
+    # -----------------------------------------------------------------------------
+    # CronJob
+    # -----------------------------------------------------------------------------
+    cronJob:
+      enabled: false
+      schedule: "0 * * * *"
+      concurrencyPolicy: Allow
+      successfulJobsHistoryLimit: 3
+      failedJobsHistoryLimit: 1
+      startingDeadlineSeconds: 200
+      suspend: false
+      containers: []
+      initContainers: []
+      volumes: []
+      annotations: {}
+      podAnnotations: {}
+      podLabels: {}
+      nodeSelector: {}
+      tolerations: []
+
+    # -----------------------------------------------------------------------------
+    # Persistence
+    # -----------------------------------------------------------------------------
+    persistence:
+      enabled: false
+      mountPath: /data
+      subPath: ""
+      storageClass: ""
+      accessModes:
+        - ReadWriteOnce
+      size: 8Gi
+      existingClaim: ""
+      selector: {}
+      dataSource: {}
+      annotations: {}
+
+    # -----------------------------------------------------------------------------
+    # StatefulSet Specific
+    # -----------------------------------------------------------------------------
+    statefulSet:
+      serviceName: ""
+      podManagementPolicy: OrderedReady
+      updateStrategy:
+        type: RollingUpdate
+        rollingUpdate:
+          partition: 0
+      volumeClaimTemplates: []
+
+    # -----------------------------------------------------------------------------
+    # DaemonSet Specific
+    # -----------------------------------------------------------------------------
+    daemonSet:
+      updateStrategy:
+        type: RollingUpdate
+        rollingUpdate:
+          maxUnavailable: 1
+      nodeSelector: {}
+
+    # -----------------------------------------------------------------------------
+    # Service Account
+    # -----------------------------------------------------------------------------
+    serviceAccount:
+      create: false
+      name: ""
+      automountServiceAccountToken: true
+      annotations: {}
+      labels: {}
+
+    # -----------------------------------------------------------------------------
+    # Security Context
+    # -----------------------------------------------------------------------------
+    podSecurityContext:
+      enabled: false
+      fsGroup: 1001
+
+    containerSecurityContext:
+      enabled: false
+      runAsUser: 1001
+      runAsNonRoot: true
+      readOnlyRootFilesystem: false
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+          - ALL
+
+    # -----------------------------------------------------------------------------
+    # Pod Scheduling
+    # -----------------------------------------------------------------------------
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+    priorityClassName: ""
+    schedulerName: ""
+    terminationGracePeriodSeconds: 30
+    podRestartPolicy: Always
+    hostAliases: []
+
+    # -----------------------------------------------------------------------------
+    # Volumes
+    # -----------------------------------------------------------------------------
+    extraVolumes: []
+    extraVolumeMounts: []
+
+    # -----------------------------------------------------------------------------
+    # Command/Args Override
+    # -----------------------------------------------------------------------------
     command: []
     args: []
-    env: []
-    volumeMounts: []
-    volumes: []
-  postInstall:
-    enabled: false
-    hookWeight: 5
-    script: ""
-    scriptFile: ""
-    command: []
-    args: []
-    env: []
-    volumeMounts: []
-    volumes: []
 
-# -----------------------------------------------------------------------------
-# CronJob
-# -----------------------------------------------------------------------------
-cronJob:
-  enabled: false
-  schedule: "0 * * * *"
-  concurrencyPolicy: Allow
-  successfulJobsHistoryLimit: 3
-  failedJobsHistoryLimit: 1
-  startingDeadlineSeconds: 200
-  suspend: false
-  containers: []
-  initContainers: []
-  volumes: []
-  annotations: {}
-  podAnnotations: {}
-  podLabels: {}
-  nodeSelector: {}
-  tolerations: []
+    # -----------------------------------------------------------------------------
+    # Lifecycle Hooks
+    # -----------------------------------------------------------------------------
+    lifecycleHooks: {}
 
-# -----------------------------------------------------------------------------
-# Persistence
-# -----------------------------------------------------------------------------
-persistence:
-  enabled: false
-  mountPath: /data
-  subPath: ""
-  storageClass: ""
-  accessModes:
-    - ReadWriteOnce
-  size: 8Gi
-  existingClaim: ""
-  selector: {}
-  dataSource: {}
-  annotations: {}
+    # -----------------------------------------------------------------------------
+    # Service Monitor (Prometheus)
+    # -----------------------------------------------------------------------------
+    serviceMonitor:
+      enabled: false
+      namespace: ""
+      port: http
+      path: /metrics
+      interval: ""
+      scrapeTimeout: ""
+      labels: {}
+      annotations: {}
+      jobLabel: ""
+      honorLabels: false
+      relabelings: []
+      metricRelabelings: []
+      selector: {}
+      namespaceSelector: {}
 
-# -----------------------------------------------------------------------------
-# StatefulSet Specific
-# -----------------------------------------------------------------------------
-statefulSet:
-  serviceName: ""
-  podManagementPolicy: OrderedReady
-  updateStrategy:
-    type: RollingUpdate
-    rollingUpdate:
-      partition: 0
-  volumeClaimTemplates: []
+    # -----------------------------------------------------------------------------
+    # Pod Monitor (Prometheus)
+    # -----------------------------------------------------------------------------
+    podMonitor:
+      enabled: false
+      namespace: ""
+      port: http
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+      labels: {}
+      annotations: {}
+      jobLabel: ""
+      honorLabels: false
+      relabelings: []
+      metricRelabelings: []
+      selector: {}
+      namespaceSelector: {}
 
-# -----------------------------------------------------------------------------
-# DaemonSet Specific
-# -----------------------------------------------------------------------------
-daemonSet:
-  updateStrategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxUnavailable: 1
-  nodeSelector: {}
+    # -----------------------------------------------------------------------------
+    # Network Policy
+    # -----------------------------------------------------------------------------
+    networkPolicy:
+      enabled: false
+      policyTypes:
+        - Ingress
+        - Egress
+      podSelector: {}
+      ingress: []
+      egress: []
 
-# -----------------------------------------------------------------------------
-# Service Account
-# -----------------------------------------------------------------------------
-serviceAccount:
-  create: false
-  name: ""
-  automountServiceAccountToken: true
-  annotations: {}
-  labels: {}
-
-# -----------------------------------------------------------------------------
-# Security Context
-# -----------------------------------------------------------------------------
-podSecurityContext:
-  enabled: false
-  fsGroup: 1001
-
-containerSecurityContext:
-  enabled: false
-  runAsUser: 1001
-  runAsNonRoot: true
-  readOnlyRootFilesystem: false
-  allowPrivilegeEscalation: false
-  capabilities:
-    drop:
-      - ALL
-
-# -----------------------------------------------------------------------------
-# Pod Scheduling
-# -----------------------------------------------------------------------------
-nodeSelector: {}
-tolerations: []
-affinity: {}
-priorityClassName: ""
-schedulerName: ""
-terminationGracePeriodSeconds: 30
-podRestartPolicy: Always
-hostAliases: []
-
-# -----------------------------------------------------------------------------
-# Volumes
-# -----------------------------------------------------------------------------
-extraVolumes: []
-extraVolumeMounts: []
-
-# -----------------------------------------------------------------------------
-# Command/Args Override
-# -----------------------------------------------------------------------------
-command: []
-args: []
-
-# -----------------------------------------------------------------------------
-# Lifecycle Hooks
-# -----------------------------------------------------------------------------
-lifecycleHooks: {}
-
-# -----------------------------------------------------------------------------
-# Service Monitor (Prometheus)
-# -----------------------------------------------------------------------------
-serviceMonitor:
-  enabled: false
-  namespace: ""
-  port: http
-  path: /metrics
-  interval: ""
-  scrapeTimeout: ""
-  labels: {}
-  annotations: {}
-  jobLabel: ""
-  honorLabels: false
-  relabelings: []
-  metricRelabelings: []
-  selector: {}
-  namespaceSelector: {}
-
-# -----------------------------------------------------------------------------
-# Pod Monitor (Prometheus)
-# -----------------------------------------------------------------------------
-podMonitor:
-  enabled: false
-  namespace: ""
-  port: http
-  path: /metrics
-  interval: 30s
-  scrapeTimeout: 10s
-  labels: {}
-  annotations: {}
-  jobLabel: ""
-  honorLabels: false
-  relabelings: []
-  metricRelabelings: []
-  selector: {}
-  namespaceSelector: {}
-
-# -----------------------------------------------------------------------------
-# Network Policy
-# -----------------------------------------------------------------------------
-networkPolicy:
-  enabled: false
-  policyTypes:
-    - Ingress
-    - Egress
-  podSelector: {}
-  ingress: []
-  egress: []
-
-# -----------------------------------------------------------------------------
-# Labels and Annotations
-# -----------------------------------------------------------------------------
-commonLabels: {}
-commonAnnotations: {}
-labels: {}
-annotations: {}
-podLabels: {}
-podAnnotations: {}
+    # -----------------------------------------------------------------------------
+    # Labels and Annotations
+    # -----------------------------------------------------------------------------
+    commonLabels: {}
+    commonAnnotations: {}
+    labels: {}
+    annotations: {}
+    podLabels: {}
+    podAnnotations: {}
