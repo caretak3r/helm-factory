@@ -1,0 +1,109 @@
+---
+# Source: my-test-service/templates/all.yaml
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: release-name-my-test-service
+  namespace: 
+  labels:
+    helm.sh/chart: my-test-service-0.1.0
+    app.kubernetes.io/name: my-test-service
+    app.kubernetes.io/instance: release-name
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+---
+# Source: my-test-service/templates/all.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: release-name-my-test-service
+  namespace: 
+  labels:
+    helm.sh/chart: my-test-service-0.1.0
+    app.kubernetes.io/name: my-test-service
+    app.kubernetes.io/instance: release-name
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: my-test-service
+    app.kubernetes.io/instance: release-name
+---
+# Source: my-test-service/templates/all.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: release-name-my-test-service
+  namespace: 
+  labels:
+    helm.sh/chart: my-test-service-0.1.0
+    app.kubernetes.io/name: my-test-service
+    app.kubernetes.io/instance: release-name
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: my-test-service
+      app.kubernetes.io/instance: release-name
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: my-test-service
+        app.kubernetes.io/instance: release-name
+    spec:
+      serviceAccountName: release-name-my-test-service
+      securityContext:
+        fsGroup: 2000
+      containers:
+      - name: my-test-service
+        securityContext:
+          null
+        image: "nginx:latest"
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 100m
+            memory: 128Mi
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+---
+# Source: my-test-service/templates/all.yaml
+---
+---
+# Source: my-test-service/templates/all.yaml
+---

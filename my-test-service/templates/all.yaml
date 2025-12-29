@@ -1,0 +1,15 @@
+{{- include "platform.workload" . }}
+---
+{{- include "platform.service" . }}
+---
+{{- include "platform.ingress" . }}
+---
+{{- include "platform.serviceAccount" . }}
+---
+{{- include "platform.autoscaling" . }}
+---
+{{- include "platform.job.preinstall" . }}
+---
+{{- include "platform.job.postinstall" . }}
+---
+{{- include "platform.configmap.postinstall-script" . }}
