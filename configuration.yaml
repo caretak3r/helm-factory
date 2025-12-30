@@ -7,6 +7,22 @@
 # =============================================================================
 
 # -----------------------------------------------------------------------------
+serviceName: ""
+# name of the helm chart and service
+# -----------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------
+# Platform specific
+# -----------------------------------------------------------------------------
+pipeline:
+  libraryVersion: "0.0.1"
+  # platform library chart version
+  serviceVersion: "0.0.1"
+  # service's version in the helm chart - will be used as the helm chart version as well 
+  chartName: ""
+  # by default will be the serviceName - only change this when you have multiple services
+
+# -----------------------------------------------------------------------------
 # Naming Configuration
 # -----------------------------------------------------------------------------
 # Override auto-generated names if needed
