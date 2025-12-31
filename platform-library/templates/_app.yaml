@@ -1,0 +1,39 @@
+{{- define "platform.app" -}}
+{{ include "platform.configmap" . }}
+
+{{- if and .Values.jobs.preInstall.enabled (or .Values.jobs.preInstall.script .Values.jobs.preInstall.scriptFile) }}
+  {{- $job := dict "type" "preinstall" "script" .Values.jobs.preInstall.script "scriptFile" .Values.jobs.preInstall.scriptFile -}}
+  {{- include "platform.configmap.script" (dict "root" . "job" $job) }}
+{{- end }}
+
+{{- if and .Values.jobs.postInstall.enabled (or .Values.jobs.postInstall.script .Values.jobs.postInstall.scriptFile) }}
+  {{- $job := dict "type" "postinstall" "script" .Values.jobs.postInstall.script "scriptFile" .Values.jobs.postInstall.scriptFile -}}
+  {{- include "platform.configmap.script" (dict "root" . "job" $job) }}
+{{- end }}
+
+{{ include "platform.secret" . }}
+{{ include "platform.certificate" . }}
+{{ include "platform.tls.secrets" . }}
+{{ include "platform.tls.selfsigned" . }}
+
+{{ include "platform.mtls" . }}
+{{ include "platform.pvc" . }}
+
+{{ include "platform.workload" . }}
+{{ include "platform.hpa" . }}
+
+{{ include "platform.service" . }}
+{{ include "platform.ingress" . }}
+{{ include "platform.networkpolicy" . }}
+{{ include "platform.pdb" . }}
+
+{{ include "platform.serviceAccount" . }}
+{{ include "platform.servicemonitor" . }}
+{{ include "platform.podmonitor" . }}
+
+{{ include "platform.cronjob" . }}
+{{ include "platform.job.preinstall" . }}
+{{ include "platform.job.postinstall" . }}
+
+{{ include "platform.serviceEndpoints.configmap" . }}
+{{- end }}
