@@ -1,0 +1,5 @@
+{{- define "platform.job.preinstall" -}}
+{{- if .Values.jobs.preInstall.enabled }}
+{{ include "platform.renderHookJob" (dict "ctx" . "job" .Values.jobs.preInstall "type" "preinstall") }}
+{{- end }}
+{{- end }}

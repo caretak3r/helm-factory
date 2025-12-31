@@ -1,0 +1,5 @@
+{{- define "platform.job.postinstall" -}}
+{{- if .Values.jobs.postInstall.enabled }}
+{{ include "platform.renderHookJob" (dict "ctx" . "job" .Values.jobs.postInstall "type" "postinstall") }}
+{{- end }}
+{{- end }}
