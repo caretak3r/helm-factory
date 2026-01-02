@@ -1,0 +1,42 @@
+# Aurora Gateway chart specific values.
+# Base defaults (workload, service, persistence, etc.) are imported from the
+# platform library via the dependency declared in Chart.yaml.
+
+frontend:
+  enabled: false
+  nameOverride: ""
+  replicaCount: 2
+  annotations: {}
+  podAnnotations: {}
+  podLabels: {}
+  image:
+    repository: ""
+    tag: ""
+    digest: ""
+    pullPolicy: IfNotPresent
+  containerPort: 4173
+  env: []
+  resources: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  serviceAccountName: ""
+  service:
+    enabled: true
+    type: ClusterIP
+    annotations: {}
+    ports:
+      - name: web
+        port: 80
+        targetPort: web
+        protocol: TCP
+  ingress:
+    enabled: false
+    classname: ""
+    hostname: ""
+    path: /
+    pathType: Prefix
+    annotations: {}
+    tls:
+      enabled: false
+      secretName: ""

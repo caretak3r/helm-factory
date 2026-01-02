@@ -1,0 +1,112 @@
+{{- if .Values.frontend.enabled }}
+{{- $frontend := .Values.frontend -}}
+{{- $fullname := include "aurora.frontend.fullname" . -}}
+{{- $selector := include "aurora.frontend.selectorLabels" . | fromYaml -}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}
+  labels:{{ include "aurora.frontend.labels" . | nindent 4 }}
+  {{- if $frontend.annotations }}
+  annotations:
+    {{- toYaml $frontend.annotations | nindent 4 }}
+  {{- end }}
+spec:
+  replicas: {{ $frontend.replicaCount | default 2 }}
+  selector:
+    matchLabels:{{ toYaml $selector | nindent 6 }}
+  template:
+    metadata:
+      labels:{{ toYaml $selector | nindent 8 }}
+        {{- range $k, $v := $frontend.podLabels }}
+        {{ $k }}: {{ $v | quote }}
+        {{- end }}
+      {{- if $frontend.podAnnotations }}
+      annotations:
+        {{- toYaml $frontend.podAnnotations | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ $frontend.serviceAccountName | default (include "platform.serviceAccountName" .) }}
+      containers:
+        - name: frontend
+          {{- $frontendImage := include "aurora.frontend.image" . | trim }}
+          image: {{ $frontendImage }}
+          imagePullPolicy: {{ $frontend.image.pullPolicy | default "IfNotPresent" }}
+          ports:
+            - name: web
+              containerPort: {{ $frontend.containerPort | default 4173 }}
+              protocol: TCP
+          {{- if $frontend.env }}
+          env:{{ toYaml $frontend.env | nindent 12 }}
+          {{- end }}
+          {{- if $frontend.resources }}
+          resources:{{ toYaml $frontend.resources | nindent 12 }}
+          {{- end }}
+      {{- if $frontend.nodeSelector }}
+      nodeSelector:{{ toYaml $frontend.nodeSelector | nindent 8 }}
+      {{- end }}
+      {{- if $frontend.tolerations }}
+      tolerations:{{ toYaml $frontend.tolerations | nindent 8 }}
+      {{- end }}
+      {{- if $frontend.affinity }}
+      affinity:{{ toYaml $frontend.affinity | nindent 8 }}
+      {{- end }}
+
+{{- if $frontend.service.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ printf "%s-svc" $fullname | trunc 63 | trimSuffix "-" }}
+  labels:{{ toYaml $selector | nindent 4 }}
+  {{- if $frontend.service.annotations }}
+  annotations:
+    {{- toYaml $frontend.service.annotations | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ $frontend.service.type | default "ClusterIP" }}
+  selector:{{ toYaml $selector | nindent 4 }}
+  ports:
+    {{- range $frontend.service.ports }}
+    - name: {{ .name | default "web" }}
+      port: {{ .port | default 80 }}
+      targetPort: {{ .targetPort | default "web" }}
+      protocol: {{ .protocol | default "TCP" }}
+    {{- end }}
+{{- end }}
+
+{{- if $frontend.ingress.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ printf "%s-ingress" $fullname | trunc 63 | trimSuffix "-" }}
+  labels:{{ toYaml $selector | nindent 4 }}
+  {{- if $frontend.ingress.annotations }}
+  annotations:
+    {{- toYaml $frontend.ingress.annotations | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if $frontend.ingress.classname }}
+  ingressClassName: {{ $frontend.ingress.classname }}
+  {{- end }}
+  rules:
+    - host: {{ $frontend.ingress.hostname | default "" | quote }}
+      http:
+        paths:
+          - path: {{ $frontend.ingress.path | default "/" }}
+            pathType: {{ $frontend.ingress.pathType | default "Prefix" }}
+            backend:
+              service:
+                name: {{ printf "%s-svc" $fullname | trunc 63 | trimSuffix "-" }}
+                port:
+                  number: {{ (index $frontend.service.ports 0).port | default 80 }}
+  {{- if and $frontend.ingress.tls $frontend.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ $frontend.ingress.hostname | default "" | quote }}
+      secretName: {{ $frontend.ingress.tls.secretName | default (printf "%s-frontend-tls" (include "platform.fullname" .)) }}
+  {{- end }}
+{{- end }}
+{{- end }}

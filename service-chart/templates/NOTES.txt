@@ -1,0 +1,20 @@
+Aurora Gateway service installed.
+
+Primary endpoint:
+  {{- if .Values.ingress.enabled }}
+  https://{{ .Values.ingress.hostname | default "aurora.example.com" }}
+  {{- else if and .Values.service.enabled (eq .Values.service.type "LoadBalancer") }}
+  Pending load balancer provisioning - run `kubectl get svc {{ printf "%s-%s" .Release.Name .Chart.Name }}` for details.
+  {{- else }}
+  ClusterIP service `{{ printf "%s-%s" .Release.Name .Chart.Name }}` on ports:
+    {{- range .Values.service.ports }}
+    - {{ .name }} -> {{ .port }}
+    {{- end }}
+  {{- end }}
+
+Frontend:
+  {{- if .Values.frontend.enabled }}
+  Deployment `{{ include "aurora.frontend.fullname" . }}` with service `{{ printf "%s-svc" (include "aurora.frontend.fullname" .) | trunc 63 | trimSuffix "-" }}`
+  {{- else }}
+  Disabled (enable via `.Values.frontend.enabled`).
+  {{- end }}
