@@ -1,0 +1,57 @@
+{{- define "platform.statefulset" -}}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "platform.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+    {{- range $k, $v := .Values.commonLabels }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+    {{- range $k, $v := .Values.labels }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+  {{- if or .Values.commonAnnotations .Values.annotations }}
+  annotations:
+    {{- range $k, $v := .Values.commonAnnotations }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+    {{- range $k, $v := .Values.annotations }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+  {{- end }}
+spec:
+  serviceName: {{ default (include "platform.fullname" .) .Values.statefulSet.serviceName }}
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  podManagementPolicy: {{ .Values.statefulSet.podManagementPolicy | default "OrderedReady" }}
+  {{- if .Values.statefulSet.updateStrategy }}
+  updateStrategy: {{- toYaml .Values.statefulSet.updateStrategy | nindent 4 }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "platform.selectorLabels" . | nindent 6 }}
+  template:
+    {{- include "platform.podTemplateSpec" . | nindent 4 }}
+  {{- if .Values.statefulSet.volumeClaimTemplates }}
+  volumeClaimTemplates:
+    {{- range .Values.statefulSet.volumeClaimTemplates }}
+    - metadata:
+        name: {{ .name }}
+      spec:
+        accessModes:
+          {{- range .accessModes }}
+          - {{ . | quote }}
+          {{- end }}
+        {{- if .storageClassName }}
+        storageClassName: {{ .storageClassName | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .storage | quote }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+

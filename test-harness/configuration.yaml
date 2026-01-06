@@ -1,35 +1,34 @@
 # =============================================================================
 # Service Configuration Template
 # =============================================================================
-serviceName: "my-service"
+serviceName: "complex-app-v2"
 
 # -----------------------------------------------------------------------------
 # Platform specific
 # -----------------------------------------------------------------------------
 pipeline:
-  libraryVersion: "1.0.0"
-  serviceVersion: "0.0.1"
-  chartName: "my-service-chart"
+  libraryVersion: "0.1.0"
+  serviceVersion: "2.0.0"
+  chartName: "complex-app-chart"
 
 # -----------------------------------------------------------------------------
 # Workload Type Selection
 # -----------------------------------------------------------------------------
 workload:
-  type: Deployment
+  type: StatefulSet
 
 # -----------------------------------------------------------------------------
 # Container Image Configuration
 # -----------------------------------------------------------------------------
 image:
   registry: docker.io
-  repository: "nginx"
-  tag: "latest"
-  pullPolicy: IfNotPresent
+  repository: "redis"
+  tag: "6.2.6"
 
 # -----------------------------------------------------------------------------
 # Replica Configuration
 # -----------------------------------------------------------------------------
-replicaCount: 1
+replicaCount: 3
 
 # -----------------------------------------------------------------------------
 # Service Configuration
@@ -38,47 +37,81 @@ service:
   enabled: true
   type: ClusterIP
   ports:
-    - name: http
-      port: 80
-      targetPort: 80
+    - name: redis
+      port: 6379
+      targetPort: 6379
       protocol: TCP
 
 # -----------------------------------------------------------------------------
-# Resources (Best Practice)
+# Horizontal Pod Autoscaler
+# -----------------------------------------------------------------------------
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 5
+  targetCPU: 80
+
+# -----------------------------------------------------------------------------
+# Resource Configuration
 # -----------------------------------------------------------------------------
 resources:
   requests:
     cpu: 100m
-    memory: 128Mi
-  limits:
-    cpu: 200m
     memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
 
 # -----------------------------------------------------------------------------
-# Probes (Best Practice)
+# Probes Configuration
 # -----------------------------------------------------------------------------
 livenessProbe:
   enabled: true
-  httpGet:
-    path: /
-    port: http
+  tcpSocket:
+    port: redis
   initialDelaySeconds: 30
 
 readinessProbe:
   enabled: true
-  httpGet:
-    path: /
-    port: http
-  initialDelaySeconds: 5
+  tcpSocket:
+    port: redis
 
 # -----------------------------------------------------------------------------
-# Other features can be enabled below as needed...
+# Ingress Configuration (Even for Redis? Why not, for admin UI maybe)
 # -----------------------------------------------------------------------------
-autoscaling:
-  enabled: false
-
 ingress:
-  enabled: false
+  enabled: true
+  ingressClassName: "nginx"
+  hostname: redis-admin.example.com
+  path: /
+  pathType: Prefix
 
+# -----------------------------------------------------------------------------
+# Persistence / Storage
+# -----------------------------------------------------------------------------
 persistence:
-  enabled: false
+  enabled: true
+  mountPath: /data
+  accessModes:
+    - ReadWriteOnce
+  size: 10Gi
+  storageClass: "standard"
+
+# -----------------------------------------------------------------------------
+# Service Monitor (Prometheus)
+# -----------------------------------------------------------------------------
+serviceMonitor:
+  enabled: true
+  labels:
+    release: prometheus
+
+# -----------------------------------------------------------------------------
+# CronJob (Backup job)
+# -----------------------------------------------------------------------------
+cronJob:
+  enabled: true
+  schedule: "0 2 * * *"
+  containers:
+    - name: backup
+      image: redis:6.2.6
+      command: ["/bin/sh", "-c", "echo backup"]

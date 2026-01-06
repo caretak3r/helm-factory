@@ -1,0 +1,236 @@
+---
+# Source: complex-app-v2/templates/pvc.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: release-name-complex-app-v2-data
+  namespace: default
+  labels:
+    helm.sh/chart: complex-app-v2-0.1.0
+    app.kubernetes.io/name: complex-app-v2
+    app.kubernetes.io/instance: release-name
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  accessModes:
+    - "ReadWriteOnce"
+  resources:
+    requests:
+      storage: "10Gi"
+  storageClassName: "standard"
+---
+# Source: complex-app-v2/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: release-name-complex-app-v2
+  namespace: default
+  labels:
+    helm.sh/chart: complex-app-v2-0.1.0
+    app.kubernetes.io/name: complex-app-v2
+    app.kubernetes.io/instance: release-name
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  type: ClusterIP
+  sessionAffinity: None
+  ports:
+    - name: redis
+      port: 6379
+      protocol: TCP
+      targetPort: 6379
+  selector:
+    app.kubernetes.io/name: complex-app-v2
+    app.kubernetes.io/instance: release-name
+---
+# Source: complex-app-v2/templates/hpa.yaml
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: release-name-complex-app-v2
+  namespace: default
+  labels:
+    helm.sh/chart: complex-app-v2-0.1.0
+    app.kubernetes.io/name: complex-app-v2
+    app.kubernetes.io/instance: release-name
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: StatefulSet
+    name: release-name-complex-app-v2
+  minReplicas: 3
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 80
+---
+# Source: complex-app-v2/templates/workload.yaml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: release-name-complex-app-v2
+  namespace: default
+  labels:
+    helm.sh/chart: complex-app-v2-0.1.0
+    app.kubernetes.io/name: complex-app-v2
+    app.kubernetes.io/instance: release-name
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  serviceName: release-name-complex-app-v2
+  podManagementPolicy: OrderedReady
+  updateStrategy:
+    rollingUpdate:
+      partition: 0
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: complex-app-v2
+      app.kubernetes.io/instance: release-name
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: complex-app-v2
+        app.kubernetes.io/instance: release-name
+    spec:
+      serviceAccountName: default
+      containers:
+        - name: complex-app-v2
+          image: docker.io/redis:6.2.6
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: http
+              protocol: TCP
+          livenessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            successThreshold: 1
+            tcpSocket:
+              port: redis
+            timeoutSeconds: 5
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            successThreshold: 1
+            tcpSocket:
+              port: redis
+            timeoutSeconds: 3
+          resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+            requests:
+              cpu: 100m
+              memory: 256Mi
+          volumeMounts:
+            - mountPath: /data
+              name: data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: release-name-complex-app-v2-data
+      terminationGracePeriodSeconds: 30
+      restartPolicy: Always
+---
+# Source: complex-app-v2/templates/cronjob.yaml
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: release-name-complex-app-v2-cron
+  namespace: default
+  labels:
+    helm.sh/chart: complex-app-v2-0.1.0
+    app.kubernetes.io/name: complex-app-v2
+    app.kubernetes.io/instance: release-name
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  schedule: "0 2 * * *"
+  concurrencyPolicy: Allow
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  startingDeadlineSeconds: 200
+  suspend: false
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: complex-app-v2
+            app.kubernetes.io/instance: release-name
+        spec:
+          serviceAccountName: default
+          restartPolicy: OnFailure
+          containers:
+          - command:
+            - /bin/sh
+            - -c
+            - echo backup
+            image: redis:6.2.6
+            name: backup
+---
+# Source: complex-app-v2/templates/ingress.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: release-name-complex-app-v2
+  namespace: default
+  labels:
+    helm.sh/chart: complex-app-v2-0.1.0
+    app.kubernetes.io/name: complex-app-v2
+    app.kubernetes.io/instance: release-name
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: "redis-admin.example.com"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: release-name-complex-app-v2
+                port:
+                  number: 6379
+---
+# Source: complex-app-v2/templates/servicemonitor.yaml
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: release-name-complex-app-v2
+  namespace: default
+  labels:
+    helm.sh/chart: complex-app-v2-0.1.0
+    app.kubernetes.io/name: complex-app-v2
+    app.kubernetes.io/instance: release-name
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+    release: "prometheus"
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: complex-app-v2
+      app.kubernetes.io/instance: release-name
+  namespaceSelector:
+    matchNames:
+      - "default"
+  endpoints:
+    - port: "http"
+      path: "/metrics"
