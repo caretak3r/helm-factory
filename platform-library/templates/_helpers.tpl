@@ -57,9 +57,9 @@ Resolve the full image reference, honoring global overrides
 {{- if $registry }}
   {{- $repository = printf "%s/%s" $registry $repository -}}
 {{- end }}
-{{- if .Values.image.digest }}
+{{- if .Values.image.digest -}}
 {{ printf "%s@%s" $repository .Values.image.digest }}
-{{- else }}
+{{- else -}}
 {{ printf "%s:%s" $repository (.Values.image.tag | default "latest") }}
 {{- end }}
 {{- end }}
@@ -71,7 +71,7 @@ Resolve pull policy with global override support
 {{- $policy := .Values.image.pullPolicy | default "" -}}
 {{- if .Values.global.imagePullPolicy }}
   {{- $policy = .Values.global.imagePullPolicy -}}
-{{- end }}
+{{- end -}}
 {{ default "IfNotPresent" $policy }}
 {{- end }}
 
@@ -667,4 +667,3 @@ spec:
       volumes: {{- toYaml $volumes | nindent 8 }}
       {{- end }}
 {{- end }}
-
