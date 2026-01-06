@@ -1,0 +1,12 @@
+apiVersion: v2
+name: my-service
+description: Dynamically generated chart for testing
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+dependencies:
+  - name: platform
+    version: 1.0.0
+    repository: "file://../platform-library"
+    import-values:
+      - defaults

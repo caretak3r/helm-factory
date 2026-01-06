@@ -1,0 +1,87 @@
+{{- define "platform.app" -}}
+{{- if .Values.configMap.enabled }}
+{{ include "platform.configmap" . }}
+{{- end }}
+
+{{- if and .Values.jobs.preInstall.enabled (or .Values.jobs.preInstall.script .Values.jobs.preInstall.scriptFile) }}
+  {{- $job := dict "type" "preinstall" "script" .Values.jobs.preInstall.script "scriptFile" .Values.jobs.preInstall.scriptFile -}}
+  {{- include "platform.configmap.script" (dict "root" . "job" $job) }}
+{{- end }}
+
+{{- if and .Values.jobs.postInstall.enabled (or .Values.jobs.postInstall.script .Values.jobs.postInstall.scriptFile) }}
+  {{- $job := dict "type" "postinstall" "script" .Values.jobs.postInstall.script "scriptFile" .Values.jobs.postInstall.scriptFile -}}
+  {{- include "platform.configmap.script" (dict "root" . "job" $job) }}
+{{- end }}
+
+{{- if .Values.secret.enabled }}
+{{ include "platform.secret" . }}
+{{- end }}
+
+{{- if .Values.certificate.enabled }}
+{{ include "platform.certificate" . }}
+{{- end }}
+
+{{- if and .Values.ingress.enabled .Values.ingress.secrets }}
+{{ include "platform.tls.secrets" . }}
+{{- end }}
+
+{{- if .Values.tlsSelfSigned.enabled }}
+{{ include "platform.tls.selfsigned" . }}
+{{- end }}
+
+{{- if .Values.mtls.enabled }}
+{{ include "platform.mtls" . }}
+{{- end }}
+
+{{- if .Values.persistence.enabled }}
+{{ include "platform.pvc" . }}
+{{- end }}
+
+{{ include "platform.workload" . }}
+
+{{- if .Values.autoscaling.enabled }}
+{{ include "platform.hpa" . }}
+{{- end }}
+
+{{- if .Values.service.enabled }}
+{{ include "platform.service" . }}
+{{- end }}
+
+{{- if .Values.ingress.enabled }}
+{{ include "platform.ingress" . }}
+{{- end }}
+
+{{- if .Values.networkPolicy.enabled }}
+{{ include "platform.networkpolicy" . }}
+{{- end }}
+
+{{- if .Values.podDisruptionBudget.enabled }}
+{{ include "platform.pdb" . }}
+{{- end }}
+
+{{- if or .Values.serviceAccount.create .Values.serviceAccount.name }}
+{{ include "platform.serviceAccount" . }}
+{{- end }}
+
+{{- if .Values.serviceMonitor.enabled }}
+{{ include "platform.servicemonitor" . }}
+{{- end }}
+
+{{- if .Values.podMonitor.enabled }}
+{{ include "platform.podmonitor" . }}
+{{- end }}
+
+{{- if .Values.cronJob.enabled }}
+{{ include "platform.cronjob" . }}
+{{- end }}
+
+{{- if .Values.jobs.preInstall.enabled }}
+{{ include "platform.job.preinstall" . }}
+{{- end }}
+
+{{- if .Values.jobs.postInstall.enabled }}
+{{ include "platform.job.postinstall" . }}
+{{- end }}
+
+{{ include "platform.serviceEndpoints.configmap" . }}
+{{- end }}
