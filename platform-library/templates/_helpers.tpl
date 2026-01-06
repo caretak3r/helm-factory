@@ -195,8 +195,10 @@ spec:
       {{- if $ctx.Values.containerSecurityContext.enabled }}
       securityContext: {{- omit $ctx.Values.containerSecurityContext "enabled" | toYaml | nindent 8 }}
       {{- end }}
-      image: {{ include "platform.image" $ctx }}
-      imagePullPolicy: {{ include "platform.imagePullPolicy" $ctx }}
+      {{- $workloadImage := include "platform.image" $ctx | trim }}
+      {{- $workloadImagePullPolicy := include "platform.imagePullPolicy" $ctx | trim }}
+{{ printf "      image: %s\n" $workloadImage }}
+{{ printf "      imagePullPolicy: %s\n" $workloadImagePullPolicy }}
       {{- if $ctx.Values.command }}
       command: {{- toYaml $ctx.Values.command | nindent 8 }}
       {{- end }}
@@ -448,7 +450,7 @@ Get service endpoint for a specific subchart (for umbrella charts)
   {{- $subchartContext := index $rootContext.Values $subchartName -}}
   {{- if $subchartContext -}}
     {{- $subserviceName := $subchartName -}}
-    {{- if $subchartContext.service.name -}}
+    {{- if and $subchartContext.service $subchartContext.service.name -}}
       {{- $subserviceName = $subchartContext.service.name -}}
     {{- end -}}
     {{- $subservicePort := 80 -}}
@@ -473,7 +475,7 @@ Get all enabled subcharts dynamically
 {{- define "global.enabledSubcharts" -}}
 {{- $enabled := list -}}
 {{- range $chartName, $chartValues := .Values -}}
-  {{- if and (not (eq $chartName "global")) (not (eq $chartName "nameOverride")) (not (eq $chartName "common")) }}
+  {{- if and (kindIs "map" $chartValues) (not (eq $chartName "global")) (not (eq $chartName "nameOverride")) (not (eq $chartName "common")) }}
     {{- if or (hasKey $chartValues "enabled") (not (hasKey $chartValues "enabled")) }}
       {{- if or $chartValues.enabled (not (hasKey $chartValues "enabled")) }}
         {{- $enabled = append $enabled $chartName -}}
@@ -490,11 +492,11 @@ Get all service endpoints dynamically
 {{- define "global.allEndpointsDynamic" -}}
 {{- $endpoints := dict -}}
 {{- range $chartName, $chartValues := .Values -}}
-  {{- if and (not (eq $chartName "global")) (not (eq $chartName "nameOverride")) (not (eq $chartName "common")) }}
+  {{- if and (kindIs "map" $chartValues) (not (eq $chartName "global")) (not (eq $chartName "nameOverride")) (not (eq $chartName "common")) }}
     {{- if or (hasKey $chartValues "enabled") (not (hasKey $chartValues "enabled")) }}
       {{- if or $chartValues.enabled (not (hasKey $chartValues "enabled")) }}
         {{- $subserviceName := $chartName -}}
-        {{- if $chartValues.service.name -}}
+        {{- if and $chartValues.service $chartValues.service.name -}}
           {{- $subserviceName = $chartValues.service.name -}}
         {{- end -}}
         {{- $subservicePort := 80 -}}
@@ -509,7 +511,7 @@ Get all service endpoints dynamically
           {{- if and $chartValues.global $chartValues.global.namespace }}
             {{- $namespace = $chartValues.global.namespace -}}
           {{- end }}
-          {{- $endpoint := printf "%s.%s.svc.cluster.local:%d" $subserviceName $namespace $subservicePort -}}
+          {{- $endpoint := printf "%s.%s.svc.cluster.local:%v" $subserviceName $namespace $subservicePort -}}
           {{- $endpoints = set $endpoints $subserviceName $endpoint -}}
         {{- end -}}
       {{- end -}}
@@ -563,10 +565,14 @@ Render hook jobs (pre/post install)
 {{- $job := .job -}}
 {{- $type := .type -}}
 {{- $defaults := $ctx.Values.jobs -}}
-{{- $imageCfg := dict "repository" ($defaults.image.repository | default "") "tag" ($defaults.image.tag | default "latest") "pullPolicy" ($defaults.image.pullPolicy | default "IfNotPresent") -}}
+{{- $imageCfg := dict "repository" (($defaults.image.repository | default "") | trim) "tag" ($defaults.image.tag | default "latest") "pullPolicy" ($defaults.image.pullPolicy | default "IfNotPresent") -}}
 {{- if $job.image }}
   {{- range $k, $v := $job.image }}
-    {{- $_ := set $imageCfg $k $v -}}
+    {{- if kindIs "string" $v }}
+      {{- $_ := set $imageCfg $k ($v | trim) -}}
+    {{- else }}
+      {{- $_ := set $imageCfg $k $v -}}
+    {{- end }}
   {{- end }}
 {{- end }}
 {{- if not $imageCfg.repository }}
@@ -575,16 +581,23 @@ Render hook jobs (pre/post install)
 {{- if and (eq $imageCfg.tag "latest") $ctx.Values.image.tag }}
   {{- $_ := set $imageCfg "tag" $ctx.Values.image.tag -}}
 {{- end }}
-{{- $registry := $imageCfg.registry | default "" -}}
+{{- $registry := trimSuffix "/" ($imageCfg.registry | default "") -}}
 {{- if not $registry }}
   {{- if $ctx.Values.global.imageRegistry }}
-    {{- $registry = $ctx.Values.global.imageRegistry -}}
+    {{- $registry = trimSuffix "/" $ctx.Values.global.imageRegistry -}}
   {{- else if $ctx.Values.image.registry }}
-    {{- $registry = $ctx.Values.image.registry -}}
+    {{- $registry = trimSuffix "/" $ctx.Values.image.registry -}}
   {{- end }}
 {{- end }}
-{{- if and $registry $imageCfg.repository (not (hasPrefix $imageCfg.repository (printf "%s/" $registry))) }}
-  {{- $_ := set $imageCfg "repository" (printf "%s/%s" $registry (trimPrefix "/" $imageCfg.repository)) -}}
+{{- if kindIs "string" $imageCfg.repository }}
+  {{- $_ := set $imageCfg "repository" ($imageCfg.repository | trim) -}}
+{{- end }}
+{{- if and $registry $imageCfg.repository }}
+  {{- $registryPrefix := printf "%s/" $registry -}}
+  {{- $repoHasRegistry := hasPrefix $registryPrefix $imageCfg.repository -}}
+  {{- if not $repoHasRegistry }}
+    {{- $_ := set $imageCfg "repository" (printf "%s/%s" $registry (trimPrefix "/" $imageCfg.repository)) -}}
+  {{- end }}
 {{- end }}
 {{- $image := printf "%s:%s" $imageCfg.repository $imageCfg.tag -}}
 {{- $pullPolicy := $imageCfg.pullPolicy | default "IfNotPresent" -}}
