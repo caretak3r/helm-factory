@@ -219,6 +219,42 @@ exports:
       secrets: []
 
     # -----------------------------------------------------------------------------
+    # Gateway API Routes
+    # -----------------------------------------------------------------------------
+    gatewayApi:
+      enabled: false
+      apiVersion: gateway.networking.k8s.io/v1
+      hostnames: []
+      parentRefs: []
+      labels: {}
+      annotations: {}
+      httpRoute:
+        enabled: false
+        name: ""
+        apiVersion: ""
+        hostnames: []
+        parentRefs: []
+        matches: []
+        filters: []
+        backendRefs: []
+        rules: []
+        specOverrides: {}
+        labels: {}
+        annotations: {}
+      grpcRoute:
+        enabled: false
+        name: ""
+        apiVersion: ""
+        hostnames: []
+        parentRefs: []
+        matches: []
+        backendRefs: []
+        rules: []
+        specOverrides: {}
+        labels: {}
+        annotations: {}
+
+    # -----------------------------------------------------------------------------
     # Certificate (cert-manager)
     # -----------------------------------------------------------------------------
     certificate:
