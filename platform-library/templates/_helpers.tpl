@@ -160,12 +160,25 @@ metadata:
     {{- range $k, $v := $ctx.Values.podLabels }}
     {{ $k }}: {{ $v | quote }}
     {{- end }}
-  {{- if or $ctx.Values.commonAnnotations $ctx.Values.podAnnotations }}
-  annotations:
-    {{- range $k, $v := $ctx.Values.commonAnnotations }}
-    {{ $k }}: {{ $v | quote }}
+  {{- $podAnnotations := dict -}}
+  {{- range $k, $v := $ctx.Values.commonAnnotations }}
+    {{- $_ := set $podAnnotations $k $v -}}
+  {{- end }}
+  {{- range $k, $v := $ctx.Values.podAnnotations }}
+    {{- $_ := set $podAnnotations $k $v -}}
+  {{- end }}
+  {{- if eq $ctx.Values.workload.type "Deployment" }}
+    {{- $rollout := (include "platform.deployment.rolloutAnnotations" $ctx | trim) -}}
+    {{- if $rollout }}
+      {{- $rolloutMap := fromYaml $rollout -}}
+      {{- range $k, $v := $rolloutMap }}
+        {{- $_ := set $podAnnotations $k $v -}}
+      {{- end }}
     {{- end }}
-    {{- range $k, $v := $ctx.Values.podAnnotations }}
+  {{- end }}
+  {{- if gt (len $podAnnotations) 0 }}
+  annotations:
+    {{- range $k, $v := $podAnnotations }}
     {{ $k }}: {{ $v | quote }}
     {{- end }}
   {{- end }}
@@ -423,6 +436,24 @@ Workload template selector
 {{- include "platform.daemonset" . }}
 {{- else }}
 {{- include "platform.deployment" . }}
+{{- end }}
+{{- end }}
+
+{{/*
+Build deterministic checksum annotations to trigger Deployment rollouts when
+ConfigMaps or Secrets change.
+*/}}
+{{- define "platform.deployment.rolloutAnnotations" -}}
+{{- $ctx := . -}}
+{{- $annotations := dict -}}
+{{- if $ctx.Values.configMap.enabled }}
+  {{- $_ := set $annotations "checksum/config" (include "platform.configmap" $ctx | sha256sum) -}}
+{{- end }}
+{{- if $ctx.Values.secret.enabled }}
+  {{- $_ := set $annotations "checksum/secret" (include "platform.secret" $ctx | sha256sum) -}}
+{{- end }}
+{{- if gt (len $annotations) 0 }}
+{{ toYaml $annotations }}
 {{- end }}
 {{- end }}
 
