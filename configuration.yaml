@@ -394,6 +394,12 @@ jobs:
     limits:
       cpu: 500m
       memory: 512Mi
+  initContainers:
+    enabled: false
+    containers: []
+  sidecars:
+    enabled: false
+    containers: []
 
   # Pre-install job (runs before main deployment)
   preInstall:
@@ -409,6 +415,12 @@ jobs:
     env: []
     volumeMounts: []
     volumes: []
+    initContainers:
+      enabled: false
+      containers: []
+    sidecars:
+      enabled: false
+      containers: []
     # Override common job settings
     # image: {}
     # resources: {}
@@ -424,6 +436,12 @@ jobs:
     env: []
     volumeMounts: []
     volumes: []
+    initContainers:
+      enabled: false
+      containers: []
+    sidecars:
+      enabled: false
+      containers: []
 
 # -----------------------------------------------------------------------------
 # CronJob Configuration
@@ -438,7 +456,12 @@ cronJob:
   suspend: false
   # Job template (inherits from jobs section by default)
   containers: []
-  initContainers: []
+  initContainers:
+    enabled: false
+    containers: []
+  sidecars:
+    enabled: false
+    containers: []
   volumes: []
   annotations: {}
   podAnnotations: {}

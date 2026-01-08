@@ -610,6 +610,48 @@ Render hook jobs (pre/post install)
   {{- $volumeMounts = append $volumeMounts (dict "name" "job-script" "mountPath" "/scripts" "readOnly" true) -}}
   {{- $volumes = append $volumes (dict "name" "job-script" "configMap" (dict "name" (printf "%s-%s-script" (include "platform.fullname" $ctx) $type) "defaultMode" 0555)) -}}
 {{- end }}
+{{- $initContainers := list -}}
+{{- if and $defaults.initContainers $defaults.initContainers.enabled $defaults.initContainers.containers }}
+  {{- range $defaults.initContainers.containers }}
+    {{- $initContainers = append $initContainers . -}}
+  {{- end }}
+{{- end }}
+{{- if and $job.initContainers $job.initContainers.enabled $job.initContainers.containers }}
+  {{- range $job.initContainers.containers }}
+    {{- $initContainers = append $initContainers . -}}
+  {{- end }}
+{{- end }}
+{{- $sidecars := list -}}
+{{- if and $defaults.sidecars $defaults.sidecars.enabled $defaults.sidecars.containers }}
+  {{- range $defaults.sidecars.containers }}
+    {{- $sidecars = append $sidecars . -}}
+  {{- end }}
+{{- end }}
+{{- if and $job.sidecars $job.sidecars.enabled $job.sidecars.containers }}
+  {{- range $job.sidecars.containers }}
+    {{- $sidecars = append $sidecars . -}}
+  {{- end }}
+{{- end }}
+{{- $mainJobContainer := dict "name" (printf "%s-%s" (include "platform.name" $ctx) $type) "image" $image "imagePullPolicy" $pullPolicy -}}
+{{- if gt (len $command) 0 }}
+  {{- $_ := set $mainJobContainer "command" $command -}}
+{{- end }}
+{{- if gt (len $args) 0 }}
+  {{- $_ := set $mainJobContainer "args" $args -}}
+{{- end }}
+{{- if gt (len $env) 0 }}
+  {{- $_ := set $mainJobContainer "env" $env -}}
+{{- end }}
+{{- if gt (len $volumeMounts) 0 }}
+  {{- $_ := set $mainJobContainer "volumeMounts" $volumeMounts -}}
+{{- end }}
+{{- if $resources }}
+  {{- $_ := set $mainJobContainer "resources" $resources -}}
+{{- end }}
+{{- $jobContainers := list $mainJobContainer -}}
+{{- range $sidecars }}
+  {{- $jobContainers = append $jobContainers . -}}
+{{- end }}
 {{- $defaultWeight := ternary -5 5 (eq $type "preinstall") -}}
 {{- $hookWeight := default $defaultWeight $job.hookWeight -}}
 apiVersion: batch/v1
@@ -644,25 +686,10 @@ spec:
         - name: {{ . }}
         {{- end }}
       {{- end }}
-      containers:
-        - name: {{ printf "%s-%s" (include "platform.name" $ctx) $type }}
-          image: {{ $image }}
-          imagePullPolicy: {{ $pullPolicy }}
-          {{- if $command }}
-          command: {{- toYaml $command | nindent 12 }}
-          {{- end }}
-          {{- if $args }}
-          args: {{- toYaml $args | nindent 12 }}
-          {{- end }}
-          {{- if $env }}
-          env: {{- toYaml $env | nindent 12 }}
-          {{- end }}
-          {{- if $volumeMounts }}
-          volumeMounts: {{- toYaml $volumeMounts | nindent 12 }}
-          {{- end }}
-          {{- if $resources }}
-          resources: {{- toYaml $resources | nindent 12 }}
-          {{- end }}
+      {{- if gt (len $initContainers) 0 }}
+      initContainers: {{- toYaml $initContainers | nindent 8 }}
+      {{- end }}
+      containers: {{- toYaml $jobContainers | nindent 8 }}
       {{- if $volumes }}
       volumes: {{- toYaml $volumes | nindent 8 }}
       {{- end }}
