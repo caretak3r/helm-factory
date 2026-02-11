@@ -342,6 +342,72 @@ ingress:
   secrets: []
 
 # -----------------------------------------------------------------------------
+# Gateway API Configuration (HTTPRoute / GRPCRoute)
+# -----------------------------------------------------------------------------
+# Modern replacement for Ingress using the Gateway API standard.
+# Requires Gateway API CRDs installed in the cluster.
+# Falls back to ingress.hostname/path when gateway-specific values not set.
+gatewayApi:
+  enabled: false
+  # API version for all routes (can be overridden per-route)
+  apiVersion: gateway.networking.k8s.io/v1
+  # Default hostnames applied to all routes (falls back to ingress.hostname)
+  hostnames: []
+  # Default parentRefs applied to all routes — REQUIRED when any route is enabled
+  parentRefs: []
+  # Example:
+  # parentRefs:
+  #   - name: my-gateway
+  #     namespace: gateway-system
+  #     sectionName: https
+  # Labels/annotations applied to all gateway routes
+  labels: {}
+  annotations: {}
+
+  # HTTPRoute — standard HTTP/HTTPS routing
+  httpRoute:
+    enabled: false
+    name: ""                    # Auto-generated: <fullname>-http
+    apiVersion: ""              # Inherits from gatewayApi.apiVersion
+    hostnames: []               # Inherits from gatewayApi.hostnames
+    parentRefs: []              # Inherits from gatewayApi.parentRefs
+    # Path matching rules (falls back to ingress.path/pathType)
+    matches: []
+    # Example:
+    # matches:
+    #   - path:
+    #       type: PathPrefix
+    #       value: /api
+    # Request/response filters
+    filters: []
+    # Backend service references (defaults to this service)
+    backendRefs: []
+    # Complete rules override (replaces auto-generated rules)
+    rules: []
+    # Merge additional spec fields into the generated spec
+    specOverrides: {}
+    labels: {}
+    annotations: {}
+
+  # GRPCRoute — gRPC-specific routing
+  grpcRoute:
+    enabled: false
+    name: ""                    # Auto-generated: <fullname>-grpc
+    apiVersion: ""              # Inherits from gatewayApi.apiVersion
+    hostnames: []               # Inherits from gatewayApi.hostnames
+    parentRefs: []              # Inherits from gatewayApi.parentRefs
+    # gRPC method/service matching
+    matches: []
+    # Backend service references (defaults to this service)
+    backendRefs: []
+    # Complete rules override
+    rules: []
+    # Merge additional spec fields
+    specOverrides: {}
+    labels: {}
+    annotations: {}
+
+# -----------------------------------------------------------------------------
 # Certificate Management (cert-manager)
 # -----------------------------------------------------------------------------
 certificate:
@@ -372,6 +438,10 @@ tlsSelfSigned:
 mtls:
   enabled: false
   policy: STRICT
+  # Allowed SPIFFE principals for AuthorizationPolicy
+  # Default wildcard allows all service accounts — restrict for zero-trust
+  allowedPrincipals:
+    - "cluster.local/ns/*/sa/*"
 
 # -----------------------------------------------------------------------------
 # Jobs Configuration (Pre-install / Post-install Helm Hooks)
@@ -660,6 +730,13 @@ networkPolicy:
   #       - port: 8080
   # Egress rules
   egress: []
+
+# -----------------------------------------------------------------------------
+# Service Endpoints ConfigMap
+# -----------------------------------------------------------------------------
+# Creates a ConfigMap with service endpoint URLs for umbrella charts
+serviceEndpoints:
+  enabled: false
 
 # -----------------------------------------------------------------------------
 # Labels and Annotations

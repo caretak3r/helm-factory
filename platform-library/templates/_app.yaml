@@ -51,6 +51,10 @@
 {{ include "platform.ingress" . }}
 {{- end }}
 
+{{- if .Values.gatewayApi.enabled }}
+{{ include "platform.gatewayApi" . }}
+{{- end }}
+
 {{- if .Values.networkPolicy.enabled }}
 {{ include "platform.networkpolicy" . }}
 {{- end }}
@@ -83,5 +87,7 @@
 {{ include "platform.job.postinstall" . }}
 {{- end }}
 
+{{- if .Values.serviceEndpoints.enabled }}
 {{ include "platform.serviceEndpoints.configmap" . }}
+{{- end }}
 {{- end }}

@@ -9,8 +9,8 @@ Expand the name of the chart.
 Create a default fully qualified app name.
 */}}
 {{- define "platform.fullname" -}}
-{{- if .Values.nameOverride }}
-{{- .Values.nameOverride | trunc 63 | trimSuffix "-" }}
+{{- if .Values.fullnameOverride }}
+{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
 {{- else }}
 {{- $name := default .Chart.Name .Values.nameOverride }}
 {{- if contains $name .Release.Name }}
@@ -57,11 +57,10 @@ Resolve the full image reference, honoring global overrides
 {{- if $registry }}
   {{- $repository = printf "%s/%s" $registry $repository -}}
 {{- end }}
-{{- if .Values.image.digest -}}
-{{ printf "%s@%s" $repository .Values.image.digest }}
-{{- else -}}
-{{ printf "%s:%s" $repository (.Values.image.tag | default "latest") }}
-{{- end }}
+{{- if .Values.image.digest }}
+{{- printf "%s@%s" $repository .Values.image.digest }}
+{{- else }}
+{{- printf "%s:%s" $repository (.Values.image.tag | default "latest") }}
 {{- end }}
 
 {{/*
@@ -71,8 +70,13 @@ Resolve pull policy with global override support
 {{- $policy := .Values.image.pullPolicy | default "" -}}
 {{- if .Values.global.imagePullPolicy }}
   {{- $policy = .Values.global.imagePullPolicy -}}
+<<<<<<< HEAD
 {{- end -}}
 {{ default "IfNotPresent" $policy }}
+=======
+{{- end }}
+{{- default "IfNotPresent" $policy }}
+>>>>>>> 27ef9d2 (feat: supporting gateway api)
 {{- end }}
 
 {{/*
@@ -474,10 +478,8 @@ Get all enabled subcharts dynamically
 {{- $enabled := list -}}
 {{- range $chartName, $chartValues := .Values -}}
   {{- if and (not (eq $chartName "global")) (not (eq $chartName "nameOverride")) (not (eq $chartName "common")) }}
-    {{- if or (hasKey $chartValues "enabled") (not (hasKey $chartValues "enabled")) }}
-      {{- if or $chartValues.enabled (not (hasKey $chartValues "enabled")) }}
-        {{- $enabled = append $enabled $chartName -}}
-      {{- end -}}
+    {{- if or $chartValues.enabled (not (hasKey $chartValues "enabled")) }}
+      {{- $enabled = append $enabled $chartName -}}
     {{- end -}}
   {{- end -}}
 {{- end -}}
@@ -491,27 +493,25 @@ Get all service endpoints dynamically
 {{- $endpoints := dict -}}
 {{- range $chartName, $chartValues := .Values -}}
   {{- if and (not (eq $chartName "global")) (not (eq $chartName "nameOverride")) (not (eq $chartName "common")) }}
-    {{- if or (hasKey $chartValues "enabled") (not (hasKey $chartValues "enabled")) }}
-      {{- if or $chartValues.enabled (not (hasKey $chartValues "enabled")) }}
-        {{- $subserviceName := $chartName -}}
-        {{- if $chartValues.service.name -}}
-          {{- $subserviceName = $chartValues.service.name -}}
+    {{- if or $chartValues.enabled (not (hasKey $chartValues "enabled")) }}
+      {{- $subserviceName := $chartName -}}
+      {{- if and $chartValues.service $chartValues.service.name -}}
+        {{- $subserviceName = $chartValues.service.name -}}
+      {{- end -}}
+      {{- $subservicePort := 80 -}}
+      {{- if and $chartValues.service $chartValues.service.ports }}
+        {{- $first := index $chartValues.service.ports 0 -}}
+        {{- if $first.port }}
+          {{- $subservicePort = $first.port -}}
         {{- end -}}
-        {{- $subservicePort := 80 -}}
-        {{- if and $chartValues.service $chartValues.service.ports }}
-          {{- $first := index $chartValues.service.ports 0 -}}
-          {{- if $first.port }}
-            {{- $subservicePort = $first.port -}}
-          {{- end -}}
-        {{- end -}}
-        {{- if $subservicePort -}}
-          {{- $namespace := $.Release.Namespace | default "default" -}}
-          {{- if and $chartValues.global $chartValues.global.namespace }}
-            {{- $namespace = $chartValues.global.namespace -}}
-          {{- end }}
-          {{- $endpoint := printf "%s.%s.svc.cluster.local:%d" $subserviceName $namespace $subservicePort -}}
-          {{- $endpoints = set $endpoints $subserviceName $endpoint -}}
-        {{- end -}}
+      {{- end -}}
+      {{- if $subservicePort -}}
+        {{- $namespace := $.Release.Namespace | default "default" -}}
+        {{- if and $chartValues.global $chartValues.global.namespace }}
+          {{- $namespace = $chartValues.global.namespace -}}
+        {{- end }}
+        {{- $endpoint := printf "%s.%s.svc.cluster.local:%d" $subserviceName $namespace $subservicePort -}}
+        {{- $endpoints = set $endpoints $subserviceName $endpoint -}}
       {{- end -}}
     {{- end -}}
   {{- end -}}
@@ -638,9 +638,16 @@ spec:
     spec:
       restartPolicy: {{ $restartPolicy }}
       serviceAccountName: {{ include "platform.serviceAccountName" $ctx }}
-      {{- if $ctx.Values.global.imagePullSecrets }}
+      {{- $hookPullSecrets := list -}}
+      {{- range $ctx.Values.global.imagePullSecrets }}
+        {{- $hookPullSecrets = append $hookPullSecrets . -}}
+      {{- end }}
+      {{- range $ctx.Values.image.pullSecrets }}
+        {{- $hookPullSecrets = append $hookPullSecrets . -}}
+      {{- end }}
+      {{- if gt (len $hookPullSecrets) 0 }}
       imagePullSecrets:
-        {{- range $ctx.Values.global.imagePullSecrets }}
+        {{- range $hookPullSecrets }}
         - name: {{ . }}
         {{- end }}
       {{- end }}

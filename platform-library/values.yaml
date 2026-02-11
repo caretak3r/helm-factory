@@ -219,6 +219,42 @@ exports:
       secrets: []
 
     # -----------------------------------------------------------------------------
+    # Gateway API (HTTPRoute / GRPCRoute)
+    # -----------------------------------------------------------------------------
+    gatewayApi:
+      enabled: false
+      apiVersion: gateway.networking.k8s.io/v1
+      hostnames: []
+      parentRefs: []
+      labels: {}
+      annotations: {}
+      httpRoute:
+        enabled: false
+        name: ""
+        apiVersion: ""
+        hostnames: []
+        parentRefs: []
+        matches: []
+        filters: []
+        backendRefs: []
+        rules: []
+        specOverrides: {}
+        labels: {}
+        annotations: {}
+      grpcRoute:
+        enabled: false
+        name: ""
+        apiVersion: ""
+        hostnames: []
+        parentRefs: []
+        matches: []
+        backendRefs: []
+        rules: []
+        specOverrides: {}
+        labels: {}
+        annotations: {}
+
+    # -----------------------------------------------------------------------------
     # Certificate (cert-manager)
     # -----------------------------------------------------------------------------
     certificate:
@@ -239,6 +275,8 @@ exports:
     mtls:
       enabled: false
       policy: STRICT
+      allowedPrincipals:
+        - "cluster.local/ns/*/sa/*"
 
     # -----------------------------------------------------------------------------
     # Self-Signed TLS
@@ -453,6 +491,12 @@ exports:
       podSelector: {}
       ingress: []
       egress: []
+
+    # -----------------------------------------------------------------------------
+    # Service Endpoints ConfigMap
+    # -----------------------------------------------------------------------------
+    serviceEndpoints:
+      enabled: false
 
     # -----------------------------------------------------------------------------
     # Labels and Annotations
