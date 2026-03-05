@@ -1,5 +1,26 @@
 {{- define "platform.cronjob" -}}
 {{- if .Values.cronJob.enabled }}
+{{- $cronInitContainers := list -}}
+{{- $cronInitCfg := .Values.cronJob.initContainers -}}
+{{- if $cronInitCfg }}
+  {{- if kindIs "slice" $cronInitCfg }}
+    {{- range $cronInitCfg }}
+      {{- $cronInitContainers = append $cronInitContainers . -}}
+    {{- end }}
+  {{- else if kindIs "map" $cronInitCfg }}
+    {{- if and $cronInitCfg.enabled $cronInitCfg.containers }}
+      {{- range $cronInitCfg.containers }}
+        {{- $cronInitContainers = append $cronInitContainers . -}}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+{{- $cronSidecars := list -}}
+{{- if and .Values.cronJob.sidecars .Values.cronJob.sidecars.enabled .Values.cronJob.sidecars.containers }}
+  {{- range .Values.cronJob.sidecars.containers }}
+    {{- $cronSidecars = append $cronSidecars . -}}
+  {{- end }}
+{{- end }}
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -56,16 +77,18 @@ spec:
             - name: {{ . }}
             {{- end }}
           {{- end }}
-          {{- if .Values.cronJob.initContainers }}
-          initContainers: {{- toYaml .Values.cronJob.initContainers | nindent 10 }}
+          {{- if gt (len $cronInitContainers) 0 }}
+          initContainers: {{- toYaml $cronInitContainers | nindent 10 }}
           {{- end }}
           {{- if .Values.cronJob.containers }}
           containers: {{- toYaml .Values.cronJob.containers | nindent 10 }}
           {{- else }}
-          containers:
-            - name: {{ include "platform.name" . }}-cron
-              image: {{ include "platform.image" . }}
-              imagePullPolicy: {{ include "platform.imagePullPolicy" . }}
+            {{- $defaultCronContainer := dict "name" (printf "%s-cron" (include "platform.name" .)) "image" (include "platform.image" .) "imagePullPolicy" (include "platform.imagePullPolicy" .) -}}
+            {{- $cronContainers := list $defaultCronContainer -}}
+            {{- range $cronSidecars }}
+              {{- $cronContainers = append $cronContainers . -}}
+            {{- end }}
+          containers: {{- toYaml $cronContainers | nindent 10 }}
           {{- end }}
           {{- if .Values.cronJob.volumes }}
           volumes: {{- toYaml .Values.cronJob.volumes | nindent 10 }}

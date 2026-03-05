@@ -38,8 +38,7 @@ data:
 {{- else if $root.Files.Get $scriptPath }}
 {{ $root.Files.Get $scriptPath | indent 4 }}
 {{- else }}
-    # Script file not found: {{ $scriptPath }}
-    # Please ensure the script file exists in the chart's scripts/ directory
+{{ fail (printf "Script file not found: %s — ensure it exists in the chart's scripts/ directory" $scriptPath) }}
 {{- end }}
   {{- end }}
 {{- end }}

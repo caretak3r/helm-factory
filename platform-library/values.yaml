@@ -219,7 +219,7 @@ exports:
       secrets: []
 
     # -----------------------------------------------------------------------------
-    # Gateway API Routes
+    # Gateway API (HTTPRoute / GRPCRoute)
     # -----------------------------------------------------------------------------
     gatewayApi:
       enabled: false
@@ -275,6 +275,8 @@ exports:
     mtls:
       enabled: false
       policy: STRICT
+      allowedPrincipals:
+        - "cluster.local/ns/*/sa/*"
 
     # -----------------------------------------------------------------------------
     # Self-Signed TLS
@@ -305,6 +307,12 @@ exports:
         limits:
           cpu: 500m
           memory: 512Mi
+      initContainers:
+        enabled: false
+        containers: []
+      sidecars:
+        enabled: false
+        containers: []
       preInstall:
         enabled: false
         hookWeight: -5
@@ -315,6 +323,12 @@ exports:
         env: []
         volumeMounts: []
         volumes: []
+        initContainers:
+          enabled: false
+          containers: []
+        sidecars:
+          enabled: false
+          containers: []
       postInstall:
         enabled: false
         hookWeight: 5
@@ -325,6 +339,12 @@ exports:
         env: []
         volumeMounts: []
         volumes: []
+        initContainers:
+          enabled: false
+          containers: []
+        sidecars:
+          enabled: false
+          containers: []
 
     # -----------------------------------------------------------------------------
     # CronJob
@@ -338,7 +358,12 @@ exports:
       startingDeadlineSeconds: 200
       suspend: false
       containers: []
-      initContainers: []
+      initContainers:
+        enabled: false
+        containers: []
+      sidecars:
+        enabled: false
+        containers: []
       volumes: []
       annotations: {}
       podAnnotations: {}
@@ -489,6 +514,12 @@ exports:
       podSelector: {}
       ingress: []
       egress: []
+
+    # -----------------------------------------------------------------------------
+    # Service Endpoints ConfigMap
+    # -----------------------------------------------------------------------------
+    serviceEndpoints:
+      enabled: false
 
     # -----------------------------------------------------------------------------
     # Labels and Annotations
