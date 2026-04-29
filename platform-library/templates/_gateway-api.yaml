@@ -1,0 +1,172 @@
+{{- define "platform.gatewayApi" -}}
+{{- $gw := .Values.gatewayApi -}}
+{{- if and $gw $gw.enabled -}}
+{{- $fullName := include "platform.fullname" . -}}
+{{- $primaryPort := (include "platform.primaryServicePort" . | fromYaml) -}}
+{{- $defaultPort := int (default 80 $primaryPort.port) -}}
+{{- $defaultBackend := dict "kind" "Service" "name" $fullName "port" $defaultPort "weight" 1 -}}
+{{- $baseHostnames := list -}}
+{{- if $gw.hostnames }}
+  {{- $baseHostnames = $gw.hostnames -}}
+{{- else if .Values.ingress.hostname }}
+  {{- $baseHostnames = list .Values.ingress.hostname -}}
+{{- end }}
+{{- $baseParentRefs := $gw.parentRefs | default (list) -}}
+{{- $apiVersion := default "gateway.networking.k8s.io/v1" $gw.apiVersion -}}
+
+{{- $mergeAnnotations := dict -}}
+{{- if .Values.commonAnnotations }}
+  {{- $mergeAnnotations = merge $mergeAnnotations .Values.commonAnnotations -}}
+{{- end }}
+{{- if $gw.annotations }}
+  {{- $mergeAnnotations = merge $mergeAnnotations $gw.annotations -}}
+{{- end }}
+
+{{- /* HTTPRoute */ -}}
+{{- $http := $gw.httpRoute | default (dict) -}}
+{{- if $http.enabled -}}
+{{- $httpName := default (printf "%s-http" $fullName) $http.name -}}
+{{- $httpName = $httpName | trunc 63 | trimSuffix "-" -}}
+{{- $httpApiVersion := default $apiVersion $http.apiVersion -}}
+{{- $parentRefs := $http.parentRefs | default (list) -}}
+{{- if not (gt (len $parentRefs) 0) }}
+  {{- $parentRefs = $baseParentRefs -}}
+{{- end }}
+{{- if not (gt (len $parentRefs) 0) }}
+  {{- fail "gatewayApi.httpRoute.enabled but no parentRefs configured" }}
+{{- end }}
+{{- $hostnames := $http.hostnames | default (list) -}}
+{{- if not (gt (len $hostnames) 0) }}
+  {{- $hostnames = $baseHostnames -}}
+{{- end }}
+{{- $matches := $http.matches | default (list) -}}
+{{- if not (gt (len $matches) 0) }}
+  {{- $path := default "/" .Values.ingress.path -}}
+  {{- $pathType := default "PathPrefix" .Values.ingress.pathType -}}
+  {{- $matches = list (dict "path" (dict "type" $pathType "value" $path)) -}}
+{{- end }}
+{{- $backendRefs := $http.backendRefs | default (list) -}}
+{{- if not (gt (len $backendRefs) 0) }}
+  {{- $backendRefs = list (deepCopy $defaultBackend) -}}
+{{- end }}
+{{- $filters := $http.filters | default (list) -}}
+{{- $rules := $http.rules | default (list) -}}
+{{- if not (gt (len $rules) 0) }}
+  {{- $rule := dict "matches" $matches "backendRefs" $backendRefs -}}
+  {{- if gt (len $filters) 0 }}
+    {{- $_ := set $rule "filters" $filters -}}
+  {{- end }}
+  {{- $rules = list $rule -}}
+{{- end }}
+{{- $spec := dict "parentRefs" $parentRefs "rules" $rules -}}
+{{- if gt (len $hostnames) 0 }}
+  {{- $_ := set $spec "hostnames" $hostnames -}}
+{{- end }}
+{{- if $http.specOverrides }}
+  {{- $spec = mergeOverwrite (deepCopy $spec) $http.specOverrides -}}
+{{- end }}
+---
+apiVersion: {{ $httpApiVersion }}
+kind: HTTPRoute
+metadata:
+  name: {{ $httpName }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+    {{- range $k, $v := .Values.commonLabels }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+    {{- range $k, $v := $gw.labels }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+    {{- range $k, $v := $http.labels }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+  {{- $httpAnnotations := dict -}}
+  {{- if gt (len $mergeAnnotations) 0 }}
+    {{- $httpAnnotations = merge (dict) $mergeAnnotations -}}
+  {{- end }}
+  {{- if $http.annotations }}
+    {{- $httpAnnotations = merge $httpAnnotations $http.annotations -}}
+  {{- end }}
+  {{- if gt (len $httpAnnotations) 0 }}
+  annotations:
+    {{- range $k, $v := $httpAnnotations }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+  {{- end }}
+spec:
+{{ toYaml $spec | nindent 2 }}
+{{- end }}
+
+{{- /* GRPCRoute */ -}}
+{{- $grpc := $gw.grpcRoute | default (dict) -}}
+{{- if $grpc.enabled -}}
+{{- $grpcName := default (printf "%s-grpc" $fullName) $grpc.name -}}
+{{- $grpcName = $grpcName | trunc 63 | trimSuffix "-" -}}
+{{- $grpcApiVersion := default $apiVersion $grpc.apiVersion -}}
+{{- $parentRefs := $grpc.parentRefs | default (list) -}}
+{{- if not (gt (len $parentRefs) 0) }}
+  {{- $parentRefs = $baseParentRefs -}}
+{{- end }}
+{{- if not (gt (len $parentRefs) 0) }}
+  {{- fail "gatewayApi.grpcRoute.enabled but no parentRefs configured" }}
+{{- end }}
+{{- $hostnames := $grpc.hostnames | default (list) -}}
+{{- if not (gt (len $hostnames) 0) }}
+  {{- $hostnames = $baseHostnames -}}
+{{- end }}
+{{- $backendRefs := $grpc.backendRefs | default (list) -}}
+{{- if not (gt (len $backendRefs) 0) }}
+  {{- $backendRefs = list (deepCopy $defaultBackend) -}}
+{{- end }}
+{{- $rules := $grpc.rules | default (list) -}}
+{{- if not (gt (len $rules) 0) }}
+  {{- $rule := dict "backendRefs" $backendRefs -}}
+  {{- if $grpc.matches }}
+    {{- $_ := set $rule "matches" $grpc.matches -}}
+  {{- end }}
+  {{- $rules = list $rule -}}
+{{- end }}
+{{- $spec := dict "parentRefs" $parentRefs "rules" $rules -}}
+{{- if gt (len $hostnames) 0 }}
+  {{- $_ := set $spec "hostnames" $hostnames -}}
+{{- end }}
+{{- if $grpc.specOverrides }}
+  {{- $spec = mergeOverwrite (deepCopy $spec) $grpc.specOverrides -}}
+{{- end }}
+---
+apiVersion: {{ $grpcApiVersion }}
+kind: GRPCRoute
+metadata:
+  name: {{ $grpcName }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+    {{- range $k, $v := .Values.commonLabels }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+    {{- range $k, $v := $gw.labels }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+    {{- range $k, $v := $grpc.labels }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+  {{- $grpcAnnotations := dict -}}
+  {{- if gt (len $mergeAnnotations) 0 }}
+    {{- $grpcAnnotations = merge (dict) $mergeAnnotations -}}
+  {{- end }}
+  {{- if $grpc.annotations }}
+    {{- $grpcAnnotations = merge $grpcAnnotations $grpc.annotations -}}
+  {{- end }}
+  {{- if gt (len $grpcAnnotations) 0 }}
+  annotations:
+    {{- range $k, $v := $grpcAnnotations }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+  {{- end }}
+spec:
+{{ toYaml $spec | nindent 2 }}
+{{- end }}
+{{- end }}
+{{- end }}

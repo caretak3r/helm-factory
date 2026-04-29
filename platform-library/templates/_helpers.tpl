@@ -9,8 +9,8 @@ Expand the name of the chart.
 Create a default fully qualified app name.
 */}}
 {{- define "platform.fullname" -}}
-{{- if .Values.nameOverride }}
-{{- .Values.nameOverride | trunc 63 | trimSuffix "-" }}
+{{- if .Values.fullnameOverride }}
+{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
 {{- else }}
 {{- $name := default .Chart.Name .Values.nameOverride }}
 {{- if contains $name .Release.Name }}
@@ -58,10 +58,9 @@ Resolve the full image reference, honoring global overrides
   {{- $repository = printf "%s/%s" $registry $repository -}}
 {{- end }}
 {{- if .Values.image.digest }}
-{{ printf "%s@%s" $repository .Values.image.digest }}
+{{- printf "%s@%s" $repository .Values.image.digest }}
 {{- else }}
-{{ printf "%s:%s" $repository (.Values.image.tag | default "latest") }}
-{{- end }}
+{{- printf "%s:%s" $repository (.Values.image.tag | default "latest") }}
 {{- end }}
 
 {{/*
@@ -71,8 +70,13 @@ Resolve pull policy with global override support
 {{- $policy := .Values.image.pullPolicy | default "" -}}
 {{- if .Values.global.imagePullPolicy }}
   {{- $policy = .Values.global.imagePullPolicy -}}
-{{- end }}
+<<<<<<< HEAD
+{{- end -}}
 {{ default "IfNotPresent" $policy }}
+=======
+{{- end }}
+{{- default "IfNotPresent" $policy }}
+>>>>>>> 27ef9d2 (feat: supporting gateway api)
 {{- end }}
 
 {{/*
@@ -160,12 +164,25 @@ metadata:
     {{- range $k, $v := $ctx.Values.podLabels }}
     {{ $k }}: {{ $v | quote }}
     {{- end }}
-  {{- if or $ctx.Values.commonAnnotations $ctx.Values.podAnnotations }}
-  annotations:
-    {{- range $k, $v := $ctx.Values.commonAnnotations }}
-    {{ $k }}: {{ $v | quote }}
+  {{- $podAnnotations := dict -}}
+  {{- range $k, $v := $ctx.Values.commonAnnotations }}
+    {{- $_ := set $podAnnotations $k $v -}}
+  {{- end }}
+  {{- range $k, $v := $ctx.Values.podAnnotations }}
+    {{- $_ := set $podAnnotations $k $v -}}
+  {{- end }}
+  {{- if eq $ctx.Values.workload.type "Deployment" }}
+    {{- $rollout := (include "platform.deployment.rolloutAnnotations" $ctx | trim) -}}
+    {{- if $rollout }}
+      {{- $rolloutMap := fromYaml $rollout -}}
+      {{- range $k, $v := $rolloutMap }}
+        {{- $_ := set $podAnnotations $k $v -}}
+      {{- end }}
     {{- end }}
-    {{- range $k, $v := $ctx.Values.podAnnotations }}
+  {{- end }}
+  {{- if gt (len $podAnnotations) 0 }}
+  annotations:
+    {{- range $k, $v := $podAnnotations }}
     {{ $k }}: {{ $v | quote }}
     {{- end }}
   {{- end }}
@@ -426,6 +443,24 @@ Workload template selector
 {{- end }}
 {{- end }}
 
+{{/*
+Build deterministic checksum annotations to trigger Deployment rollouts when
+ConfigMaps or Secrets change.
+*/}}
+{{- define "platform.deployment.rolloutAnnotations" -}}
+{{- $ctx := . -}}
+{{- $annotations := dict -}}
+{{- if $ctx.Values.configMap.enabled }}
+  {{- $_ := set $annotations "checksum/config" (include "platform.configmap" $ctx | sha256sum) -}}
+{{- end }}
+{{- if $ctx.Values.secret.enabled }}
+  {{- $_ := set $annotations "checksum/secret" (include "platform.secret" $ctx | sha256sum) -}}
+{{- end }}
+{{- if gt (len $annotations) 0 }}
+{{ toYaml $annotations }}
+{{- end }}
+{{- end }}
+
 
 {{/*
 Get service endpoint for this service
@@ -474,10 +509,8 @@ Get all enabled subcharts dynamically
 {{- $enabled := list -}}
 {{- range $chartName, $chartValues := .Values -}}
   {{- if and (not (eq $chartName "global")) (not (eq $chartName "nameOverride")) (not (eq $chartName "common")) }}
-    {{- if or (hasKey $chartValues "enabled") (not (hasKey $chartValues "enabled")) }}
-      {{- if or $chartValues.enabled (not (hasKey $chartValues "enabled")) }}
-        {{- $enabled = append $enabled $chartName -}}
-      {{- end -}}
+    {{- if or $chartValues.enabled (not (hasKey $chartValues "enabled")) }}
+      {{- $enabled = append $enabled $chartName -}}
     {{- end -}}
   {{- end -}}
 {{- end -}}
@@ -491,27 +524,25 @@ Get all service endpoints dynamically
 {{- $endpoints := dict -}}
 {{- range $chartName, $chartValues := .Values -}}
   {{- if and (not (eq $chartName "global")) (not (eq $chartName "nameOverride")) (not (eq $chartName "common")) }}
-    {{- if or (hasKey $chartValues "enabled") (not (hasKey $chartValues "enabled")) }}
-      {{- if or $chartValues.enabled (not (hasKey $chartValues "enabled")) }}
-        {{- $subserviceName := $chartName -}}
-        {{- if $chartValues.service.name -}}
-          {{- $subserviceName = $chartValues.service.name -}}
+    {{- if or $chartValues.enabled (not (hasKey $chartValues "enabled")) }}
+      {{- $subserviceName := $chartName -}}
+      {{- if and $chartValues.service $chartValues.service.name -}}
+        {{- $subserviceName = $chartValues.service.name -}}
+      {{- end -}}
+      {{- $subservicePort := 80 -}}
+      {{- if and $chartValues.service $chartValues.service.ports }}
+        {{- $first := index $chartValues.service.ports 0 -}}
+        {{- if $first.port }}
+          {{- $subservicePort = $first.port -}}
         {{- end -}}
-        {{- $subservicePort := 80 -}}
-        {{- if and $chartValues.service $chartValues.service.ports }}
-          {{- $first := index $chartValues.service.ports 0 -}}
-          {{- if $first.port }}
-            {{- $subservicePort = $first.port -}}
-          {{- end -}}
-        {{- end -}}
-        {{- if $subservicePort -}}
-          {{- $namespace := $.Release.Namespace | default "default" -}}
-          {{- if and $chartValues.global $chartValues.global.namespace }}
-            {{- $namespace = $chartValues.global.namespace -}}
-          {{- end }}
-          {{- $endpoint := printf "%s.%s.svc.cluster.local:%d" $subserviceName $namespace $subservicePort -}}
-          {{- $endpoints = set $endpoints $subserviceName $endpoint -}}
-        {{- end -}}
+      {{- end -}}
+      {{- if $subservicePort -}}
+        {{- $namespace := $.Release.Namespace | default "default" -}}
+        {{- if and $chartValues.global $chartValues.global.namespace }}
+          {{- $namespace = $chartValues.global.namespace -}}
+        {{- end }}
+        {{- $endpoint := printf "%s.%s.svc.cluster.local:%d" $subserviceName $namespace $subservicePort -}}
+        {{- $endpoints = set $endpoints $subserviceName $endpoint -}}
       {{- end -}}
     {{- end -}}
   {{- end -}}
@@ -610,6 +641,48 @@ Render hook jobs (pre/post install)
   {{- $volumeMounts = append $volumeMounts (dict "name" "job-script" "mountPath" "/scripts" "readOnly" true) -}}
   {{- $volumes = append $volumes (dict "name" "job-script" "configMap" (dict "name" (printf "%s-%s-script" (include "platform.fullname" $ctx) $type) "defaultMode" 0555)) -}}
 {{- end }}
+{{- $initContainers := list -}}
+{{- if and $defaults.initContainers $defaults.initContainers.enabled $defaults.initContainers.containers }}
+  {{- range $defaults.initContainers.containers }}
+    {{- $initContainers = append $initContainers . -}}
+  {{- end }}
+{{- end }}
+{{- if and $job.initContainers $job.initContainers.enabled $job.initContainers.containers }}
+  {{- range $job.initContainers.containers }}
+    {{- $initContainers = append $initContainers . -}}
+  {{- end }}
+{{- end }}
+{{- $sidecars := list -}}
+{{- if and $defaults.sidecars $defaults.sidecars.enabled $defaults.sidecars.containers }}
+  {{- range $defaults.sidecars.containers }}
+    {{- $sidecars = append $sidecars . -}}
+  {{- end }}
+{{- end }}
+{{- if and $job.sidecars $job.sidecars.enabled $job.sidecars.containers }}
+  {{- range $job.sidecars.containers }}
+    {{- $sidecars = append $sidecars . -}}
+  {{- end }}
+{{- end }}
+{{- $mainJobContainer := dict "name" (printf "%s-%s" (include "platform.name" $ctx) $type) "image" $image "imagePullPolicy" $pullPolicy -}}
+{{- if gt (len $command) 0 }}
+  {{- $_ := set $mainJobContainer "command" $command -}}
+{{- end }}
+{{- if gt (len $args) 0 }}
+  {{- $_ := set $mainJobContainer "args" $args -}}
+{{- end }}
+{{- if gt (len $env) 0 }}
+  {{- $_ := set $mainJobContainer "env" $env -}}
+{{- end }}
+{{- if gt (len $volumeMounts) 0 }}
+  {{- $_ := set $mainJobContainer "volumeMounts" $volumeMounts -}}
+{{- end }}
+{{- if $resources }}
+  {{- $_ := set $mainJobContainer "resources" $resources -}}
+{{- end }}
+{{- $jobContainers := list $mainJobContainer -}}
+{{- range $sidecars }}
+  {{- $jobContainers = append $jobContainers . -}}
+{{- end }}
 {{- $defaultWeight := ternary -5 5 (eq $type "preinstall") -}}
 {{- $hookWeight := default $defaultWeight $job.hookWeight -}}
 apiVersion: batch/v1
@@ -638,33 +711,24 @@ spec:
     spec:
       restartPolicy: {{ $restartPolicy }}
       serviceAccountName: {{ include "platform.serviceAccountName" $ctx }}
-      {{- if $ctx.Values.global.imagePullSecrets }}
+      {{- $hookPullSecrets := list -}}
+      {{- range $ctx.Values.global.imagePullSecrets }}
+        {{- $hookPullSecrets = append $hookPullSecrets . -}}
+      {{- end }}
+      {{- range $ctx.Values.image.pullSecrets }}
+        {{- $hookPullSecrets = append $hookPullSecrets . -}}
+      {{- end }}
+      {{- if gt (len $hookPullSecrets) 0 }}
       imagePullSecrets:
-        {{- range $ctx.Values.global.imagePullSecrets }}
+        {{- range $hookPullSecrets }}
         - name: {{ . }}
         {{- end }}
       {{- end }}
-      containers:
-        - name: {{ printf "%s-%s" (include "platform.name" $ctx) $type }}
-          image: {{ $image }}
-          imagePullPolicy: {{ $pullPolicy }}
-          {{- if $command }}
-          command: {{- toYaml $command | nindent 12 }}
-          {{- end }}
-          {{- if $args }}
-          args: {{- toYaml $args | nindent 12 }}
-          {{- end }}
-          {{- if $env }}
-          env: {{- toYaml $env | nindent 12 }}
-          {{- end }}
-          {{- if $volumeMounts }}
-          volumeMounts: {{- toYaml $volumeMounts | nindent 12 }}
-          {{- end }}
-          {{- if $resources }}
-          resources: {{- toYaml $resources | nindent 12 }}
-          {{- end }}
+      {{- if gt (len $initContainers) 0 }}
+      initContainers: {{- toYaml $initContainers | nindent 8 }}
+      {{- end }}
+      containers: {{- toYaml $jobContainers | nindent 8 }}
       {{- if $volumes }}
       volumes: {{- toYaml $volumes | nindent 8 }}
       {{- end }}
 {{- end }}
-
