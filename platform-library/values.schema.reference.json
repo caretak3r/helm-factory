@@ -103,9 +103,11 @@
       "additionalProperties": true,
       "properties": {
         "create": { "type": "boolean" },
-        "name": { "type": "string" }
+        "name": { "type": "string" },
+        "automountServiceAccountToken": { "type": "boolean" }
       }
     },
+    "enableServiceLinks": { "type": "boolean" },
     "capabilities": {
       "type": "object",
       "additionalProperties": true,

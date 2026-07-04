@@ -408,29 +408,46 @@ exports:
     # -----------------------------------------------------------------------------
     # Service Account
     # -----------------------------------------------------------------------------
+    # A dedicated ServiceAccount is created by default so every app gets its own
+    # least-privilege identity. The API token is NOT mounted by default
+    # (automountServiceAccountToken: false is rendered on both the ServiceAccount
+    # and the pod spec); apps that call the Kubernetes API must opt in.
     serviceAccount:
-      create: false
+      create: true
       name: ""
-      automountServiceAccountToken: true
+      automountServiceAccountToken: false
       annotations: {}
       labels: {}
 
     # -----------------------------------------------------------------------------
     # Security Context
     # -----------------------------------------------------------------------------
+    # Enabled by default. The zero-config output targets the Pod Security
+    # Standards "restricted" profile: runAsNonRoot, no privilege escalation,
+    # all capabilities dropped, RuntimeDefault seccomp, read-only root
+    # filesystem. Set enabled: false on either block to opt out entirely, or
+    # override individual fields (e.g. readOnlyRootFilesystem: false for apps
+    # that write to their root filesystem; use extraVolumes/extraVolumeMounts
+    # with an emptyDir for scratch space instead where possible).
+    # Every key except `enabled` is rendered verbatim into the manifest.
     podSecurityContext:
-      enabled: false
+      enabled: true
       fsGroup: 1001
+      runAsNonRoot: true
+      seccompProfile:
+        type: RuntimeDefault
 
     containerSecurityContext:
-      enabled: false
+      enabled: true
       runAsUser: 1001
       runAsNonRoot: true
-      readOnlyRootFilesystem: false
+      readOnlyRootFilesystem: true
       allowPrivilegeEscalation: false
       capabilities:
         drop:
           - ALL
+      seccompProfile:
+        type: RuntimeDefault
 
     # -----------------------------------------------------------------------------
     # Pod Scheduling
@@ -443,6 +460,10 @@ exports:
     terminationGracePeriodSeconds: 30
     podRestartPolicy: Always
     hostAliases: []
+    # Do not inject <SVCNAME>_SERVICE_HOST/_PORT env vars from every Service in
+    # the namespace (information leak + env bloat). Set true to restore the
+    # legacy Kubernetes behavior.
+    enableServiceLinks: false
 
     # -----------------------------------------------------------------------------
     # Volumes

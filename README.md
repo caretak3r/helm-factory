@@ -363,20 +363,36 @@ resources:
 
 ### Security Context
 
+Pod and container security contexts are **enabled by default**, and the defaults
+target the [Pod Security Standards `restricted`](https://kubernetes.io/docs/concepts/security/pod-security-standards/)
+profile: non-root user, no privilege escalation, all capabilities dropped,
+`RuntimeDefault` seccomp, and a read-only root filesystem. The same contexts are
+applied to the main workload, CronJob, and pre/post-install hook Job pods.
+
 ```yaml
 podSecurityContext:
-  enabled: true
+  enabled: true                  # set false to emit no pod securityContext at all
   fsGroup: 1001
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
 
 containerSecurityContext:
-  enabled: true
+  enabled: true                  # set false to emit no container securityContext at all
   runAsUser: 1001
   runAsNonRoot: true
-  readOnlyRootFilesystem: true
+  readOnlyRootFilesystem: true   # apps that write to / must opt out or mount an emptyDir
   allowPrivilegeEscalation: false
   capabilities:
     drop: [ALL]
+  seccompProfile:
+    type: RuntimeDefault
 ```
+
+Every key except `enabled` is rendered verbatim, so individual fields can be
+overridden without disabling the whole block. User-supplied `sidecars`,
+`initContainers`, and `cronJob.containers` are rendered verbatim and must bring
+their own `securityContext`.
 
 ### Environment Variables
 
@@ -570,13 +586,26 @@ networkPolicy:
 
 ### Service Account
 
+A dedicated ServiceAccount is created by default (`create: true`) and the API
+token is **not** mounted (`automountServiceAccountToken: false` is set on both
+the ServiceAccount and every pod spec). Pods also run with
+`enableServiceLinks: false`. Apps that call the Kubernetes API must opt in:
+
 ```yaml
 serviceAccount:
   create: true
   name: ""                       # Auto-generated from fullname
+  automountServiceAccountToken: true   # only if the app talks to the API server
   annotations:
     eks.amazonaws.com/role-arn: arn:aws:iam::123456789:role/myapp
 ```
+
+> **Pre-install hooks caveat:** hook Job pods run under the same ServiceAccount.
+> On a *first* install, pre-install hooks run before regular resources exist, so
+> the SA is not yet created. If you enable `jobs.preInstall`, either set
+> `serviceAccount.create: false`, pre-create the SA, or turn the SA into a hook
+> itself via `serviceAccount.annotations` (`helm.sh/hook: pre-install,pre-upgrade`,
+> `helm.sh/hook-weight: "-10"`, `helm.sh/hook-delete-policy: before-hook-creation`).
 
 ### Service Monitor / Pod Monitor (Prometheus)
 

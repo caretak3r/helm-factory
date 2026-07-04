@@ -124,3 +124,12 @@ extraManifests:
       name: raw-config
     data:
       raw: "true"
+
+# Hook job, exercises the hardened renderHookJob path (securityContext,
+# automountServiceAccountToken, enableServiceLinks, script ConfigMap).
+jobs:
+  preInstall:
+    enabled: true
+    script: |
+      #!/bin/sh
+      echo "pre-install hook"

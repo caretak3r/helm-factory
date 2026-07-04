@@ -184,6 +184,8 @@ metadata:
   {{- end }}
 spec:
   serviceAccountName: {{ include "platform.serviceAccountName" $ctx }}
+  automountServiceAccountToken: {{ $ctx.Values.serviceAccount.automountServiceAccountToken | default false }}
+  enableServiceLinks: {{ $ctx.Values.enableServiceLinks | default false }}
   {{- $pullSecrets := list -}}
   {{- range $ctx.Values.global.imagePullSecrets }}
     {{- $pullSecrets = append $pullSecrets . -}}
@@ -376,6 +378,7 @@ metadata:
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
+automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken | default false }}
 {{- end }}
 {{- end }}
 
@@ -660,6 +663,9 @@ Render hook jobs (pre/post install)
   {{- end }}
 {{- end }}
 {{- $mainJobContainer := dict "name" (printf "%s-%s" (include "platform.name" $ctx) $type) "image" $image "imagePullPolicy" $pullPolicy -}}
+{{- if $ctx.Values.containerSecurityContext.enabled }}
+  {{- $_ := set $mainJobContainer "securityContext" (omit $ctx.Values.containerSecurityContext "enabled") -}}
+{{- end }}
 {{- if gt (len $command) 0 }}
   {{- $_ := set $mainJobContainer "command" $command -}}
 {{- end }}
@@ -707,6 +713,11 @@ spec:
     spec:
       restartPolicy: {{ $restartPolicy }}
       serviceAccountName: {{ include "platform.serviceAccountName" $ctx }}
+      automountServiceAccountToken: {{ $ctx.Values.serviceAccount.automountServiceAccountToken | default false }}
+      enableServiceLinks: {{ $ctx.Values.enableServiceLinks | default false }}
+      {{- if $ctx.Values.podSecurityContext.enabled }}
+      securityContext: {{- omit $ctx.Values.podSecurityContext "enabled" | toYaml | nindent 8 }}
+      {{- end }}
       {{- $hookPullSecrets := list -}}
       {{- range $ctx.Values.global.imagePullSecrets }}
         {{- $hookPullSecrets = append $hookPullSecrets . -}}
