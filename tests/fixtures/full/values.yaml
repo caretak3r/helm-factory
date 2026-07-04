@@ -46,6 +46,10 @@ certificate:
 mtls:
   enabled: true
   policy: STRICT
+  # Fail-closed: principals are now required. Same-namespace default (release
+  # renders into "default" under helm template).
+  allowedPrincipals:
+    - "cluster.local/ns/default/sa/*"
 
 serviceMonitor:
   enabled: true
@@ -74,6 +78,11 @@ capabilities:
     - cert-manager.io/v1
     - security.istio.io/v1beta1
     - monitoring.coreos.com/v1
+
+# The fixture ships ClusterRole/PriorityClass extras, so opt in to the
+# cluster-scoped gate (default false; the lint gate has a negative test that
+# flips this back off and expects a failure naming ClusterRole).
+allowClusterScopedExtras: true
 
 # Tier-2 long tail: capability-negotiated, standard-labelled, namespace-aware.
 extraObjects:

@@ -457,7 +457,7 @@ ConfigMaps or Secrets change.
 {{- if $ctx.Values.configMap.enabled }}
   {{- $_ := set $annotations "checksum/config" (include "platform.configmap" $ctx | sha256sum) -}}
 {{- end }}
-{{- if $ctx.Values.secret.enabled }}
+{{- if and $ctx.Values.secret.enabled (not $ctx.Values.secret.existingSecret) }}
   {{- $_ := set $annotations "checksum/secret" (include "platform.secret" $ctx | sha256sum) -}}
 {{- end }}
 {{- if gt (len $annotations) 0 }}

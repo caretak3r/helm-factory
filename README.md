@@ -202,6 +202,12 @@ ingress:
     cert-manager.io/cluster-issuer: letsencrypt-prod
 ```
 
+`ingress.tls` defaults to `false` and is deliberately not flipped: when `true`, the Ingress
+references `ingress.existingSecret` or the conventional `<hostname>-tls` Secret, which **must be
+provisioned** — by cert-manager (the `certificate` block or a cert-manager ingress annotation),
+`ingress.existingSecret`, or `ingress.secrets`. Enabling an ingress hostname without TLS prints an
+install-time `WARNING:` in the release notes.
+
 Additional hosts, paths, TLS configs, and custom rules:
 
 ```yaml
@@ -214,6 +220,10 @@ ingress:
       hosts:
         - admin.example.com
 ```
+
+> **TLS secrets:** prefer cert-manager (see the `certificate` block) or a pre-created Secret via
+> `ingress.existingSecret`. `ingress.secrets` embeds raw cert/key material in values — same caveats
+> as `secret.stringData` above.
 
 ### Gateway API
 
@@ -436,13 +446,30 @@ configMap:
 
 ### Secret
 
+> **Warning — secrets in values are plaintext.** Anything under `secret.data`/`secret.stringData`
+> (and raw cert/key material under `ingress.secrets`) ends up in your values files (git) and in the
+> Helm release manifest (a Secret in the release namespace). For production, create the Secret
+> out-of-band — [External Secrets Operator](https://external-secrets.io/),
+> [Sealed Secrets](https://github.com/bitnami-labs/sealed-secrets), or SOPS — and point the chart at
+> it with `secret.existingSecret`. The chart then renders **no** Secret.
+
 ```yaml
+# Recommended: reference a pre-created Secret
+secret:
+  existingSecret: my-app-secrets   # chart renders no Secret; conflicts with data/stringData
+envVarsSecret: my-app-secrets      # bulk-import it as environment variables
+
+# Dev/test only: chart-managed Secret from values
 secret:
   enabled: true
   type: Opaque
   stringData:
     api-key: my-secret-value
 ```
+
+The chart-managed Secret is named `<fullname>-secret`; it is not mounted or injected
+automatically — reference it explicitly via `envVarsSecret` or `envVars` `valueFrom`.
+For TLS, the equivalent pattern already exists: `ingress.existingSecret` (see Ingress).
 
 ### Persistence / Storage
 
@@ -538,6 +565,10 @@ cronJob:
 
 Creates PeerAuthentication and AuthorizationPolicy resources.
 
+**Fail-closed:** when `mtls.enabled: true`, `allowedPrincipals` must list the SPIFFE
+principals allowed to call this workload — rendering fails otherwise. The easy
+same-namespace default is `cluster.local/ns/<your-namespace>/sa/*`.
+
 ```yaml
 mtls:
   enabled: true
@@ -545,6 +576,15 @@ mtls:
   allowedPrincipals:
     - "cluster.local/ns/frontend/sa/frontend-sa"
     - "cluster.local/ns/api-gateway/sa/gateway-sa"
+```
+
+To explicitly allow **every** workload in the mesh (mutual TLS with no meaningful
+authorization — the pre-2.x behavior), opt in with:
+
+```yaml
+mtls:
+  enabled: true
+  allowAllPrincipals: true   # renders principal "cluster.local/ns/*/sa/*"
 ```
 
 ### Certificates (cert-manager)
@@ -584,6 +624,12 @@ tlsSelfSigned:
 ```
 
 ### Network Policy
+
+> **Default-deny footgun:** `networkPolicy.enabled: true` with empty `ingress`/`egress` rules
+> renders a policy that selects the app pods with `policyTypes: [Ingress, Egress]` and no allow
+> rules — i.e. **all traffic to and from the pods is denied, including DNS**. That is a valid
+> hardening baseline, but if it is not what you meant, add allow rules like the example below.
+> An install-time `WARNING:` is printed in the release notes when this shape is detected.
 
 ```yaml
 networkPolicy:
@@ -799,7 +845,19 @@ gatewayApi:
 
 Beyond the opinionated blocks above, `extraObjects` renders **any** Kind through one capability-gated generic renderer. It is a map of `Kind → list of specs`; each spec's `name` is required, and every field other than `name`/`namespace`/`labels`/`annotations`/`apiVersion`/`kind`/`clusterScoped` is passed through verbatim. Standard labels are added, namespace is stamped for namespaced Kinds, and the object is skipped if no supported `apiVersion` is present.
 
+> **Trust model — values are code.** `extraObjects`, `extraManifests`, `sidecars`, `initContainers`,
+> and `extraVolumes` are verbatim escape hatches: whoever writes those values authors arbitrary
+> Kubernetes objects (and, for `extraManifests` strings, arbitrary template code executed with the
+> full chart context). Review values changes like code changes. Two guardrails apply:
+>
+> - Cluster-scoped Kinds in `extraObjects` **fail rendering** unless you set
+>   `allowClusterScopedExtras: true` (the failure names the offending Kind). Unknown cluster-scoped
+>   CRD Kinds can only be caught when you mark them `clusterScoped: true` on the spec.
+> - Install-time `WARNING:` notes are printed (via `NOTES.txt`) when extras contain `hostPath`
+>   volumes, `privileged: true` containers, or cluster-scoped RBAC.
+
 ```yaml
+allowClusterScopedExtras: true   # PriorityClass/StorageClass below are cluster-scoped
 extraObjects:
   Role:
     - name: app-reader

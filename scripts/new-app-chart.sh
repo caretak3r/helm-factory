@@ -98,6 +98,10 @@ hatch (extraManifests). Configure everything through values.yaml.
 {{ include "platform.render" . }}
 EOF
 
+cat > "$out_dir/templates/NOTES.txt" <<'EOF'
+{{ include "platform.notes" . }}
+EOF
+
 cat > "$out_dir/values.yaml" <<EOF
 # ${name} — overrides only. The library's exports.defaults are imported at the
 # root of these values, so set fields at the top level (image:, service:, ...).
@@ -152,6 +156,7 @@ cat <<EOF
 Created ${out_dir}/
   Chart.yaml            (depends on platform @ ${version} from ${repo})
   templates/app.yaml    ({{ include "platform.render" . }})
+  templates/NOTES.txt   (post-install security warnings via platform.notes)
   values.yaml           (overrides only)
   values.schema.json    (root contract)
   .helmignore

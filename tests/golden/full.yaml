@@ -417,7 +417,7 @@ spec:
   - from:
     - source:
         principals:
-        - cluster.local/ns/*/sa/*
+        - cluster.local/ns/default/sa/*
 ---
 # Source: full/templates/app.yaml
 apiVersion: cert-manager.io/v1

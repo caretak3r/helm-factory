@@ -12,7 +12,8 @@
 # contract: the reference JSON Schema against its metaschema, every fixture's
 # values against it (check-jsonschema), and helm-side rejection of
 # schema-violating values (the schema is copied into each fixture as
-# values.schema.json at render time).
+# values.schema.json at render time), and exercise posture guardrails for mTLS,
+# cluster-scoped extras, and pre-existing Secrets.
 #
 # Usage:
 #   scripts/lint-library.sh                        # run all checks
@@ -214,6 +215,56 @@ elif grep -q "image/tag" <<<"$out"; then
   echo "  OK: image.tag=latest rejected by values.schema.json"
 else
   echo "  FAIL: render failed without a schema error"; echo "$out" | tail -3; fail=1
+fi
+
+echo "==> posture guardrails"
+# mTLS fail-closed: enabled with empty principals must fail with guidance.
+# (--set key=null deletes the key from the coalesced values.)
+if out=$("$RENDER" full --set mtls.allowedPrincipals=null 2>&1); then
+  echo "  FAIL: render succeeded with mtls enabled and empty allowedPrincipals"; fail=1
+elif grep -q "mtls.allowedPrincipals is empty" <<<"$out"; then
+  echo "  OK: mtls with empty principals fails closed with actionable message"
+else
+  echo "  FAIL: mtls empty-principals failed without the expected message"; echo "$out" | tail -3; fail=1
+fi
+
+# Explicit opt-in restores the wildcard principal.
+if out=$("$RENDER" full --set mtls.allowedPrincipals=null --set mtls.allowAllPrincipals=true 2>&1) &&
+   grep -q 'cluster.local/ns/\*/sa/\*' <<<"$out"; then
+  echo "  OK: mtls.allowAllPrincipals=true renders the wildcard principal"
+else
+  echo "  FAIL: mtls.allowAllPrincipals=true did not render the wildcard principal"; fail=1
+fi
+
+# Cluster-scoped extraObjects are refused unless explicitly allowed.
+if out=$("$RENDER" full --set allowClusterScopedExtras=false 2>&1); then
+  echo "  FAIL: render succeeded with cluster-scoped extraObjects and gate=false"; fail=1
+elif grep -q 'cluster-scoped Kind "ClusterRole"' <<<"$out"; then
+  echo "  OK: cluster-scoped extraObjects refused, message names ClusterRole"
+else
+  echo "  FAIL: gate=false failed without the expected message"; echo "$out" | tail -3; fail=1
+fi
+
+# secret.existingSecret conflicts with inline material.
+if out=$("$RENDER" stateful --set secret.existingSecret=preexisting 2>&1); then
+  echo "  FAIL: render succeeded with secret.existingSecret + secret.stringData"; fail=1
+elif grep -q "secret.existingSecret is mutually exclusive" <<<"$out"; then
+  echo "  OK: existingSecret + inline stringData rejected"
+else
+  echo "  FAIL: existingSecret conflict failed without the expected message"; echo "$out" | tail -3; fail=1
+fi
+
+# secret.existingSecret suppresses the chart-managed Secret.
+if out=$("$RENDER" stateful --set secret.existingSecret=preexisting \
+  --set secret.stringData=null 2>&1); then
+  secret_count=$(grep -c '^kind: Secret' <<<"$out" || true)
+  if [[ "$secret_count" -eq 0 ]]; then
+    echo "  OK: existingSecret suppresses the chart-managed Secret"
+  else
+    echo "  FAIL: chart still rendered a Secret with secret.existingSecret set"; fail=1
+  fi
+else
+  echo "  FAIL: render failed while checking secret.existingSecret suppression"; echo "$out" | tail -3; fail=1
 fi
 
 if [[ $fail -eq 0 ]]; then echo "==> PASS"; else echo "==> FAIL"; fi

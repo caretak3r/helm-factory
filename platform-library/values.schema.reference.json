@@ -36,10 +36,27 @@
         "ports": { "type": "array", "items": { "type": "object" } }
       }
     },
+    "secret": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "existingSecret": { "type": "string", "description": "Name of a pre-created Secret (External Secrets / Sealed Secrets / kubectl). When set the chart renders no Secret; mutually exclusive with data/stringData. Consume it via envVarsSecret or envVars valueFrom." },
+        "type": { "type": "string" },
+        "data": { "type": "object" },
+        "stringData": { "type": "object", "description": "DISCOURAGED: plaintext secret material in values ends up in git and in Helm release manifests. Prefer existingSecret." }
+      }
+    },
     "ingress": {
       "type": "object",
       "additionalProperties": true,
-      "properties": { "enabled": { "type": "boolean" } }
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "hostname": { "type": "string" },
+        "tls": { "type": "boolean", "description": "Terminate TLS for ingress.hostname. Uses ingress.existingSecret when set, else the conventional name <hostname>-tls (the Secret must exist or be created by cert-manager/ingress.secrets)." },
+        "existingSecret": { "type": "string" },
+        "secrets": { "type": "array", "items": { "type": "object" }, "description": "DISCOURAGED: inline TLS cert/key material in values. Prefer cert-manager (certificate block) or a pre-created Secret via existingSecret." }
+      }
     },
     "autoscaling": {
       "type": "object",
@@ -72,6 +89,7 @@
         "enabled": { "type": "boolean" },
         "policy": { "type": "string", "enum": ["STRICT", "PERMISSIVE", "DISABLE", "UNSET"], "description": "Istio PeerAuthentication mTLS mode, rendered as spec.mtls.mode." },
         "allowedPrincipals": { "type": "array", "items": { "type": "string" } },
+        "allowAllPrincipals": { "type": "boolean", "description": "Explicit opt-in: when true and allowedPrincipals is empty, the AuthorizationPolicy allows every mesh workload (cluster.local/ns/*/sa/*). Ignored when allowedPrincipals is non-empty." },
         "mode": false
       }
     },
@@ -173,6 +191,7 @@
         }
       }
     },
+    "allowClusterScopedExtras": { "type": "boolean", "description": "Opt-in gate: cluster-scoped Kinds in extraObjects (ClusterRole, ClusterRoleBinding, PriorityClass, StorageClass, webhooks, CRDs, ...) fail rendering unless this is true." },
     "extraObjects": {
       "type": "object",
       "description": "Map of Kubernetes Kind -> list of object specs. Each spec is capability-negotiated and requires a name.",

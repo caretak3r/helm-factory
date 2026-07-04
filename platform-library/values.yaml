@@ -187,8 +187,15 @@ exports:
     # -----------------------------------------------------------------------------
     # Secret
     # -----------------------------------------------------------------------------
+    # WARNING: data/stringData put secret material into values files and Helm
+    # release manifests. Prefer a Secret created out-of-band (External Secrets
+    # Operator, Sealed Secrets, SOPS, kubectl) and set existingSecret to its
+    # name — the chart then renders NO Secret. Consume it via envVarsSecret or
+    # envVars valueFrom. existingSecret is mutually exclusive with
+    # data/stringData (rendering fails if both are set).
     secret:
       enabled: false
+      existingSecret: ""
       type: Opaque
       data: {}
       stringData: {}
@@ -212,6 +219,12 @@ exports:
       path: /
       pathType: ImplementationSpecific
       annotations: {}
+      # TLS is opt-in (an enabled default would reference a `<hostname>-tls`
+      # Secret that nothing provisions). When enabled with a hostname, the
+      # secretName is ingress.existingSecret, else "<hostname>-tls" — provide
+      # it via cert-manager (certificate block / issuer annotation),
+      # ingress.existingSecret, or ingress.secrets. Serving a hostname without
+      # TLS prints an install-time WARNING via NOTES.txt.
       tls: false
       existingSecret: ""
       selfSigned: false
@@ -275,11 +288,19 @@ exports:
     # -----------------------------------------------------------------------------
     # mTLS Policy
     # -----------------------------------------------------------------------------
+    # Fail-closed: when enabled, allowedPrincipals MUST list the SPIFFE
+    # principals allowed to call this workload or rendering fails. Easy
+    # same-namespace default:
+    #   allowedPrincipals:
+    #     - "cluster.local/ns/<your-namespace>/sa/*"
+    # Setting allowAllPrincipals: true is an explicit opt-in that renders the
+    # wildcard principal "cluster.local/ns/*/sa/*" (mutual TLS with no
+    # meaningful authorization). Ignored when allowedPrincipals is non-empty.
     mtls:
       enabled: false
       policy: STRICT
-      allowedPrincipals:
-        - "cluster.local/ns/*/sa/*"
+      allowedPrincipals: []
+      allowAllPrincipals: false
 
     # -----------------------------------------------------------------------------
     # Self-Signed TLS (DEV-ONLY)
@@ -593,6 +614,11 @@ exports:
     #           - apiGroups: [""]
     #             resources: ["configmaps"]
     #             verbs: ["get", "list", "watch"]
+    # Cluster-scoped Kinds (ClusterRole, ClusterRoleBinding, webhooks, CRDs,
+    # PriorityClass, StorageClass, ...) in extraObjects are refused by default:
+    # a namespace-scoped app chart granting itself cluster-wide objects should
+    # be a deliberate, reviewed decision. Set true to allow them.
+    allowClusterScopedExtras: false
     extraObjects: {}
 
     # -----------------------------------------------------------------------------

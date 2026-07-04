@@ -91,8 +91,13 @@ skipped when its API is absent.
 */}}
 {{- define "platform.extraObjects" -}}
 {{- $top := . -}}
+{{- $allowCluster := .Values.allowClusterScopedExtras | default false -}}
 {{- range $kind, $list := (.Values.extraObjects | default dict) }}
 {{- range $res := $list }}
+{{- $clusterScoped := or (include "platform.capabilities.isClusterScoped" $kind) (and (hasKey $res "clusterScoped") $res.clusterScoped) -}}
+{{- if and $clusterScoped (not $allowCluster) -}}
+{{- fail (printf "extraObjects contains cluster-scoped Kind %q (name %q), which is refused by default. Set allowClusterScopedExtras=true to render cluster-scoped objects from extraObjects." $kind ($res.name | default "")) -}}
+{{- end -}}
 {{- $rendered := include "platform.genericResource" (dict "root" $top "kind" $kind "resource" $res) | trim }}
 {{- if $rendered }}
 ---
