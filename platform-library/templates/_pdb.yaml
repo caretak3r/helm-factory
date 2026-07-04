@@ -1,6 +1,6 @@
 {{- define "platform.pdb" -}}
 {{- if .Values.podDisruptionBudget.enabled }}
-apiVersion: policy/v1
+apiVersion: {{ include "platform.capabilities.apiVersionForOrDefault" (list . "PodDisruptionBudget") }}
 kind: PodDisruptionBudget
 metadata:
   name: {{ include "platform.fullname" . }}

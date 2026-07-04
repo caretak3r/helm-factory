@@ -1,6 +1,6 @@
 {{- define "platform.cronjob" -}}
 {{- if .Values.cronJob.enabled }}
-apiVersion: batch/v1
+apiVersion: {{ include "platform.capabilities.apiVersionForOrDefault" (list . "CronJob") }}
 kind: CronJob
 metadata:
   name: {{ include "platform.fullname" . }}-cron

@@ -2,7 +2,7 @@
 {{- if .Values.ingress.enabled -}}
 {{- $primaryPort := (include "platform.primaryServicePort" . | fromYaml) }}
 {{- $backendPort := default $primaryPort.name $primaryPort.port }}
-apiVersion: networking.k8s.io/v1
+apiVersion: {{ include "platform.capabilities.apiVersionForOrDefault" (list . "Ingress") }}
 kind: Ingress
 metadata:
   name: {{ include "platform.fullname" . }}

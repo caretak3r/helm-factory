@@ -1,6 +1,6 @@
 {{- define "platform.podmonitor" -}}
 {{- if .Values.podMonitor.enabled }}
-apiVersion: monitoring.coreos.com/v1
+apiVersion: {{ include "platform.capabilities.apiVersionForOrDefault" (list . "PodMonitor") }}
 kind: PodMonitor
 metadata:
   name: {{ include "platform.fullname" . }}

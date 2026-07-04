@@ -5,8 +5,9 @@
 {{- if not $dnsNames }}
   {{- $dnsNames = list .Values.ingress.hostname -}}
 {{- end }}
-{{- $ca := genCA (printf "%s-ca" (include "platform.fullname" .)) .Values.tlsSelfSigned.validityDays -}}
-{{- $cert := genSignedCert $cn nil $dnsNames .Values.tlsSelfSigned.validityDays $ca -}}
+{{- $validity := int .Values.tlsSelfSigned.validityDays -}}
+{{- $ca := genCA (printf "%s-ca" (include "platform.fullname" .)) $validity -}}
+{{- $cert := genSignedCert $cn nil $dnsNames $validity $ca -}}
 apiVersion: v1
 kind: Secret
 metadata:

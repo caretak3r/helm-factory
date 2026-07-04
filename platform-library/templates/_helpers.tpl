@@ -62,6 +62,7 @@ Resolve the full image reference, honoring global overrides
 {{- else }}
 {{- printf "%s:%s" $repository (.Values.image.tag | default "latest") }}
 {{- end }}
+{{- end }}
 
 {{/*
 Resolve pull policy with global override support
@@ -70,13 +71,8 @@ Resolve pull policy with global override support
 {{- $policy := .Values.image.pullPolicy | default "" -}}
 {{- if .Values.global.imagePullPolicy }}
   {{- $policy = .Values.global.imagePullPolicy -}}
-<<<<<<< HEAD
 {{- end -}}
-{{ default "IfNotPresent" $policy }}
-=======
-{{- end }}
 {{- default "IfNotPresent" $policy }}
->>>>>>> 27ef9d2 (feat: supporting gateway api)
 {{- end }}
 
 {{/*
@@ -388,7 +384,7 @@ Create HorizontalPodAutoscaler
 */}}
 {{- define "platform.autoscaling" -}}
 {{- if .Values.autoscaling.enabled }}
-apiVersion: autoscaling/v2
+apiVersion: {{ include "platform.capabilities.apiVersionForOrDefault" (list . "HorizontalPodAutoscaler") }}
 kind: HorizontalPodAutoscaler
 metadata:
   name: {{ include "platform.fullname" . }}
@@ -424,7 +420,7 @@ spec:
           averageUtilization: {{ .Values.autoscaling.targetMemory }}
   {{- end }}
   {{- range .Values.autoscaling.metrics }}
-    {{- toYaml . | nindent 4 }}
+    {{- toYaml (list .) | nindent 4 }}
   {{- end }}
   {{- end }}
 {{- end }}
@@ -508,7 +504,7 @@ Get all enabled subcharts dynamically
 {{- define "global.enabledSubcharts" -}}
 {{- $enabled := list -}}
 {{- range $chartName, $chartValues := .Values -}}
-  {{- if and (not (eq $chartName "global")) (not (eq $chartName "nameOverride")) (not (eq $chartName "common")) }}
+  {{- if and (not (eq $chartName "global")) (not (eq $chartName "nameOverride")) (not (eq $chartName "common")) (kindIs "map" $chartValues) }}
     {{- if or $chartValues.enabled (not (hasKey $chartValues "enabled")) }}
       {{- $enabled = append $enabled $chartName -}}
     {{- end -}}
@@ -523,7 +519,7 @@ Get all service endpoints dynamically
 {{- define "global.allEndpointsDynamic" -}}
 {{- $endpoints := dict -}}
 {{- range $chartName, $chartValues := .Values -}}
-  {{- if and (not (eq $chartName "global")) (not (eq $chartName "nameOverride")) (not (eq $chartName "common")) }}
+  {{- if and (not (eq $chartName "global")) (not (eq $chartName "nameOverride")) (not (eq $chartName "common")) (kindIs "map" $chartValues) }}
     {{- if or $chartValues.enabled (not (hasKey $chartValues "enabled")) }}
       {{- $subserviceName := $chartName -}}
       {{- if and $chartValues.service $chartValues.service.name -}}
@@ -621,9 +617,9 @@ Render hook jobs (pre/post install)
 {{- $pullPolicy := $imageCfg.pullPolicy | default "IfNotPresent" -}}
 {{- $command := coalesce $job.command nil -}}
 {{- $args := coalesce $job.args nil -}}
-{{- $env := coalesce $job.env list -}}
-{{- $volumeMounts := coalesce $job.volumeMounts list -}}
-{{- $volumes := coalesce $job.volumes list -}}
+{{- $env := default (list) $job.env -}}
+{{- $volumeMounts := default (list) $job.volumeMounts -}}
+{{- $volumes := default (list) $job.volumes -}}
 {{- $resources := coalesce $job.resources $defaults.resources -}}
 {{- $backoffLimit := default $defaults.backoffLimit $job.backoffLimit -}}
 {{- $completions := default $defaults.completions $job.completions -}}

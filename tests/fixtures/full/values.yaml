@@ -1,0 +1,126 @@
+# Full-coverage overrides. Values land at root because the dependency uses
+# import-values: [defaults]. Force-assume the CRD groups so the gated objects
+# render under `helm template` (no cluster).
+image:
+  repository: example/app
+  tag: "1.2.3"
+
+service:
+  enabled: true
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
+
+ingress:
+  enabled: true
+  hostname: app.example.com
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPU: 80
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+networkPolicy:
+  enabled: true
+
+serviceAccount:
+  create: true
+
+cronJob:
+  enabled: true
+  schedule: "*/5 * * * *"
+
+certificate:
+  enabled: true
+  issuer: letsencrypt
+  dnsNames:
+    - app.example.com
+
+mtls:
+  enabled: true
+  mode: STRICT
+
+serviceMonitor:
+  enabled: true
+
+podMonitor:
+  enabled: true
+
+gatewayApi:
+  enabled: true
+  hostnames:
+    - app.example.com
+  parentRefs:
+    - name: shared-gateway
+      namespace: gateway-system
+  httpRoute:
+    enabled: true
+    hostnames:
+      - app.example.com
+    parentRefs:
+      - name: shared-gateway
+        namespace: gateway-system
+
+capabilities:
+  apiVersions:
+    - gateway.networking.k8s.io/v1
+    - cert-manager.io/v1
+    - security.istio.io/v1beta1
+    - monitoring.coreos.com/v1
+
+# Tier-2 long tail: capability-negotiated, standard-labelled, namespace-aware.
+extraObjects:
+  Role:
+    - name: app-reader
+      rules:
+        - apiGroups: [""]
+          resources: ["configmaps", "secrets"]
+          verbs: ["get", "list", "watch"]
+  RoleBinding:
+    - name: app-reader-binding
+      roleRef:
+        apiGroup: rbac.authorization.k8s.io
+        kind: Role
+        name: app-reader
+      subjects:
+        - kind: ServiceAccount
+          name: full-platform
+  ServiceAccount:
+    - name: extra-sa
+      automountServiceAccountToken: false
+  ClusterRole:
+    - name: full-cluster-reader
+      rules:
+        - apiGroups: [""]
+          resources: ["nodes"]
+          verbs: ["get", "list"]
+  PriorityClass:
+    - name: full-high
+      value: 1000000
+      globalDefault: false
+      description: "High priority for the app"
+  ResourceQuota:
+    - name: full-quota
+      spec:
+        hard:
+          pods: "10"
+  ConfigMap:
+    - name: extra-config
+      data:
+        key: value
+
+# Ultimate escape hatch.
+extraManifests:
+  - apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: raw-config
+    data:
+      raw: "true"

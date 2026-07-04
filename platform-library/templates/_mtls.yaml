@@ -1,6 +1,6 @@
 {{- define "platform.mtls" -}}
 {{- if .Values.mtls.enabled -}}
-apiVersion: security.istio.io/v1beta1
+apiVersion: {{ include "platform.capabilities.apiVersionForOrDefault" (list . "PeerAuthentication") }}
 kind: PeerAuthentication
 metadata:
   name: {{ include "platform.fullname" . }}
@@ -14,7 +14,7 @@ spec:
     matchLabels:
       {{- include "platform.selectorLabels" . | nindent 6 }}
 ---
-apiVersion: security.istio.io/v1beta1
+apiVersion: {{ include "platform.capabilities.apiVersionForOrDefault" (list . "AuthorizationPolicy") }}
 kind: AuthorizationPolicy
 metadata:
   name: {{ include "platform.fullname" . }}-authz

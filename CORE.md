@@ -1,15 +1,25 @@
 # CORE.md — helm-factory
 
+> **v2 (current):** the library is now a **pure, capability-gated common library**.
+> This file describes the tier-1 orchestration and render order, which remain
+> accurate. For the v2 architecture in full — capability negotiation, the generic
+> `extraObjects` renderer, the `platform.render` entrypoint, and the pure-library
+> model — see [`docs/specs/platform-library-v2-architecture.md`](docs/specs/platform-library-v2-architecture.md).
+> Migrating a consumer from v1: [`docs/migration/v1-to-v2.md`](docs/migration/v1-to-v2.md).
+
 ## Project Purpose
-- Helm library chart (`platform-library`) providing standardized K8s resource templates
-- Service teams use a single `configuration.yaml` to configure their deployments
-- The library renders: Deployments, StatefulSets, DaemonSets, Services, Ingress, Gateway API (HTTPRoute/GRPCRoute), Jobs, CronJobs, ConfigMaps, Secrets, PVCs, HPA, PDB, NetworkPolicy, ServiceMonitor, PodMonitor, Certificates, mTLS policies
+- Capability-gated Helm library chart (`platform-library`, chart name `platform`) that is the basis for generating product charts
+- Consumer charts depend on it (`import-values: [defaults]`) and render via `{{ include "platform.render" . }}`; the `scripts/new-app-chart.sh` generator scaffolds one
+- Renders the opinionated primary-app objects (Deployments, StatefulSets, DaemonSets, Services, Ingress, Gateway API, Jobs, CronJobs, ConfigMaps, Secrets, PVCs, HPA, PDB, NetworkPolicy, ServiceMonitor, PodMonitor, Certificates, mTLS) **plus** any other Kind via `extraObjects` and raw manifests via `extraManifests`
 
 ## Architecture
-- Library chart type — cannot be installed directly
-- Consumer charts import via `exports.defaults` pattern in `values.yaml`
-- `_app.yaml` is the orchestrator template — calls all other templates via `include`
-- `_helpers.tpl` contains all helper/composition templates (~670 lines)
+- Library chart type — cannot be installed directly; pure (no self-rendering stub templates as of v2)
+- Consumer charts import via `exports.defaults` + `import-values: [defaults]`
+- `platform.render` (in `_app.yaml`) is the single public entrypoint: `platform.app` (tier-1) + `platform.extraObjects` (tier-2 generic) + `platform.extraManifests` (raw)
+- `_app.yaml` is the tier-1 orchestrator — routes each object through `platform.emit` (adds the `---` separator) via `include`
+- `_capabilities.tpl` — the Kind→apiVersion registry and negotiation/gating helpers
+- `_util.tpl` — `platform.emit`, `platform.util.merge`, and the generic `platform.genericResource` renderer
+- `_helpers.tpl` contains naming/labels/image/podTemplate composition helpers
 
 ## Template Rendering Order
 `_app.yaml` calls (in order):

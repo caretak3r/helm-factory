@@ -1,0 +1,11 @@
+image:
+  repository: example/minimal
+  tag: "1.0.0"
+
+service:
+  enabled: true
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP

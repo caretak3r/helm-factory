@@ -358,12 +358,8 @@ exports:
       startingDeadlineSeconds: 200
       suspend: false
       containers: []
-      initContainers:
-        enabled: false
-        containers: []
-      sidecars:
-        enabled: false
-        containers: []
+      initContainers: []
+      sidecars: []
       volumes: []
       annotations: {}
       podAnnotations: {}
@@ -530,3 +526,43 @@ exports:
     annotations: {}
     podLabels: {}
     podAnnotations: {}
+
+    # -----------------------------------------------------------------------------
+    # Capability negotiation
+    # -----------------------------------------------------------------------------
+    # Every generator picks the best apiVersion the target cluster serves and
+    # skips CRD-backed objects whose API is absent. When rendering without a
+    # cluster (helm template / CI), the API discovery set is minimal, so list
+    # the group/versions (or group/version/Kind) to force-assume as present.
+    # Example:
+    #   capabilities:
+    #     apiVersions:
+    #       - gateway.networking.k8s.io/v1
+    #       - cert-manager.io/v1
+    capabilities:
+      apiVersions: []
+
+    # -----------------------------------------------------------------------------
+    # Long-tail Kubernetes objects (tier-2)
+    # -----------------------------------------------------------------------------
+    # A map of Kind -> list of object specs. Each object is rendered with the
+    # negotiated apiVersion, standard labels, and namespace handling, and is
+    # skipped when no supported apiVersion is present. Any top-level field on a
+    # spec other than name/namespace/labels/annotations/apiVersion/kind is passed
+    # through verbatim (rules, subjects, roleRef, spec, data, webhooks, ...).
+    # Example:
+    #   extraObjects:
+    #     Role:
+    #       - name: app-reader
+    #         rules:
+    #           - apiGroups: [""]
+    #             resources: ["configmaps"]
+    #             verbs: ["get", "list", "watch"]
+    extraObjects: {}
+
+    # -----------------------------------------------------------------------------
+    # Raw manifests escape hatch
+    # -----------------------------------------------------------------------------
+    # A list of fully-formed manifests (maps) or template strings rendered
+    # verbatim. Use for anything the library does not model natively.
+    extraManifests: []

@@ -1,8 +1,15 @@
 # platform-library
 
-> Helm library chart for standardized Kubernetes deployments.
+> Capability-gated Helm common library — the basis for generating product charts.
 
-`platform-library` provides a single, opinionated set of Helm templates that generate all common Kubernetes resources from one configuration file. Service teams never write templates — they fill out `configuration.yaml` and the library renders everything.
+`platform-library` (chart name `platform`, `type: library`, **v2**) is a **pure** Helm library chart: it ships no installable templates of its own. Product charts depend on it and render everything through a single entrypoint, `platform.render`. Service teams never write manifests — they set values and the library generates the resources.
+
+**Two things make v2 different from an ordinary helper library:**
+
+1. **Capability gates.** Every generator negotiates the best `apiVersion` the target cluster actually serves (e.g. `autoscaling/v2` → `v2beta2`) and **silently skips** CRD-backed objects whose API is absent — so a rendered chart never conflicts on deploy. Built-in Kinds always render with their best version; CRD/optional Kinds skip when missing. See [`docs/specs/platform-library-v2-architecture.md`](docs/specs/platform-library-v2-architecture.md).
+2. **Comprehensive coverage.** Beyond the opinionated primary-app objects below, `extraObjects` renders *any* Kubernetes Kind (RBAC, StorageClass, PriorityClass, admission webhooks, CRDs, …) through one capability-gated generic renderer, and `extraManifests` is a raw escape hatch.
+
+Targets **Kubernetes 1.31–1.36** and **Helm 4.0+**. Migrating from v1? See [`docs/migration/v1-to-v2.md`](docs/migration/v1-to-v2.md).
 
 ## Overview
 
@@ -17,8 +24,19 @@
 | Storage | PersistentVolumeClaim, VolumeClaimTemplates (StatefulSet) |
 | Jobs | Pre/Post-install hooks, CronJob |
 | HA | Pod anti-affinity presets, topology spread constraints |
+| **Everything else** | **`extraObjects` (any Kind, capability-gated) + `extraManifests` (raw)** |
 
 ## Quick Start
+
+### Fastest: scaffold a new chart
+
+```bash
+scripts/new-app-chart.sh my-service --repo oci://registry.example.com/charts --version "^2.0.0"
+helm dependency update my-service
+helm template my-service my-service
+```
+
+This generates a chart already wired to the library (dependency + `import-values`, an entrypoint template, an overrides-only `values.yaml`, and a `values.schema.json`). Or do it by hand:
 
 ### 1. Add the dependency
 
@@ -28,17 +46,26 @@ apiVersion: v2
 name: my-service
 version: 1.0.0
 dependencies:
-  - name: platform-library
-    version: "^1.0.0"
+  - name: platform                     # the chart name, not "platform-library"
+    version: "^2.0.0"
     repository: "oci://registry.example.com/charts"
-    alias: platform
+    import-values:                     # REQUIRED — without this the library
+      - defaults                       # defaults never reach your root values
 ```
 
-### 2. Configure your service
+### 2. Add the entrypoint template
+
+The library is pure; your chart renders it. Create exactly one template:
 
 ```yaml
-# configuration.yaml
-serviceName: my-service
+# templates/app.yaml
+{{ include "platform.render" . }}
+```
+
+### 3. Configure your service
+
+```yaml
+# values.yaml  (values land at the root because of import-values: [defaults])
 image:
   repository: gcr.io/my-project/my-service
   tag: v1.0.0
@@ -53,14 +80,19 @@ service:
 ingress:
   enabled: true
   hostname: my-service.example.com
+
+# When rendering in CI (no cluster), force-assume CRD groups you use so their
+# objects are not skipped:
+# capabilities:
+#   apiVersions: [cert-manager.io/v1, monitoring.coreos.com/v1]
 ```
 
-### 3. Render and deploy
+### 4. Render and deploy
 
 ```bash
 helm dependency update .
-helm template my-service . -f configuration.yaml
-helm install my-service . -f configuration.yaml
+helm template my-service .
+helm install my-service .
 ```
 
 ## Installation
@@ -712,6 +744,55 @@ gatewayApi:
 | Gateway ownership | Implicit | Explicit `parentRefs` |
 | Multi-tenancy | Limited | Built-in via Gateway/Route separation |
 | Header matching | Controller-specific annotations | Native spec support |
+
+## Extending: any Kubernetes object
+
+Beyond the opinionated blocks above, `extraObjects` renders **any** Kind through one capability-gated generic renderer. It is a map of `Kind → list of specs`; each spec's `name` is required, and every field other than `name`/`namespace`/`labels`/`annotations`/`apiVersion`/`kind`/`clusterScoped` is passed through verbatim. Standard labels are added, namespace is stamped for namespaced Kinds, and the object is skipped if no supported `apiVersion` is present.
+
+```yaml
+extraObjects:
+  Role:
+    - name: app-reader
+      rules:
+        - apiGroups: [""]
+          resources: [configmaps, secrets]
+          verbs: [get, list, watch]
+  PriorityClass:
+    - name: app-high            # cluster-scoped Kinds skip the namespace automatically
+      value: 1000000
+      globalDefault: false
+  StorageClass:
+    - name: fast
+      provisioner: kubernetes.io/aws-ebs
+      parameters: { type: gp3 }
+```
+
+For anything the library does not model, `extraManifests` renders raw manifests (maps or `tpl` strings) verbatim:
+
+```yaml
+extraManifests:
+  - apiVersion: v1
+    kind: ConfigMap
+    metadata: { name: raw-config }
+    data: { raw: "true" }
+```
+
+## Capability gating
+
+Every generator picks the best `apiVersion` the target cluster serves and skips CRD-backed objects whose API is absent — charts never conflict on deploy. Built-in Kinds always render (best version, GA fallback); CRD/optional Kinds skip when their API is missing.
+
+When rendering **without a cluster** (`helm template`, CI), Helm's API discovery is minimal, so CRD-backed objects would be skipped. Force-assume the groups you use:
+
+```yaml
+capabilities:
+  apiVersions:
+    - gateway.networking.k8s.io/v1
+    - cert-manager.io/v1
+    - monitoring.coreos.com/v1
+    - security.istio.io/v1beta1
+```
+
+Equivalently, pass `helm template --api-versions <group/version>` (and `--kube-version <x.y>` to set `.Capabilities.KubeVersion`). See [`docs/specs/platform-library-v2-architecture.md`](docs/specs/platform-library-v2-architecture.md) for the full Kind→apiVersion registry and negotiation rules.
 
 ## Architecture
 

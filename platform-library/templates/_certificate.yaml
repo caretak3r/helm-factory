@@ -20,7 +20,7 @@
     {{- $dnsNames = append $dnsNames . -}}
   {{- end }}
 {{- end }}
-apiVersion: cert-manager.io/v1
+apiVersion: {{ include "platform.capabilities.apiVersionForOrDefault" (list . "Certificate") }}
 kind: Certificate
 metadata:
   name: {{ include "platform.fullname" . }}-tls
