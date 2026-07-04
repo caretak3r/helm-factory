@@ -8,5 +8,5 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 fixture="${1:?usage: render.sh <fixture> [helm args...]}"; shift || true
 dir="$here/fixtures/$fixture"
 rm -rf "$dir/charts" "$dir/Chart.lock"
-helm dependency update "$dir" >/dev/null 2>&1
+helm dependency update "$dir" >/dev/null
 helm template t "$dir" "$@"

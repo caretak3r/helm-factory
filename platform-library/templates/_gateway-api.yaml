@@ -42,7 +42,13 @@
 {{- $matches := $http.matches | default (list) -}}
 {{- if not (gt (len $matches) 0) }}
   {{- $path := default "/" .Values.ingress.path -}}
-  {{- $pathType := default "PathPrefix" .Values.ingress.pathType -}}
+  {{- /* Ingress pathType values (ImplementationSpecific/Prefix) are not valid
+         HTTPRoute path match types (Exact|PathPrefix|RegularExpression):
+         map Exact -> Exact, anything else -> PathPrefix. */ -}}
+  {{- $pathType := "PathPrefix" -}}
+  {{- if eq (default "" .Values.ingress.pathType) "Exact" }}
+    {{- $pathType = "Exact" -}}
+  {{- end }}
   {{- $matches = list (dict "path" (dict "type" $pathType "value" $path)) -}}
 {{- end }}
 {{- $backendRefs := $http.backendRefs | default (list) -}}

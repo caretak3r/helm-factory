@@ -41,7 +41,7 @@ while [[ $# -gt 0 ]]; do
     --app-version) app_version="${2:?}"; shift 2 ;;
     -h|--help)     sed -n '2,30p' "$0"; exit 0 ;;
     -*)            die "unknown option: $1" ;;
-    *)             [[ -z "$name" ]] && name="$1" || die "unexpected argument: $1"; shift ;;
+    *)             if [[ -z "$name" ]]; then name="$1"; else die "unexpected argument: $1"; fi; shift ;;
   esac
 done
 

@@ -1,0 +1,98 @@
+---
+# Source: minimal/templates/app.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: t-minimal
+  namespace: default
+  labels:
+    helm.sh/chart: minimal-0.1.0
+    app.kubernetes.io/name: minimal
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+automountServiceAccountToken: false
+
+---
+# Source: minimal/templates/app.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: t-minimal
+  namespace: default
+  labels:
+    helm.sh/chart: minimal-0.1.0
+    app.kubernetes.io/name: minimal
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  type: ClusterIP
+  sessionAffinity: None
+  ports:
+    - name: http
+      port: 80
+      protocol: TCP
+      targetPort: http
+  selector:
+    app.kubernetes.io/name: minimal
+    app.kubernetes.io/instance: t
+---
+# Source: minimal/templates/app.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: t-minimal
+  namespace: default
+  labels:
+    helm.sh/chart: minimal-0.1.0
+    app.kubernetes.io/name: minimal
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: minimal
+      app.kubernetes.io/instance: t
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: minimal
+        app.kubernetes.io/instance: t
+    spec:
+      serviceAccountName: t-minimal
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        fsGroup: 1001
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: minimal
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1001
+            seccompProfile:
+              type: RuntimeDefault
+          image: docker.io/example/minimal:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: http
+              protocol: TCP
+      terminationGracePeriodSeconds: 30
+      restartPolicy: Always

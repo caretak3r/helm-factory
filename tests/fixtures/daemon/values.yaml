@@ -1,0 +1,42 @@
+# DaemonSet coverage fixture. Exercises: workload.type=DaemonSet,
+# initContainers, sidecars, daemonSet nodeSelector/tolerations merge, and
+# tlsSelfSigned (dev-only self-signed TLS Secret).
+#
+# NOTE on tlsSelfSigned: the generator gate also requires ingress.hostname,
+# whose library default ("app.local") satisfies it. Under `helm template`
+# the Secret lookup is empty, so a fresh throwaway cert is generated on
+# EVERY render — lint-library.sh normalizes tls.crt/tls.key/ca.crt in the
+# golden snapshot for this reason.
+workload:
+  type: DaemonSet
+
+image:
+  repository: example/daemon
+  tag: "1.0.0"
+
+tlsSelfSigned:
+  enabled: true
+  commonName: daemon.local
+  dnsNames: [daemon.local]
+
+initContainers:
+  enabled: true
+  containers:
+    - name: init-wait
+      image: docker.io/library/busybox:1.36.1
+      command: ["sh", "-c", "echo init"]
+
+sidecars:
+  enabled: true
+  containers:
+    - name: log-shipper
+      image: docker.io/library/busybox:1.36.1
+      command: ["sh", "-c", "sleep infinity"]
+
+daemonSet:
+  nodeSelector:
+    kubernetes.io/os: linux
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
