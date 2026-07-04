@@ -13,6 +13,7 @@ ENV/
 charts/
 *.tgz
 Chart.lock
+tests/fixtures/*/values.schema.json
 
 # Generated charts
 generated-charts/

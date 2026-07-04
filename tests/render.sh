@@ -8,5 +8,8 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 fixture="${1:?usage: render.sh <fixture> [helm args...]}"; shift || true
 dir="$here/fixtures/$fixture"
 rm -rf "$dir/charts" "$dir/Chart.lock"
+# Enforce the root values contract exactly like a generated consumer chart:
+# Helm validates values.schema.json against the coalesced (post-import) values.
+cp "$here/../platform-library/values.schema.reference.json" "$dir/values.schema.json"
 helm dependency update "$dir" >/dev/null
 helm template t "$dir" "$@"

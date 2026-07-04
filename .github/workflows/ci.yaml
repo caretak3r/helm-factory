@@ -43,4 +43,4 @@ jobs:
         run: check-jsonschema --check-metaschema platform-library/values.schema.reference.json
 
       - name: lint-library (render matrix, goldens, kubeconform, negative render, image pins)
-        run: REQUIRE_KUBECONFORM=1 scripts/lint-library.sh
+        run: REQUIRE_KUBECONFORM=1 REQUIRE_CHECK_JSONSCHEMA=1 scripts/lint-library.sh

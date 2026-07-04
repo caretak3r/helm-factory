@@ -45,7 +45,7 @@ certificate:
 
 mtls:
   enabled: true
-  mode: STRICT
+  policy: STRICT
 
 serviceMonitor:
   enabled: true

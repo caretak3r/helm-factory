@@ -296,7 +296,10 @@ for **consumers**: the scaffold generator copies it into each consumer chart as
 `values.schema.json`, where the post-import root values do match it (e.g. it
 requires `image.repository`, constrains `workload.type` to the three workload
 Kinds, `image.pullPolicy` to the pull-policy enum, etc.). `scripts/lint-library.sh`
-also `jq`-parses the reference file as part of the gate.
+validates the reference file against its metaschema and every fixture's values
+against it (`check-jsonschema`), and `tests/render.sh` copies it into each
+fixture as `values.schema.json` so Helm itself enforces the contract on every
+rendered fixture.
 
 **Naming note (collision avoidance):** container resource requests/limits stay
 under `resources:` (a tier-1 block). The tier-2 long tail is deliberately named
@@ -330,7 +333,10 @@ It produces a consumer chart wired with:
 (which, being uninstallable, is validated through the fixture consumers). It runs:
 
 1. `helm lint` on `platform-library/`.
-2. A `jq` parse of `values.schema.reference.json`.
+2. Values-contract validation: metaschema check plus per-fixture
+   `check-jsonschema` validation, and helm-side enforcement via the schema
+   copied into each fixture (negative legs prove e.g. `workload.type=deployment`
+   and `image.tag=latest` are rejected).
 3. The render matrix — `tests/render.sh <fixture> --kube-version <kv>` for both
    `minimal` and `full` across `--kube-version 1.31 … 1.36`.
 4. `kubeconform -strict -ignore-missing-schemas` on each fixture render (when

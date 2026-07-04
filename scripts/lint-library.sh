@@ -8,12 +8,17 @@
 # diff each fixture's canonical render against its committed golden snapshot,
 # validate every rendered object with kubeconform (native + CRD schemas,
 # across the version matrix), run a negative render proving CRD objects drop
-# when their API is absent, and enforce image pinning.
+# when their API is absent, enforce image pinning, and validate the values
+# contract: the reference JSON Schema against its metaschema, every fixture's
+# values against it (check-jsonschema), and helm-side rejection of
+# schema-violating values (the schema is copied into each fixture as
+# values.schema.json at render time).
 #
 # Usage:
 #   scripts/lint-library.sh                        # run all checks
 #   UPDATE_GOLDEN=1 scripts/lint-library.sh        # regenerate tests/golden/*.yaml
 #   REQUIRE_KUBECONFORM=1 scripts/lint-library.sh  # fail if kubeconform missing (CI)
+#   REQUIRE_CHECK_JSONSCHEMA=1 scripts/lint-library.sh  # fail if check-jsonschema missing (CI)
 # =============================================================================
 set -euo pipefail
 
@@ -53,7 +58,11 @@ echo "==> helm lint $LIB"
 helm lint "$LIB"
 
 echo "==> reference schema parses"
-jq empty "$LIB/values.schema.reference.json" && echo "  values.schema.reference.json OK"
+if command -v jq >/dev/null 2>&1; then
+  jq empty "$LIB/values.schema.reference.json" && echo "  values.schema.reference.json OK"
+else
+  echo "WARN: jq not installed - JSON parse check skipped (metaschema check below covers it when check-jsonschema is present)"
+fi
 
 have_kubeconform=0
 if command -v kubeconform >/dev/null 2>&1; then
@@ -64,6 +73,38 @@ elif [[ "${REQUIRE_KUBECONFORM:-0}" == "1" ]]; then
   fail=1
 else
   echo "WARN: kubeconform not installed — schema validation SKIPPED (set REQUIRE_KUBECONFORM=1 to fail instead)"
+fi
+
+have_check_jsonschema=0
+if command -v check-jsonschema >/dev/null 2>&1; then
+  have_check_jsonschema=1
+elif [[ "${REQUIRE_CHECK_JSONSCHEMA:-0}" == "1" ]]; then
+  echo "FAIL: check-jsonschema is required (REQUIRE_CHECK_JSONSCHEMA=1) but not installed"
+  fail=1
+else
+  echo "WARN: check-jsonschema not installed - values schema validation SKIPPED (set REQUIRE_CHECK_JSONSCHEMA=1 to fail instead)"
+fi
+
+if [[ "$have_check_jsonschema" == "1" ]]; then
+  echo "==> values schema: metaschema + fixture values"
+  if check-jsonschema --check-metaschema "$LIB/values.schema.reference.json" >/dev/null; then
+    echo "  OK: reference schema is a valid JSON Schema"
+  else
+    echo "  FAIL: reference schema failed metaschema validation"
+    check-jsonschema --check-metaschema "$LIB/values.schema.reference.json" || true
+    fail=1
+  fi
+  for fx in "${FIXTURES[@]}"; do
+    if check-jsonschema --schemafile "$LIB/values.schema.reference.json" \
+         "$REPO_ROOT/tests/fixtures/$fx/values.yaml" >/dev/null; then
+      echo "  OK: fixture $fx values conform to the reference schema"
+    else
+      echo "  FAIL: fixture $fx values violate the reference schema:"
+      check-jsonschema --schemafile "$LIB/values.schema.reference.json" \
+        "$REPO_ROOT/tests/fixtures/$fx/values.yaml" || true
+      fail=1
+    fi
+  done
 fi
 
 for fx in "${FIXTURES[@]}"; do
@@ -156,6 +197,23 @@ elif grep -q "hook Job" <<<"$out"; then
   echo "  OK: hook Job with un-inheritable pin fails with actionable message"
 else
   echo "  FAIL: hook Job failed without the expected message"; echo "$out" | tail -3; fail=1
+fi
+
+echo "==> schema enforcement (helm-side): invalid values must fail"
+if out=$("$RENDER" minimal --set workload.type=deployment 2>&1); then
+  echo "  FAIL: render succeeded with workload.type=deployment (schema not enforced)"; fail=1
+elif grep -q "workload/type" <<<"$out"; then
+  echo "  OK: lowercase workload.type rejected by values.schema.json"
+else
+  echo "  FAIL: render failed without a schema error"; echo "$out" | tail -3; fail=1
+fi
+
+if out=$("$RENDER" minimal --set image.tag=latest 2>&1); then
+  echo "  FAIL: render succeeded with image.tag=latest"; fail=1
+elif grep -q "image/tag" <<<"$out"; then
+  echo "  OK: image.tag=latest rejected by values.schema.json"
+else
+  echo "  FAIL: render failed without a schema error"; echo "$out" | tail -3; fail=1
 fi
 
 if [[ $fail -eq 0 ]]; then echo "==> PASS"; else echo "==> FAIL"; fi

@@ -51,6 +51,24 @@ done
 : "${out_dir:=$name}"
 [[ ! -e "$out_dir" ]] || die "output path already exists: $out_dir"
 
+# --- input validation --------------------------------------------------------
+# repo/version/app_version are interpolated into generated YAML (Chart.yaml,
+# values.yaml); restrict their charsets so a crafted argument cannot inject
+# YAML structure (newlines, quotes, control characters).
+cntrl_re=$'[\x01-\x1f\x7f]'
+version_re='^[0-9A-Za-z .,|+^~*<>=-]+$'      # semver constraint charset (e.g. ">=2.0.0-0", "^2.0.0")
+app_version_re='^[0-9A-Za-z.+-]+$'           # semver charset (e.g. "1.2.3-rc.1+build5")
+repo_re='^(oci|https|file)://[[:graph:]]+$'  # scheme allowlist, no whitespace/control chars
+if [[ "$repo" =~ $cntrl_re ]]; then die "--repo must not contain control characters or newlines"; fi
+if [[ "$version" =~ $cntrl_re ]]; then die "--version must not contain control characters or newlines"; fi
+if [[ "$app_version" =~ $cntrl_re ]]; then die "--app-version must not contain control characters or newlines"; fi
+[[ "$version" =~ $version_re ]] || \
+  die "invalid --version: '$version' (allowed: 0-9 A-Z a-z space . , | + ^ ~ * < > = -)"
+[[ "$app_version" =~ $app_version_re ]] || \
+  die "invalid --app-version: '$app_version' (allowed: 0-9 A-Z a-z . + -)"
+[[ "$repo" =~ $repo_re ]] || \
+  die "invalid --repo: '$repo' (must be oci://, https://, or file://; no whitespace)"
+
 mkdir -p "$out_dir/templates"
 
 cat > "$out_dir/Chart.yaml" <<EOF
@@ -125,9 +143,9 @@ cat > "$out_dir/.helmignore" <<'EOF'
 *.bak
 EOF
 
-if [[ -f "$LIB_DIR/values.schema.reference.json" ]]; then
-  cp "$LIB_DIR/values.schema.reference.json" "$out_dir/values.schema.json"
-fi
+[[ -f "$LIB_DIR/values.schema.reference.json" ]] || \
+  die "missing $LIB_DIR/values.schema.reference.json - cannot ship values.schema.json"
+cp "$LIB_DIR/values.schema.reference.json" "$out_dir/values.schema.json"
 
 cat <<EOF
 

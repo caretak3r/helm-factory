@@ -23,7 +23,7 @@
         "repository": { "type": "string", "minLength": 1 },
         "tag": { "type": ["string", "number"], "not": { "const": "latest" }, "description": "Immutable image tag. Required unless image.digest is set; the floating tag 'latest' is rejected." },
         "digest": { "type": "string", "description": "Image digest (sha256:...). Preferred pin; overrides tag when both are set." },
-        "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] }
+        "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never", ""], "description": "Empty string defers to global.imagePullPolicy, then IfNotPresent." }
       }
     },
     "replicaCount": { "type": "integer", "minimum": 0 },
@@ -70,13 +70,68 @@
       "additionalProperties": true,
       "properties": {
         "enabled": { "type": "boolean" },
-        "mode": { "type": "string", "enum": ["STRICT", "PERMISSIVE", "DISABLE", "UNSET"] }
+        "policy": { "type": "string", "enum": ["STRICT", "PERMISSIVE", "DISABLE", "UNSET"], "description": "Istio PeerAuthentication mTLS mode, rendered as spec.mtls.mode." },
+        "allowedPrincipals": { "type": "array", "items": { "type": "string" } },
+        "mode": false
       }
     },
     "gatewayApi": {
       "type": "object",
       "additionalProperties": true,
-      "properties": { "enabled": { "type": "boolean" } }
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "apiVersion": { "type": "string" },
+        "hostnames": { "type": "array", "items": { "type": "string" } },
+        "parentRefs": { "type": "array", "items": { "type": "object" } },
+        "httpRoute": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "parentRefs": { "type": "array", "items": { "type": "object" } }
+          }
+        },
+        "grpcRoute": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "parentRefs": { "type": "array", "items": { "type": "object" } }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "enabled": { "const": true },
+              "httpRoute": { "properties": { "enabled": { "const": true } }, "required": ["enabled"] }
+            },
+            "required": ["enabled", "httpRoute"]
+          },
+          "then": {
+            "anyOf": [
+              { "properties": { "parentRefs": { "type": "array", "minItems": 1 } }, "required": ["parentRefs"] },
+              { "properties": { "httpRoute": { "properties": { "parentRefs": { "type": "array", "minItems": 1 } }, "required": ["parentRefs"] } } }
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "enabled": { "const": true },
+              "grpcRoute": { "properties": { "enabled": { "const": true } }, "required": ["enabled"] }
+            },
+            "required": ["enabled", "grpcRoute"]
+          },
+          "then": {
+            "anyOf": [
+              { "properties": { "parentRefs": { "type": "array", "minItems": 1 } }, "required": ["parentRefs"] },
+              { "properties": { "grpcRoute": { "properties": { "parentRefs": { "type": "array", "minItems": 1 } }, "required": ["parentRefs"] } } }
+            ]
+          }
+        }
+      ]
     },
     "networkPolicy": {
       "type": "object",
