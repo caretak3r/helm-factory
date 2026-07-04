@@ -49,7 +49,10 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/*
-Resolve the full image reference, honoring global overrides
+Resolve the full image reference, honoring global overrides.
+Requires image.digest (preferred) or image.tag; there is no `latest` fallback.
+digest wins when both are set. Used by the main workload pod template and the
+CronJob default container.
 */}}
 {{- define "platform.image" -}}
 {{- $repository := trimPrefix "/" (.Values.image.repository | default "") -}}
@@ -59,8 +62,10 @@ Resolve the full image reference, honoring global overrides
 {{- end }}
 {{- if .Values.image.digest }}
 {{- printf "%s@%s" $repository .Values.image.digest }}
+{{- else if .Values.image.tag }}
+{{- printf "%s:%v" $repository .Values.image.tag }}
 {{- else }}
-{{- printf "%s:%s" $repository (.Values.image.tag | default "latest") }}
+{{- fail "platform-library: image.tag and image.digest are both empty. Pin the image with image.digest (preferred, immutable, e.g. \"sha256:<64-hex>\") or image.tag (e.g. \"1.2.3\"). Floating \"latest\" is no longer defaulted." }}
 {{- end }}
 {{- end }}
 
@@ -593,7 +598,7 @@ Render hook jobs (pre/post install)
 {{- $job := .job -}}
 {{- $type := .type -}}
 {{- $defaults := $ctx.Values.jobs -}}
-{{- $imageCfg := dict "repository" ($defaults.image.repository | default "") "tag" ($defaults.image.tag | default "latest") "pullPolicy" ($defaults.image.pullPolicy | default "IfNotPresent") -}}
+{{- $imageCfg := dict "repository" ($defaults.image.repository | default "") "tag" ($defaults.image.tag | default "") "digest" ($defaults.image.digest | default "") "pullPolicy" ($defaults.image.pullPolicy | default "IfNotPresent") -}}
 {{- if $job.image }}
   {{- range $k, $v := $job.image }}
     {{- $_ := set $imageCfg $k $v -}}
@@ -602,8 +607,18 @@ Render hook jobs (pre/post install)
 {{- if not $imageCfg.repository }}
   {{- $_ := set $imageCfg "repository" $ctx.Values.image.repository -}}
 {{- end }}
-{{- if and (eq $imageCfg.tag "latest") $ctx.Values.image.tag }}
-  {{- $_ := set $imageCfg "tag" $ctx.Values.image.tag -}}
+{{- /*
+Inherit the pin from the main image when the hook image sets neither tag nor
+digest. Digests are repository-specific, so the main digest is inherited only
+when the hook resolves to the same repository; a different hook repository
+inherits the main tag only.
+*/}}
+{{- if and (not $imageCfg.tag) (not $imageCfg.digest) }}
+  {{- if and $ctx.Values.image.digest (eq $imageCfg.repository ($ctx.Values.image.repository | default "")) }}
+    {{- $_ := set $imageCfg "digest" $ctx.Values.image.digest -}}
+  {{- else if $ctx.Values.image.tag }}
+    {{- $_ := set $imageCfg "tag" $ctx.Values.image.tag -}}
+  {{- end }}
 {{- end }}
 {{- $registry := $imageCfg.registry | default "" -}}
 {{- if not $registry }}
@@ -616,7 +631,14 @@ Render hook jobs (pre/post install)
 {{- if and $registry $imageCfg.repository (not (hasPrefix $imageCfg.repository (printf "%s/" $registry))) }}
   {{- $_ := set $imageCfg "repository" (printf "%s/%s" $registry (trimPrefix "/" $imageCfg.repository)) -}}
 {{- end }}
-{{- $image := printf "%s:%s" $imageCfg.repository $imageCfg.tag -}}
+{{- $image := "" -}}
+{{- if $imageCfg.digest }}
+  {{- $image = printf "%s@%s" $imageCfg.repository $imageCfg.digest -}}
+{{- else if $imageCfg.tag }}
+  {{- $image = printf "%s:%v" $imageCfg.repository $imageCfg.tag -}}
+{{- else }}
+  {{- fail (printf "platform-library: hook Job %q resolves to an image with no tag and no digest. Set jobs.image.tag/digest (or the per-job image.tag/digest), or pin the main image via image.tag/image.digest to inherit. Floating \"latest\" is no longer defaulted." $type) -}}
+{{- end }}
 {{- $pullPolicy := $imageCfg.pullPolicy | default "IfNotPresent" -}}
 {{- $command := coalesce $job.command nil -}}
 {{- $args := coalesce $job.args nil -}}

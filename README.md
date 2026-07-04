@@ -145,12 +145,17 @@ workload:
 
 ### Container Image
 
+A **tag or digest is required** — there is no `latest` fallback, and rendering
+fails with a clear error when neither is set. **Digest is the preferred pin**
+(immutable, survives tag mutation, exact rollbacks); when both are set the
+digest wins.
+
 ```yaml
 image:
   registry: docker.io
   repository: myorg/myapp       # REQUIRED
-  tag: v1.0.0                   # Recommend immutable tags
-  digest: ""                    # sha256:... — overrides tag if set
+  tag: v1.0.0                   # REQUIRED unless digest is set; quote numeric tags
+  digest: ""                    # sha256:... — preferred pin, overrides tag if set
   pullPolicy: IfNotPresent
   pullSecrets: []               # Merged with global.imagePullSecrets
 ```
@@ -505,6 +510,13 @@ jobs:
     args: ["curl -X POST http://slack-webhook/notify"]
 ```
 
+`jobs.image` inherits from the main `image:` block: an empty `repository`
+inherits the main repository, and when neither `jobs.image.tag` nor
+`jobs.image.digest` is set the main pin is inherited (the main **digest** is
+only inherited when the repositories match — digests are repository-specific).
+If the effective hook image ends up with neither a tag nor a digest, rendering
+fails.
+
 ### CronJob
 
 ```yaml
@@ -548,9 +560,18 @@ certificate:
   renewBefore: 360h
 ```
 
-### TLS (Self-Signed)
+### TLS (Self-Signed) — dev only
 
-Generate self-signed certificates for development or internal services.
+> **Dev-only.** For production TLS use the [cert-manager `certificate` block](#certificates-cert-manager),
+> which handles issuance, renewal, and rotation properly.
+
+Generates a self-signed CA and certificate into the Secret `<fullname>-tls`.
+On `helm install`/`helm upgrade` against a real cluster the chart **looks up the
+existing Secret and reuses its `tls.crt`/`tls.key`/`ca.crt`**, so the CA and key
+are stable across upgrades. Under `helm template` or client-side `--dry-run`
+Helm's `lookup` returns nothing, so a fresh throwaway certificate is generated
+on every render — fine for dev/CI, and another reason not to rely on this in
+production. To force rotation, delete the Secret and upgrade.
 
 ```yaml
 tlsSelfSigned:
@@ -559,7 +580,7 @@ tlsSelfSigned:
   dnsNames:
     - my-service.default.svc
     - my-service.default.svc.cluster.local
-  validityDays: 365
+  validityDays: 365   # only applies when the cert is (re)generated
 ```
 
 ### Network Policy

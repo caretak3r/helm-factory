@@ -21,8 +21,8 @@
       "properties": {
         "registry": { "type": "string" },
         "repository": { "type": "string", "minLength": 1 },
-        "tag": { "type": ["string", "number"] },
-        "digest": { "type": "string" },
+        "tag": { "type": ["string", "number"], "not": { "const": "latest" }, "description": "Immutable image tag. Required unless image.digest is set; the floating tag 'latest' is rejected." },
+        "digest": { "type": "string", "description": "Image digest (sha256:...). Preferred pin; overrides tag when both are set." },
         "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] }
       }
     },

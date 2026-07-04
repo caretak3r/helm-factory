@@ -32,10 +32,13 @@ exports:
     # -----------------------------------------------------------------------------
     # Container Image
     # -----------------------------------------------------------------------------
+    # Either `digest` (preferred — immutable, e.g. "sha256:<64 hex chars>") or
+    # `tag` MUST be set; rendering fails otherwise. There is no `latest`
+    # fallback. When both are set, digest wins.
     image:
       registry: docker.io
       repository: ""
-      tag: latest
+      tag: ""
       digest: ""
       pullPolicy: IfNotPresent
       pullSecrets: []
@@ -279,8 +282,14 @@ exports:
         - "cluster.local/ns/*/sa/*"
 
     # -----------------------------------------------------------------------------
-    # Self-Signed TLS
+    # Self-Signed TLS (DEV-ONLY)
     # -----------------------------------------------------------------------------
+    # Generates a self-signed CA + certificate into the Secret <fullname>-tls.
+    # On install/upgrade against a real cluster the existing Secret is looked up
+    # and reused, so the CA/key are stable across upgrades; under
+    # `helm template` / client-side --dry-run the lookup is empty and a fresh
+    # throwaway cert is generated on every render. Do NOT use in production —
+    # use the cert-manager `certificate` block above instead.
     tlsSelfSigned:
       enabled: false
       commonName: ""
@@ -291,9 +300,14 @@ exports:
     # Jobs (Helm Hooks)
     # -----------------------------------------------------------------------------
     jobs:
+      # Hook-job image. Empty repository/tag/digest inherit from the main
+      # `image:` block (digest is inherited only when the repository is the
+      # same). The effective image must resolve to a tag or digest, or
+      # rendering fails.
       image:
         repository: ""
-        tag: "latest"
+        tag: ""
+        digest: ""
         pullPolicy: IfNotPresent
       backoffLimit: 3
       completions: 1

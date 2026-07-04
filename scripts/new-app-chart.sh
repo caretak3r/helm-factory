@@ -86,7 +86,10 @@ cat > "$out_dir/values.yaml" <<EOF
 
 image:
   repository: example/${name}
-  tag: "0.1.0"
+  # A tag or digest is REQUIRED — rendering fails without one. Prefer an
+  # immutable digest pin in production:
+  # digest: "sha256:<64-hex>"
+  tag: "${app_version}"
 
 service:
   enabled: true
