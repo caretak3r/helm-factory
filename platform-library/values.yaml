@@ -3,9 +3,9 @@ exports:
     # =============================================================================
     # Platform Library Chart - Default Values
     # =============================================================================
-    # These defaults are designed to work with the service configuration.yaml
-    # template. Service teams should NOT modify this file directly - instead,
-    # customize the configuration.yaml file for their service.
+    # These defaults are exported to consumer charts via `import-values: [defaults]`
+    # and land at the ROOT of the consumer's values scope. Service teams should NOT
+    # modify this file — override fields in the consumer chart's values.yaml.
     # =============================================================================
 
     # -----------------------------------------------------------------------------

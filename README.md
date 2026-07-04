@@ -31,7 +31,7 @@ Targets **Kubernetes 1.31–1.36** and **Helm 4.0+**. Migrating from v1? See [`d
 ### Fastest: scaffold a new chart
 
 ```bash
-scripts/new-app-chart.sh my-service --repo oci://registry.example.com/charts --version "^2.0.0"
+scripts/new-app-chart.sh my-service --repo oci://ghcr.io/caretak3r/charts --version "^2.0.0"
 helm dependency update my-service
 helm template my-service my-service
 ```
@@ -48,7 +48,7 @@ version: 1.0.0
 dependencies:
   - name: platform                     # the chart name, not "platform-library"
     version: "^2.0.0"
-    repository: "oci://registry.example.com/charts"
+    repository: "oci://ghcr.io/caretak3r/charts"
     import-values:                     # REQUIRED — without this the library
       - defaults                       # defaults never reach your root values
 ```
@@ -812,7 +812,7 @@ gatewayApi:
 ### 2. Validate Gateway API routing works
 
 ```bash
-helm template my-service . -f configuration.yaml | grep -A 20 "kind: HTTPRoute"
+helm template my-service . | grep -A 20 "kind: HTTPRoute"
 ```
 
 ### 3. Disable Ingress
@@ -905,14 +905,19 @@ Equivalently, pass `helm template --api-versions <group/version>` (and `--kube-v
 ## Architecture
 
 ```
-configuration.yaml          ← Service team edits this
-        │
+my-service/values.yaml      ← Service team edits this (overrides only)
+        │  (defaults imported at root via import-values: [defaults])
         ▼
 platform-library/
+├── Chart.yaml              ← chart name `platform`, type: library
 ├── values.yaml             ← Defaults (exports.defaults pattern)
+├── values.schema.reference.json ← Root values contract (copied into consumers)
 ├── templates/
-│   ├── _app.yaml           ← Orchestrator (calls all templates)
-│   ├── _helpers.tpl        ← Shared helpers (naming, labels, image, affinity)
+│   ├── _app.yaml           ← Orchestrator + `platform.render` entrypoint
+│   ├── _capabilities.tpl   ← Kind→apiVersion registry, negotiation & gating
+│   ├── _util.tpl           ← emit, deep-merge, genericResource, extraObjects/extraManifests
+│   ├── _helpers.tpl        ← Shared helpers (naming, labels, image, pod template, affinity)
+│   ├── _notes.tpl          ← Install-time security warnings (consumer NOTES.txt)
 │   ├── _deployment.yaml    ← Deployment workload
 │   ├── _statefulset.yaml   ← StatefulSet workload
 │   ├── _daemonset.yaml     ← DaemonSet workload
@@ -923,6 +928,7 @@ platform-library/
 │   ├── _pdb.yaml           ← PodDisruptionBudget
 │   ├── _networkpolicy.yaml ← NetworkPolicy
 │   ├── _configmap.yaml     ← ConfigMap
+│   ├── _configmap-script.yaml ← Hook script ConfigMaps
 │   ├── _secret.yaml        ← Secret
 │   ├── _certificate.yaml   ← cert-manager Certificate
 │   ├── _mtls.yaml          ← Istio mTLS policies
@@ -930,12 +936,36 @@ platform-library/
 │   ├── _tls-selfsigned.yaml ← Self-signed TLS generation
 │   ├── _pvc.yaml           ← PersistentVolumeClaim
 │   ├── _cronjob.yaml       ← CronJob
-│   ├── _job-*.yaml         ← Pre/Post install hook Jobs
+│   ├── _job-preinstall.yaml / _job-postinstall.yaml ← Hook Jobs
 │   ├── _servicemonitor.yaml ← Prometheus ServiceMonitor
 │   └── _podmonitor.yaml    ← Prometheus PodMonitor
 ```
 
-**Rendering flow:** `_app.yaml` iterates through all features, checking `.enabled` flags, and includes the corresponding template. Every `_<name>.yaml` is a `define` block — the matching `<name>.yaml` (no underscore) is the wrapper that calls `include`.
+**Rendering flow:** the consumer's `templates/app.yaml` includes `platform.render`, which composes `platform.app` (the tier-1 orchestrator in `_app.yaml` — checks each feature's `.enabled` flag and capability gate, then emits the object), `platform.extraObjects`, and `platform.extraManifests`. Every template is an underscore-prefixed `define` block; the library ships no directly-rendered templates.
+
+## Releasing
+
+Releases are cut from semver tags and published as an OCI chart to
+**`oci://ghcr.io/caretak3r/charts`** (the production repository; consumers set
+`repository: "oci://ghcr.io/caretak3r/charts"` in their dependency). The
+scaffold's default `--repo file://../platform-library` is for local development
+only.
+
+Flow (see `.github/workflows/release.yaml`):
+
+1. Bump `version:` in `platform-library/Chart.yaml` (semver — major for any
+   breaking values/template change).
+2. Move the `[Unreleased]` notes in `CHANGELOG.md` under a new
+   `## [X.Y.Z] - YYYY-MM-DD` heading.
+3. Commit via PR; CI must pass.
+4. Tag and push: `git tag vX.Y.Z && git push origin vX.Y.Z`.
+
+The release workflow refuses tags that do not match the chart version, reruns
+the full CI gate (shellcheck, `helm lint`, schema metaschema check,
+`scripts/lint-library.sh` with kubeconform + check-jsonschema required), then
+runs `helm package` and `helm push` to GHCR using the workflow's
+`GITHUB_TOKEN` (`packages: write`). Chart signing/provenance (cosign) is
+tracked as future work.
 
 ## Contributing
 
@@ -944,15 +974,16 @@ See [CORE.md](CORE.md) for architecture details, known issues, and maintenance g
 ### Adding a new resource type
 
 1. Create `platform-library/templates/_<resource>.yaml` with a `define "platform.<resource>"` block
-2. Create `platform-library/templates/<resource>.yaml` wrapper: `{{- include "platform.<resource>" . }}`
-3. Add the `include` call to `_app.yaml` guarded by `.Values.<resource>.enabled`
-4. Add defaults to `values.yaml` under `exports.defaults`
-5. Add documented config to `configuration.yaml`
+2. If the Kind is CRD-backed or version-negotiated, register it in the Kind→apiVersion registry in `_capabilities.tpl`
+3. Add the `include` call to `_app.yaml` guarded by `.Values.<resource>.enabled` (and a capability gate for CRD-backed Kinds)
+4. Add defaults to `values.yaml` under `exports.defaults` and extend `values.schema.reference.json`
+5. Cover it in a fixture under `tests/fixtures/`, bump `expected_kinds` in `scripts/lint-library.sh`, and regenerate goldens: `UPDATE_GOLDEN=1 scripts/lint-library.sh`
 6. Update `CORE.md` rendering order and directory listing
 
 ### Validation
 
 ```bash
 helm lint platform-library/
-helm template test platform-library/ -f configuration.yaml
+scripts/lint-library.sh              # render matrix, goldens, kubeconform, guardrails
+UPDATE_GOLDEN=1 scripts/lint-library.sh   # accept intentional render changes
 ```
