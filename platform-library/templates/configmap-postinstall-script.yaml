@@ -1,5 +1,0 @@
-{{- if and .Values.jobs.postInstall.enabled (or .Values.jobs.postInstall.script .Values.jobs.postInstall.scriptFile) }}
-{{- $job := dict "type" "postinstall" "script" .Values.jobs.postInstall.script "scriptFile" .Values.jobs.postInstall.scriptFile -}}
-{{- include "platform.configmap.script" (dict "root" . "job" $job) }}
-{{- end }}
-

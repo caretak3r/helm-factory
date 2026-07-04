@@ -1,8 +1,0 @@
-{{- if eq .Values.workload.type "StatefulSet" }}
-{{- include "platform.statefulset" . }}
-{{- else if eq .Values.workload.type "DaemonSet" }}
-{{- include "platform.daemonset" . }}
-{{- else }}
-{{- include "platform.deployment" . }}
-{{- end }}
-

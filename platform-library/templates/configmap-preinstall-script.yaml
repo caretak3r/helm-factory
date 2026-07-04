@@ -1,5 +1,0 @@
-{{- if and .Values.jobs.preInstall.enabled (or .Values.jobs.preInstall.script .Values.jobs.preInstall.scriptFile) }}
-{{- $job := dict "type" "preinstall" "script" .Values.jobs.preInstall.script "scriptFile" .Values.jobs.preInstall.scriptFile -}}
-{{- include "platform.configmap.script" (dict "root" . "job" $job) }}
-{{- end }}
-

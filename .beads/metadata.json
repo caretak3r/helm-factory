@@ -1,4 +1,7 @@
 {
-  "database": "beads.db",
-  "jsonl_export": "interactions.jsonl"
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "helm_factory",
+  "project_id": "6f25df51-e3b8-4fb0-b5c0-ebfad37e39a8"
 }
