@@ -324,3 +324,9 @@ bd prime                # Refresh Beads context
 
 **Architecture in one line:** issues live in a local Dolt DB; sync uses `refs/dolt/data` on your git remote; `.beads/issues.jsonl` is a passive export. See https://github.com/gastownhall/beads/blob/main/docs/SYNC_CONCEPTS.md for details and anti-patterns.
 <!-- END BEADS CODEX SETUP -->
+
+## Beads tracker notes (project-specific)
+
+- The issue prefix is `hf` (set in `.beads/config.yaml` `issue-prefix`); issues render as `hf-<hash>`.
+- `.beads/issues.jsonl` is the git-tracked interchange artifact (25 seed issues filed 2026-07-06); the local Dolt DB under `.beads/embeddeddolt/` is NOT tracked.
+- Known pitfall in fresh worktrees: the local Dolt DB can exist without an `issue_prefix`, making every `bd create` fail with "database not initialized", while `bd init` refuses to reinit because `.beads/config.yaml` declares a `sync.remote`. Do NOT run `bd sync`/`bd bootstrap` to fix this from a disposable worktree. Working fallback: `bd init --prefix hf` in a scratch directory outside the repo, file issues there, then `bd export -o <repo>/.beads/issues.jsonl` (export embeds labels, dependencies, and comments per issue line).
