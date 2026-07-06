@@ -1,6 +1,6 @@
 {{- define "platform.cronjob" -}}
 {{- if .Values.cronJob.enabled }}
-apiVersion: batch/v1
+apiVersion: {{ include "platform.capabilities.apiVersionForOrDefault" (list . "CronJob") }}
 kind: CronJob
 metadata:
   name: {{ include "platform.fullname" . }}-cron
@@ -49,10 +49,22 @@ spec:
           {{- end }}
         spec:
           serviceAccountName: {{ include "platform.serviceAccountName" . }}
+          automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken | default false }}
+          enableServiceLinks: {{ .Values.enableServiceLinks | default false }}
           restartPolicy: OnFailure
-          {{- if .Values.global.imagePullSecrets }}
+          {{- if .Values.podSecurityContext.enabled }}
+          securityContext: {{- omit .Values.podSecurityContext "enabled" | toYaml | nindent 12 }}
+          {{- end }}
+          {{- $pullSecrets := list -}}
+          {{- range .Values.global.imagePullSecrets }}
+            {{- $pullSecrets = append $pullSecrets . -}}
+          {{- end }}
+          {{- range .Values.image.pullSecrets }}
+            {{- $pullSecrets = append $pullSecrets . -}}
+          {{- end }}
+          {{- if gt (len $pullSecrets) 0 }}
           imagePullSecrets:
-            {{- range .Values.global.imagePullSecrets }}
+            {{- range $pullSecrets }}
             - name: {{ . }}
             {{- end }}
           {{- end }}
@@ -64,8 +76,14 @@ spec:
           {{- else }}
           containers:
             - name: {{ include "platform.name" . }}-cron
+              {{- if .Values.containerSecurityContext.enabled }}
+              securityContext: {{- omit .Values.containerSecurityContext "enabled" | toYaml | nindent 16 }}
+              {{- end }}
               image: {{ include "platform.image" . }}
               imagePullPolicy: {{ include "platform.imagePullPolicy" . }}
+              {{- with .Values.jobs.resources }}
+              resources: {{- toYaml . | nindent 16 }}
+              {{- end }}
           {{- end }}
           {{- if .Values.cronJob.volumes }}
           volumes: {{- toYaml .Values.cronJob.volumes | nindent 10 }}

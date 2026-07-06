@@ -1,6 +1,14 @@
 {{- define "platform.mtls" -}}
 {{- if .Values.mtls.enabled -}}
-apiVersion: security.istio.io/v1beta1
+{{- $principals := .Values.mtls.allowedPrincipals | default list -}}
+{{- if empty $principals -}}
+{{- if .Values.mtls.allowAllPrincipals -}}
+{{- $principals = list "cluster.local/ns/*/sa/*" -}}
+{{- else -}}
+{{- fail (printf "mtls.enabled=true but mtls.allowedPrincipals is empty. List the SPIFFE principals allowed to call this workload (same-namespace default: \"cluster.local/ns/%s/sa/*\"), or explicitly opt in to allowing every mesh workload with mtls.allowAllPrincipals=true." .Release.Namespace) -}}
+{{- end -}}
+{{- end -}}
+apiVersion: {{ include "platform.capabilities.apiVersionForOrDefault" (list . "PeerAuthentication") }}
 kind: PeerAuthentication
 metadata:
   name: {{ include "platform.fullname" . }}
@@ -14,7 +22,7 @@ spec:
     matchLabels:
       {{- include "platform.selectorLabels" . | nindent 6 }}
 ---
-apiVersion: security.istio.io/v1beta1
+apiVersion: {{ include "platform.capabilities.apiVersionForOrDefault" (list . "AuthorizationPolicy") }}
 kind: AuthorizationPolicy
 metadata:
   name: {{ include "platform.fullname" . }}-authz
@@ -30,7 +38,7 @@ spec:
   - from:
     - source:
         principals:
-        {{- toYaml .Values.mtls.allowedPrincipals | nindent 8 }}
+        {{- toYaml $principals | nindent 8 }}
 {{- end }}
 {{- end }}
 

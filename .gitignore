@@ -13,6 +13,7 @@ ENV/
 charts/
 *.tgz
 Chart.lock
+tests/fixtures/*/values.schema.json
 
 # Generated charts
 generated-charts/
@@ -42,3 +43,10 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.bak
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
+.beads/proxieddb/
+.relay/

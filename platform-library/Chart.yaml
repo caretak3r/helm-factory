@@ -1,7 +1,22 @@
 apiVersion: v2
 name: platform
-description: A Helm library chart for platform best practices
+description: Capability-gated Helm common library — the basis for generating product charts across Kubernetes 1.31–1.36
 type: library
-version: 1.0.0
-appVersion: "1.0.0"
-
+version: 2.0.0
+appVersion: "2.0.0"
+# Advisory for consumers: this library targets Kubernetes 1.31–1.36 and Helm 4.0+.
+# Every generator negotiates the best available apiVersion and skips CRD-backed
+# objects whose API is absent, so charts never conflict on deploy.
+kubeVersion: ">=1.31.0-0 <1.37.0-0"
+keywords:
+  - library
+  - common
+  - platform
+  - capability-gates
+home: https://github.com/rohit/helm-factory
+maintainers:
+  - name: Rohit Gudi
+    email: caret4k3r@gmail.com
+annotations:
+  artifacthub.io/category: integration-delivery
+  artifacthub.io/license: MIT

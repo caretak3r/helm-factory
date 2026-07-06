@@ -1,0 +1,49 @@
+# StatefulSet coverage fixture. Values land at root because the dependency
+# uses import-values: [defaults]. Exercises: workload.type=StatefulSet,
+# persistence (PVC + mount), mounted ConfigMap, Secret, all three probes,
+# and statefulSet.volumeClaimTemplates.
+workload:
+  type: StatefulSet
+
+image:
+  repository: example/stateful
+  tag: "1.0.0"
+
+service:
+  enabled: true
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
+
+configMap:
+  enabled: true
+  mounted: true
+  data:
+    app.properties: |
+      mode=stateful
+
+secret:
+  enabled: true
+  stringData:
+    password: fixture-not-a-real-secret
+
+persistence:
+  enabled: true
+  size: 1Gi
+
+startupProbe:
+  enabled: true
+
+livenessProbe:
+  enabled: true
+
+readinessProbe:
+  enabled: true
+
+statefulSet:
+  volumeClaimTemplates:
+    - name: logs
+      accessModes: ["ReadWriteOnce"]
+      storage: 1Gi

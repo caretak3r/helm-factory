@@ -1,6 +1,6 @@
 {{- define "platform.servicemonitor" -}}
 {{- if .Values.serviceMonitor.enabled }}
-apiVersion: monitoring.coreos.com/v1
+apiVersion: {{ include "platform.capabilities.apiVersionForOrDefault" (list . "ServiceMonitor") }}
 kind: ServiceMonitor
 metadata:
   name: {{ include "platform.fullname" . }}

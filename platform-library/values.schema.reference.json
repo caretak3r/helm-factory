@@ -1,0 +1,220 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "platform-library consumer values",
+  "description": "Root-level values contract for a chart that depends on platform-library with import-values: [defaults]. Ship this as values.schema.json in the consuming chart (the scaffold generator does this automatically). It is NOT installed at the library root, because the library wraps its defaults under exports.defaults.",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "nameOverride": { "type": "string" },
+    "fullnameOverride": { "type": "string" },
+    "workload": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "type": { "type": "string", "enum": ["Deployment", "StatefulSet", "DaemonSet"] }
+      }
+    },
+    "image": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["repository"],
+      "properties": {
+        "registry": { "type": "string" },
+        "repository": { "type": "string", "minLength": 1 },
+        "tag": { "type": ["string", "number"], "not": { "const": "latest" }, "description": "Immutable image tag. Required unless image.digest is set; the floating tag 'latest' is rejected." },
+        "digest": { "type": "string", "description": "Image digest (sha256:...). Preferred pin; overrides tag when both are set." },
+        "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never", ""], "description": "Empty string defers to global.imagePullPolicy, then IfNotPresent." }
+      }
+    },
+    "replicaCount": { "type": "integer", "minimum": 0 },
+    "service": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "type": { "type": "string", "enum": ["ClusterIP", "NodePort", "LoadBalancer", "ExternalName"] },
+        "ports": { "type": "array", "items": { "type": "object" } }
+      }
+    },
+    "secret": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "existingSecret": { "type": "string", "description": "Name of a pre-created Secret (External Secrets / Sealed Secrets / kubectl). When set the chart renders no Secret; mutually exclusive with data/stringData. Consume it via envVarsSecret or envVars valueFrom." },
+        "type": { "type": "string" },
+        "data": { "type": "object" },
+        "stringData": { "type": "object", "description": "DISCOURAGED: plaintext secret material in values ends up in git and in Helm release manifests. Prefer existingSecret." }
+      }
+    },
+    "ingress": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "hostname": { "type": "string" },
+        "tls": { "type": "boolean", "description": "Terminate TLS for ingress.hostname. Uses ingress.existingSecret when set, else the conventional name <hostname>-tls (the Secret must exist or be created by cert-manager/ingress.secrets)." },
+        "existingSecret": { "type": "string" },
+        "secrets": { "type": "array", "items": { "type": "object" }, "description": "DISCOURAGED: inline TLS cert/key material in values. Prefer cert-manager (certificate block) or a pre-created Secret via existingSecret." }
+      }
+    },
+    "autoscaling": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "minReplicas": { "type": "integer", "minimum": 1 },
+        "maxReplicas": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "podDisruptionBudget": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": { "enabled": { "type": "boolean" } }
+    },
+    "certificate": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "issuer": { "type": "string" }
+      },
+      "if": { "properties": { "enabled": { "const": true } }, "required": ["enabled"] },
+      "then": { "required": ["issuer"], "properties": { "issuer": { "minLength": 1 } } }
+    },
+    "mtls": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "policy": { "type": "string", "enum": ["STRICT", "PERMISSIVE", "DISABLE", "UNSET"], "description": "Istio PeerAuthentication mTLS mode, rendered as spec.mtls.mode." },
+        "allowedPrincipals": { "type": "array", "items": { "type": "string" } },
+        "allowAllPrincipals": { "type": "boolean", "description": "Explicit opt-in: when true and allowedPrincipals is empty, the AuthorizationPolicy allows every mesh workload (cluster.local/ns/*/sa/*). Ignored when allowedPrincipals is non-empty." },
+        "mode": false
+      }
+    },
+    "gatewayApi": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "apiVersion": { "type": "string" },
+        "hostnames": { "type": "array", "items": { "type": "string" } },
+        "parentRefs": { "type": "array", "items": { "type": "object" } },
+        "httpRoute": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "parentRefs": { "type": "array", "items": { "type": "object" } }
+          }
+        },
+        "grpcRoute": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "parentRefs": { "type": "array", "items": { "type": "object" } }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "enabled": { "const": true },
+              "httpRoute": { "properties": { "enabled": { "const": true } }, "required": ["enabled"] }
+            },
+            "required": ["enabled", "httpRoute"]
+          },
+          "then": {
+            "anyOf": [
+              { "properties": { "parentRefs": { "type": "array", "minItems": 1 } }, "required": ["parentRefs"] },
+              { "properties": { "httpRoute": { "properties": { "parentRefs": { "type": "array", "minItems": 1 } }, "required": ["parentRefs"] } } }
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "enabled": { "const": true },
+              "grpcRoute": { "properties": { "enabled": { "const": true } }, "required": ["enabled"] }
+            },
+            "required": ["enabled", "grpcRoute"]
+          },
+          "then": {
+            "anyOf": [
+              { "properties": { "parentRefs": { "type": "array", "minItems": 1 } }, "required": ["parentRefs"] },
+              { "properties": { "grpcRoute": { "properties": { "parentRefs": { "type": "array", "minItems": 1 } }, "required": ["parentRefs"] } } }
+            ]
+          }
+        }
+      ]
+    },
+    "networkPolicy": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": { "enabled": { "type": "boolean" } }
+    },
+    "serviceMonitor": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": { "enabled": { "type": "boolean" } }
+    },
+    "podMonitor": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": { "enabled": { "type": "boolean" } }
+    },
+    "cronJob": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": { "enabled": { "type": "boolean" } }
+    },
+    "serviceAccount": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "create": { "type": "boolean" },
+        "name": { "type": "string" },
+        "automountServiceAccountToken": { "type": "boolean" }
+      }
+    },
+    "enableServiceLinks": { "type": "boolean" },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "apiVersions": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "allowClusterScopedExtras": { "type": "boolean", "description": "Opt-in gate: cluster-scoped Kinds in extraObjects (ClusterRole, ClusterRoleBinding, PriorityClass, StorageClass, webhooks, CRDs, ...) fail rendering unless this is true." },
+    "extraObjects": {
+      "type": "object",
+      "description": "Map of Kubernetes Kind -> list of object specs. Each spec is capability-negotiated and requires a name.",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["name"],
+          "additionalProperties": true,
+          "properties": {
+            "name": { "type": "string", "minLength": 1 },
+            "namespace": { "type": "string" },
+            "clusterScoped": { "type": "boolean" },
+            "apiVersion": { "type": "string" },
+            "labels": { "type": "object" },
+            "annotations": { "type": "object" }
+          }
+        }
+      }
+    },
+    "extraManifests": {
+      "type": "array",
+      "items": { "type": ["object", "string"] }
+    }
+  }
+}

@@ -49,7 +49,10 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/*
-Resolve the full image reference, honoring global overrides
+Resolve the full image reference, honoring global overrides.
+Requires image.digest (preferred) or image.tag; there is no `latest` fallback.
+digest wins when both are set. Used by the main workload pod template and the
+CronJob default container.
 */}}
 {{- define "platform.image" -}}
 {{- $repository := trimPrefix "/" (.Values.image.repository | default "") -}}
@@ -59,8 +62,11 @@ Resolve the full image reference, honoring global overrides
 {{- end }}
 {{- if .Values.image.digest }}
 {{- printf "%s@%s" $repository .Values.image.digest }}
+{{- else if .Values.image.tag }}
+{{- printf "%s:%v" $repository .Values.image.tag }}
 {{- else }}
-{{- printf "%s:%s" $repository (.Values.image.tag | default "latest") }}
+{{- fail "platform-library: image.tag and image.digest are both empty. Pin the image with image.digest (preferred, immutable, e.g. \"sha256:<64-hex>\") or image.tag (e.g. \"1.2.3\"). Floating \"latest\" is no longer defaulted." }}
+{{- end }}
 {{- end }}
 
 {{/*
@@ -70,13 +76,8 @@ Resolve pull policy with global override support
 {{- $policy := .Values.image.pullPolicy | default "" -}}
 {{- if .Values.global.imagePullPolicy }}
   {{- $policy = .Values.global.imagePullPolicy -}}
-<<<<<<< HEAD
 {{- end -}}
-{{ default "IfNotPresent" $policy }}
-=======
-{{- end }}
 {{- default "IfNotPresent" $policy }}
->>>>>>> 27ef9d2 (feat: supporting gateway api)
 {{- end }}
 
 {{/*
@@ -188,6 +189,8 @@ metadata:
   {{- end }}
 spec:
   serviceAccountName: {{ include "platform.serviceAccountName" $ctx }}
+  automountServiceAccountToken: {{ $ctx.Values.serviceAccount.automountServiceAccountToken | default false }}
+  enableServiceLinks: {{ $ctx.Values.enableServiceLinks | default false }}
   {{- $pullSecrets := list -}}
   {{- range $ctx.Values.global.imagePullSecrets }}
     {{- $pullSecrets = append $pullSecrets . -}}
@@ -380,6 +383,7 @@ metadata:
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
+automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken | default false }}
 {{- end }}
 {{- end }}
 
@@ -388,7 +392,7 @@ Create HorizontalPodAutoscaler
 */}}
 {{- define "platform.autoscaling" -}}
 {{- if .Values.autoscaling.enabled }}
-apiVersion: autoscaling/v2
+apiVersion: {{ include "platform.capabilities.apiVersionForOrDefault" (list . "HorizontalPodAutoscaler") }}
 kind: HorizontalPodAutoscaler
 metadata:
   name: {{ include "platform.fullname" . }}
@@ -424,7 +428,7 @@ spec:
           averageUtilization: {{ .Values.autoscaling.targetMemory }}
   {{- end }}
   {{- range .Values.autoscaling.metrics }}
-    {{- toYaml . | nindent 4 }}
+    {{- toYaml (list .) | nindent 4 }}
   {{- end }}
   {{- end }}
 {{- end }}
@@ -453,7 +457,7 @@ ConfigMaps or Secrets change.
 {{- if $ctx.Values.configMap.enabled }}
   {{- $_ := set $annotations "checksum/config" (include "platform.configmap" $ctx | sha256sum) -}}
 {{- end }}
-{{- if $ctx.Values.secret.enabled }}
+{{- if and $ctx.Values.secret.enabled (not $ctx.Values.secret.existingSecret) }}
   {{- $_ := set $annotations "checksum/secret" (include "platform.secret" $ctx | sha256sum) -}}
 {{- end }}
 {{- if gt (len $annotations) 0 }}
@@ -508,7 +512,7 @@ Get all enabled subcharts dynamically
 {{- define "global.enabledSubcharts" -}}
 {{- $enabled := list -}}
 {{- range $chartName, $chartValues := .Values -}}
-  {{- if and (not (eq $chartName "global")) (not (eq $chartName "nameOverride")) (not (eq $chartName "common")) }}
+  {{- if and (not (eq $chartName "global")) (not (eq $chartName "nameOverride")) (not (eq $chartName "common")) (kindIs "map" $chartValues) }}
     {{- if or $chartValues.enabled (not (hasKey $chartValues "enabled")) }}
       {{- $enabled = append $enabled $chartName -}}
     {{- end -}}
@@ -523,7 +527,7 @@ Get all service endpoints dynamically
 {{- define "global.allEndpointsDynamic" -}}
 {{- $endpoints := dict -}}
 {{- range $chartName, $chartValues := .Values -}}
-  {{- if and (not (eq $chartName "global")) (not (eq $chartName "nameOverride")) (not (eq $chartName "common")) }}
+  {{- if and (not (eq $chartName "global")) (not (eq $chartName "nameOverride")) (not (eq $chartName "common")) (kindIs "map" $chartValues) }}
     {{- if or $chartValues.enabled (not (hasKey $chartValues "enabled")) }}
       {{- $subserviceName := $chartName -}}
       {{- if and $chartValues.service $chartValues.service.name -}}
@@ -594,7 +598,7 @@ Render hook jobs (pre/post install)
 {{- $job := .job -}}
 {{- $type := .type -}}
 {{- $defaults := $ctx.Values.jobs -}}
-{{- $imageCfg := dict "repository" ($defaults.image.repository | default "") "tag" ($defaults.image.tag | default "latest") "pullPolicy" ($defaults.image.pullPolicy | default "IfNotPresent") -}}
+{{- $imageCfg := dict "repository" ($defaults.image.repository | default "") "tag" ($defaults.image.tag | default "") "digest" ($defaults.image.digest | default "") "pullPolicy" ($defaults.image.pullPolicy | default "IfNotPresent") -}}
 {{- if $job.image }}
   {{- range $k, $v := $job.image }}
     {{- $_ := set $imageCfg $k $v -}}
@@ -603,8 +607,18 @@ Render hook jobs (pre/post install)
 {{- if not $imageCfg.repository }}
   {{- $_ := set $imageCfg "repository" $ctx.Values.image.repository -}}
 {{- end }}
-{{- if and (eq $imageCfg.tag "latest") $ctx.Values.image.tag }}
-  {{- $_ := set $imageCfg "tag" $ctx.Values.image.tag -}}
+{{- /*
+Inherit the pin from the main image when the hook image sets neither tag nor
+digest. Digests are repository-specific, so the main digest is inherited only
+when the hook resolves to the same repository; a different hook repository
+inherits the main tag only.
+*/}}
+{{- if and (not $imageCfg.tag) (not $imageCfg.digest) }}
+  {{- if and $ctx.Values.image.digest (eq $imageCfg.repository ($ctx.Values.image.repository | default "")) }}
+    {{- $_ := set $imageCfg "digest" $ctx.Values.image.digest -}}
+  {{- else if $ctx.Values.image.tag }}
+    {{- $_ := set $imageCfg "tag" $ctx.Values.image.tag -}}
+  {{- end }}
 {{- end }}
 {{- $registry := $imageCfg.registry | default "" -}}
 {{- if not $registry }}
@@ -617,13 +631,20 @@ Render hook jobs (pre/post install)
 {{- if and $registry $imageCfg.repository (not (hasPrefix $imageCfg.repository (printf "%s/" $registry))) }}
   {{- $_ := set $imageCfg "repository" (printf "%s/%s" $registry (trimPrefix "/" $imageCfg.repository)) -}}
 {{- end }}
-{{- $image := printf "%s:%s" $imageCfg.repository $imageCfg.tag -}}
+{{- $image := "" -}}
+{{- if $imageCfg.digest }}
+  {{- $image = printf "%s@%s" $imageCfg.repository $imageCfg.digest -}}
+{{- else if $imageCfg.tag }}
+  {{- $image = printf "%s:%v" $imageCfg.repository $imageCfg.tag -}}
+{{- else }}
+  {{- fail (printf "platform-library: hook Job %q resolves to an image with no tag and no digest. Set jobs.image.tag/digest (or the per-job image.tag/digest), or pin the main image via image.tag/image.digest to inherit. Floating \"latest\" is no longer defaulted." $type) -}}
+{{- end }}
 {{- $pullPolicy := $imageCfg.pullPolicy | default "IfNotPresent" -}}
 {{- $command := coalesce $job.command nil -}}
 {{- $args := coalesce $job.args nil -}}
-{{- $env := coalesce $job.env list -}}
-{{- $volumeMounts := coalesce $job.volumeMounts list -}}
-{{- $volumes := coalesce $job.volumes list -}}
+{{- $env := default (list) $job.env -}}
+{{- $volumeMounts := default (list) $job.volumeMounts -}}
+{{- $volumes := default (list) $job.volumes -}}
 {{- $resources := coalesce $job.resources $defaults.resources -}}
 {{- $backoffLimit := default $defaults.backoffLimit $job.backoffLimit -}}
 {{- $completions := default $defaults.completions $job.completions -}}
@@ -664,6 +685,9 @@ Render hook jobs (pre/post install)
   {{- end }}
 {{- end }}
 {{- $mainJobContainer := dict "name" (printf "%s-%s" (include "platform.name" $ctx) $type) "image" $image "imagePullPolicy" $pullPolicy -}}
+{{- if $ctx.Values.containerSecurityContext.enabled }}
+  {{- $_ := set $mainJobContainer "securityContext" (omit $ctx.Values.containerSecurityContext "enabled") -}}
+{{- end }}
 {{- if gt (len $command) 0 }}
   {{- $_ := set $mainJobContainer "command" $command -}}
 {{- end }}
@@ -711,6 +735,11 @@ spec:
     spec:
       restartPolicy: {{ $restartPolicy }}
       serviceAccountName: {{ include "platform.serviceAccountName" $ctx }}
+      automountServiceAccountToken: {{ $ctx.Values.serviceAccount.automountServiceAccountToken | default false }}
+      enableServiceLinks: {{ $ctx.Values.enableServiceLinks | default false }}
+      {{- if $ctx.Values.podSecurityContext.enabled }}
+      securityContext: {{- omit $ctx.Values.podSecurityContext "enabled" | toYaml | nindent 8 }}
+      {{- end }}
       {{- $hookPullSecrets := list -}}
       {{- range $ctx.Values.global.imagePullSecrets }}
         {{- $hookPullSecrets = append $hookPullSecrets . -}}

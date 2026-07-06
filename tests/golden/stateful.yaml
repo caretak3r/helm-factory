@@ -1,0 +1,197 @@
+---
+# Source: stateful/templates/app.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: t-stateful
+  namespace: default
+  labels:
+    helm.sh/chart: stateful-0.1.0
+    app.kubernetes.io/name: stateful
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+automountServiceAccountToken: false
+
+---
+# Source: stateful/templates/app.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: t-stateful-secret
+  namespace: default
+  labels:
+    helm.sh/chart: stateful-0.1.0
+    app.kubernetes.io/name: stateful
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+type: Opaque
+stringData:
+  password: fixture-not-a-real-secret
+---
+# Source: stateful/templates/app.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: t-stateful-config
+  namespace: default
+  labels:
+    helm.sh/chart: stateful-0.1.0
+    app.kubernetes.io/name: stateful
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+data:
+  app.properties: |
+    mode=stateful
+---
+# Source: stateful/templates/app.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: t-stateful-data
+  namespace: default
+  labels:
+    helm.sh/chart: stateful-0.1.0
+    app.kubernetes.io/name: stateful
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  accessModes:
+    - "ReadWriteOnce"
+  resources:
+    requests:
+      storage: "1Gi"
+---
+# Source: stateful/templates/app.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: t-stateful
+  namespace: default
+  labels:
+    helm.sh/chart: stateful-0.1.0
+    app.kubernetes.io/name: stateful
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  type: ClusterIP
+  sessionAffinity: None
+  ports:
+    - name: http
+      port: 80
+      protocol: TCP
+      targetPort: http
+  selector:
+    app.kubernetes.io/name: stateful
+    app.kubernetes.io/instance: t
+---
+# Source: stateful/templates/app.yaml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: t-stateful
+  namespace: default
+  labels:
+    helm.sh/chart: stateful-0.1.0
+    app.kubernetes.io/name: stateful
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  serviceName: t-stateful
+  replicas: 1
+  podManagementPolicy: OrderedReady
+  updateStrategy:
+    rollingUpdate:
+      partition: 0
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: stateful
+      app.kubernetes.io/instance: t
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: stateful
+        app.kubernetes.io/instance: t
+    spec:
+      serviceAccountName: t-stateful
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        fsGroup: 1001
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: stateful
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1001
+            seccompProfile:
+              type: RuntimeDefault
+          image: docker.io/example/stateful:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: http
+              protocol: TCP
+          livenessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 5
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            successThreshold: 1
+            timeoutSeconds: 3
+          startupProbe:
+            failureThreshold: 30
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 0
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 1
+          volumeMounts:
+            - mountPath: /app/config
+              name: config
+            - mountPath: /data
+              name: data
+      volumes:
+        - configMap:
+            name: t-stateful-config
+          name: config
+        - name: data
+          persistentVolumeClaim:
+            claimName: t-stateful-data
+      terminationGracePeriodSeconds: 30
+      restartPolicy: Always
+  volumeClaimTemplates:
+    - metadata:
+        name: logs
+      spec:
+        accessModes:
+          - "ReadWriteOnce"
+        resources:
+          requests:
+            storage: "1Gi"

@@ -1,93 +1,108 @@
 {{- define "platform.app" -}}
 {{- if .Values.configMap.enabled }}
-{{ include "platform.configmap" . }}
+{{- include "platform.emit" (include "platform.configmap" .) }}
 {{- end }}
 
 {{- if and .Values.jobs.preInstall.enabled (or .Values.jobs.preInstall.script .Values.jobs.preInstall.scriptFile) }}
   {{- $job := dict "type" "preinstall" "script" .Values.jobs.preInstall.script "scriptFile" .Values.jobs.preInstall.scriptFile -}}
-  {{- include "platform.configmap.script" (dict "root" . "job" $job) }}
+  {{- include "platform.emit" (include "platform.configmap.script" (dict "root" . "job" $job)) }}
 {{- end }}
 
 {{- if and .Values.jobs.postInstall.enabled (or .Values.jobs.postInstall.script .Values.jobs.postInstall.scriptFile) }}
   {{- $job := dict "type" "postinstall" "script" .Values.jobs.postInstall.script "scriptFile" .Values.jobs.postInstall.scriptFile -}}
-  {{- include "platform.configmap.script" (dict "root" . "job" $job) }}
+  {{- include "platform.emit" (include "platform.configmap.script" (dict "root" . "job" $job)) }}
 {{- end }}
 
 {{- if .Values.secret.enabled }}
-{{ include "platform.secret" . }}
+{{- include "platform.emit" (include "platform.secret" .) }}
 {{- end }}
 
-{{- if .Values.certificate.enabled }}
-{{ include "platform.certificate" . }}
+{{- if and .Values.certificate.enabled (include "platform.capabilities.apiVersionFor" (list . "Certificate")) }}
+{{- include "platform.emit" (include "platform.certificate" .) }}
 {{- end }}
 
 {{- if and .Values.ingress.enabled .Values.ingress.secrets }}
-{{ include "platform.tls.secrets" . }}
+{{- include "platform.emit" (include "platform.tls.secrets" .) }}
 {{- end }}
 
 {{- if .Values.tlsSelfSigned.enabled }}
-{{ include "platform.tls.selfsigned" . }}
+{{- include "platform.emit" (include "platform.tls.selfsigned" .) }}
 {{- end }}
 
-{{- if .Values.mtls.enabled }}
-{{ include "platform.mtls" . }}
+{{- if and .Values.mtls.enabled (include "platform.capabilities.apiVersionFor" (list . "PeerAuthentication")) }}
+{{- include "platform.emit" (include "platform.mtls" .) }}
 {{- end }}
 
 {{- if .Values.persistence.enabled }}
-{{ include "platform.pvc" . }}
+{{- include "platform.emit" (include "platform.pvc" .) }}
 {{- end }}
 
-{{ include "platform.workload" . }}
+{{- include "platform.emit" (include "platform.workload" .) }}
 
 {{- if .Values.autoscaling.enabled }}
-{{ include "platform.hpa" . }}
+{{- include "platform.emit" (include "platform.hpa" .) }}
 {{- end }}
 
 {{- if .Values.service.enabled }}
-{{ include "platform.service" . }}
+{{- include "platform.emit" (include "platform.service" .) }}
 {{- end }}
 
 {{- if .Values.ingress.enabled }}
-{{ include "platform.ingress" . }}
+{{- include "platform.emit" (include "platform.ingress" .) }}
 {{- end }}
 
-{{- if .Values.gatewayApi.enabled }}
-{{ include "platform.gatewayApi" . }}
+{{- if and .Values.gatewayApi.enabled (include "platform.capabilities.apiVersionFor" (list . "HTTPRoute")) }}
+{{- include "platform.emit" (include "platform.gatewayApi" .) }}
 {{- end }}
 
 {{- if .Values.networkPolicy.enabled }}
-{{ include "platform.networkpolicy" . }}
+{{- include "platform.emit" (include "platform.networkpolicy" .) }}
 {{- end }}
 
 {{- if .Values.podDisruptionBudget.enabled }}
-{{ include "platform.pdb" . }}
+{{- include "platform.emit" (include "platform.pdb" .) }}
 {{- end }}
 
 {{- if or .Values.serviceAccount.create .Values.serviceAccount.name }}
-{{ include "platform.serviceAccount" . }}
+{{- include "platform.emit" (include "platform.serviceAccount" .) }}
 {{- end }}
 
-{{- if .Values.serviceMonitor.enabled }}
-{{ include "platform.servicemonitor" . }}
+{{- if and .Values.serviceMonitor.enabled (include "platform.capabilities.apiVersionFor" (list . "ServiceMonitor")) }}
+{{- include "platform.emit" (include "platform.servicemonitor" .) }}
 {{- end }}
 
-{{- if .Values.podMonitor.enabled }}
-{{ include "platform.podmonitor" . }}
+{{- if and .Values.podMonitor.enabled (include "platform.capabilities.apiVersionFor" (list . "PodMonitor")) }}
+{{- include "platform.emit" (include "platform.podmonitor" .) }}
 {{- end }}
 
 {{- if .Values.cronJob.enabled }}
-{{ include "platform.cronjob" . }}
+{{- include "platform.emit" (include "platform.cronjob" .) }}
 {{- end }}
 
 {{- if .Values.jobs.preInstall.enabled }}
-{{ include "platform.job.preinstall" . }}
+{{- include "platform.emit" (include "platform.job.preinstall" .) }}
 {{- end }}
 
 {{- if .Values.jobs.postInstall.enabled }}
-{{ include "platform.job.postinstall" . }}
+{{- include "platform.emit" (include "platform.job.postinstall" .) }}
 {{- end }}
 
 {{- if .Values.serviceEndpoints.enabled }}
-{{ include "platform.serviceEndpoints.configmap" . }}
+{{- include "platform.emit" (include "platform.serviceEndpoints.configmap" .) }}
 {{- end }}
 {{- end }}
+
+{{/*
+=============================================================================
+platform.render — the single public entrypoint a consuming chart includes.
+Composes the opinionated "primary app" objects (platform.app) with the
+generic capability-gated long-tail (extraObjects) and the raw escape hatch
+(extraManifests). A consumer's templates/app.yaml is simply:
+  {{ include "platform.render" . }}
+=============================================================================
+*/}}
+{{- define "platform.render" -}}
+{{- include "platform.app" . }}
+{{- include "platform.extraObjects" . }}
+{{- include "platform.extraManifests" . }}
+{{- end -}}

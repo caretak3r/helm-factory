@@ -1,16 +1,42 @@
 {{- define "platform.tls.selfsigned" -}}
 {{- if and .Values.tlsSelfSigned.enabled .Values.ingress.hostname -}}
-{{- $cn := default .Values.ingress.hostname .Values.tlsSelfSigned.commonName -}}
-{{- $dnsNames := .Values.tlsSelfSigned.dnsNames -}}
-{{- if not $dnsNames }}
-  {{- $dnsNames = list .Values.ingress.hostname -}}
-{{- end }}
-{{- $ca := genCA (printf "%s-ca" (include "platform.fullname" .)) .Values.tlsSelfSigned.validityDays -}}
-{{- $cert := genSignedCert $cn nil $dnsNames .Values.tlsSelfSigned.validityDays $ca -}}
+{{- $secretName := printf "%s-tls" (include "platform.fullname" .) -}}
+{{- /*
+DEV-ONLY convenience. Reuse the existing Secret's certificate material on
+upgrades so the CA and private key are NOT rotated on every `helm upgrade`.
+`lookup` returns an empty dict during `helm template` and client-side
+`--dry-run` (no cluster connection), so offline renders always fall back to
+generating a fresh throwaway certificate — expected and harmless for dev/CI.
+`helm upgrade --dry-run=server` and real install/upgrade do perform the
+lookup. To force rotation, delete the Secret and upgrade. For production use
+the cert-manager `certificate` block instead of tlsSelfSigned.
+*/}}
+{{- $existing := lookup "v1" "Secret" .Release.Namespace $secretName -}}
+{{- $crt := "" -}}
+{{- $key := "" -}}
+{{- $caCrt := "" -}}
+{{- if and $existing $existing.data (index $existing.data "tls.crt") (index $existing.data "tls.key") (index $existing.data "ca.crt") -}}
+  {{- /* Values from lookup .data are already base64-encoded — do NOT b64enc. */ -}}
+  {{- $crt = index $existing.data "tls.crt" -}}
+  {{- $key = index $existing.data "tls.key" -}}
+  {{- $caCrt = index $existing.data "ca.crt" -}}
+{{- else -}}
+  {{- $cn := default .Values.ingress.hostname .Values.tlsSelfSigned.commonName -}}
+  {{- $dnsNames := .Values.tlsSelfSigned.dnsNames -}}
+  {{- if not $dnsNames }}
+    {{- $dnsNames = list .Values.ingress.hostname -}}
+  {{- end }}
+  {{- $validity := int .Values.tlsSelfSigned.validityDays -}}
+  {{- $ca := genCA (printf "%s-ca" (include "platform.fullname" .)) $validity -}}
+  {{- $cert := genSignedCert $cn nil $dnsNames $validity $ca -}}
+  {{- $crt = $cert.Cert | b64enc -}}
+  {{- $key = $cert.Key | b64enc -}}
+  {{- $caCrt = $ca.Cert | b64enc -}}
+{{- end -}}
 apiVersion: v1
 kind: Secret
 metadata:
-  name: {{ printf "%s-tls" (include "platform.fullname" .) }}
+  name: {{ $secretName }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "platform.labels" . | nindent 4 }}
@@ -25,8 +51,8 @@ metadata:
   {{- end }}
 type: kubernetes.io/tls
 data:
-  tls.crt: {{ $cert.Cert | b64enc }}
-  tls.key: {{ $cert.Key | b64enc }}
-  ca.crt: {{ $ca.Cert | b64enc }}
+  tls.crt: {{ $crt }}
+  tls.key: {{ $key }}
+  ca.crt: {{ $caCrt }}
 {{- end }}
 {{- end }}

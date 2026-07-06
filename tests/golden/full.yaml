@@ -1,0 +1,616 @@
+---
+# Source: full/templates/app.yaml
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: full-high
+  labels:
+    helm.sh/chart: full-0.1.0
+    app.kubernetes.io/name: full
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+description: High priority for the app
+globalDefault: false
+value: 1000000
+---
+# Source: full/templates/app.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: t-full
+  namespace: default
+  labels:
+    helm.sh/chart: full-0.1.0
+    app.kubernetes.io/name: full
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: full
+      app.kubernetes.io/instance: t
+  policyTypes:
+    - Ingress
+    - Egress
+---
+# Source: full/templates/app.yaml
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: full-quota
+  namespace: default
+  labels:
+    helm.sh/chart: full-0.1.0
+    app.kubernetes.io/name: full
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  hard:
+    pods: "10"
+---
+# Source: full/templates/app.yaml
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: t-full
+  namespace: default
+  labels:
+    helm.sh/chart: full-0.1.0
+    app.kubernetes.io/name: full
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: full
+      app.kubernetes.io/instance: t
+  minAvailable: 1
+---
+# Source: full/templates/app.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: t-full
+  namespace: default
+  labels:
+    helm.sh/chart: full-0.1.0
+    app.kubernetes.io/name: full
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+automountServiceAccountToken: false
+---
+# Source: full/templates/app.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: extra-sa
+  namespace: default
+  labels:
+    helm.sh/chart: full-0.1.0
+    app.kubernetes.io/name: full
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+automountServiceAccountToken: false
+---
+# Source: full/templates/app.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: t-full-preinstall-script
+  namespace: default
+  labels:
+    helm.sh/chart: full-0.1.0
+    app.kubernetes.io/name: full
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: job-preinstall-script
+data:
+  script.sh: |
+    #!/bin/sh
+    echo "pre-install hook"
+---
+# Source: full/templates/app.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: extra-config
+  namespace: default
+  labels:
+    helm.sh/chart: full-0.1.0
+    app.kubernetes.io/name: full
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+data:
+  key: value
+---
+# Source: full/templates/app.yaml
+apiVersion: v1
+data:
+  raw: "true"
+kind: ConfigMap
+metadata:
+  name: raw-config
+
+---
+# Source: full/templates/app.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: full-cluster-reader
+  labels:
+    helm.sh/chart: full-0.1.0
+    app.kubernetes.io/name: full
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+rules:
+  - apiGroups:
+    - ""
+    resources:
+    - nodes
+    verbs:
+    - get
+    - list
+---
+# Source: full/templates/app.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: app-reader
+  namespace: default
+  labels:
+    helm.sh/chart: full-0.1.0
+    app.kubernetes.io/name: full
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+rules:
+  - apiGroups:
+    - ""
+    resources:
+    - configmaps
+    - secrets
+    verbs:
+    - get
+    - list
+    - watch
+---
+# Source: full/templates/app.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: app-reader-binding
+  namespace: default
+  labels:
+    helm.sh/chart: full-0.1.0
+    app.kubernetes.io/name: full
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: app-reader
+subjects:
+  - kind: ServiceAccount
+    name: full-platform
+---
+# Source: full/templates/app.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: t-full
+  namespace: default
+  labels:
+    helm.sh/chart: full-0.1.0
+    app.kubernetes.io/name: full
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  type: ClusterIP
+  sessionAffinity: None
+  ports:
+    - name: http
+      port: 80
+      protocol: TCP
+      targetPort: http
+  selector:
+    app.kubernetes.io/name: full
+    app.kubernetes.io/instance: t
+---
+# Source: full/templates/app.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: t-full
+  namespace: default
+  labels:
+    helm.sh/chart: full-0.1.0
+    app.kubernetes.io/name: full
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: full
+      app.kubernetes.io/instance: t
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: full
+        app.kubernetes.io/instance: t
+    spec:
+      serviceAccountName: t-full
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        fsGroup: 1001
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: full
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1001
+            seccompProfile:
+              type: RuntimeDefault
+          image: docker.io/example/app:1.2.3
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: http
+              protocol: TCP
+      terminationGracePeriodSeconds: 30
+      restartPolicy: Always
+---
+# Source: full/templates/app.yaml
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: t-full
+  namespace: default
+  labels:
+    helm.sh/chart: full-0.1.0
+    app.kubernetes.io/name: full
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: t-full
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 80
+---
+# Source: full/templates/app.yaml
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: t-full-cron
+  namespace: default
+  labels:
+    helm.sh/chart: full-0.1.0
+    app.kubernetes.io/name: full
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  schedule: "*/5 * * * *"
+  concurrencyPolicy: Allow
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  startingDeadlineSeconds: 200
+  suspend: false
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: full
+            app.kubernetes.io/instance: t
+        spec:
+          serviceAccountName: t-full
+          automountServiceAccountToken: false
+          enableServiceLinks: false
+          restartPolicy: OnFailure
+          securityContext:
+            fsGroup: 1001
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: full-cron
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                  - ALL
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                runAsUser: 1001
+                seccompProfile:
+                  type: RuntimeDefault
+              image: docker.io/example/app:1.2.3
+              imagePullPolicy: IfNotPresent
+              resources:
+                limits:
+                  cpu: 500m
+                  memory: 512Mi
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+---
+# Source: full/templates/app.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: t-full
+  namespace: default
+  labels:
+    helm.sh/chart: full-0.1.0
+    app.kubernetes.io/name: full
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  rules:
+    - host: "app.example.com"
+      http:
+        paths:
+          - path: /
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: t-full
+                port:
+                  number: 80
+---
+# Source: full/templates/app.yaml
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: t-full-authz
+  namespace: default
+  labels:
+    helm.sh/chart: full-0.1.0
+    app.kubernetes.io/name: full
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: full
+      app.kubernetes.io/instance: t
+  action: ALLOW
+  rules:
+  - from:
+    - source:
+        principals:
+        - cluster.local/ns/default/sa/*
+---
+# Source: full/templates/app.yaml
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: t-full-tls
+  namespace: default
+  labels:
+    helm.sh/chart: full-0.1.0
+    app.kubernetes.io/name: full
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  secretName: t-full-tls
+  issuerRef:
+    name: letsencrypt
+    kind: ClusterIssuer
+  duration: 2160h
+  renewBefore: 360h
+  dnsNames:
+    - "app.example.com"
+  usages:
+    - "server auth"
+    - "client auth"
+---
+# Source: full/templates/app.yaml
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: t-full-http
+  namespace: default
+  labels:
+    helm.sh/chart: full-0.1.0
+    app.kubernetes.io/name: full
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+
+  hostnames:
+  - app.example.com
+  parentRefs:
+  - name: shared-gateway
+    namespace: gateway-system
+  rules:
+  - backendRefs:
+    - kind: Service
+      name: t-full
+      port: 80
+      weight: 1
+    matches:
+    - path:
+        type: PathPrefix
+        value: /
+---
+# Source: full/templates/app.yaml
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: t-full
+  namespace: default
+  labels:
+    helm.sh/chart: full-0.1.0
+    app.kubernetes.io/name: full
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  mtls:
+    mode: STRICT
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: full
+      app.kubernetes.io/instance: t
+---
+# Source: full/templates/app.yaml
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: t-full
+  namespace: default
+  labels:
+    helm.sh/chart: full-0.1.0
+    app.kubernetes.io/name: full
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  podMetricsEndpoints:
+    - port: "http"
+      path: "/metrics"
+      interval: 30s
+      scrapeTimeout: 10s
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: full
+      app.kubernetes.io/instance: t
+  namespaceSelector:
+    matchNames:
+      - "default"
+---
+# Source: full/templates/app.yaml
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: t-full
+  namespace: default
+  labels:
+    helm.sh/chart: full-0.1.0
+    app.kubernetes.io/name: full
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: full
+      app.kubernetes.io/instance: t
+  namespaceSelector:
+    matchNames:
+      - "default"
+  endpoints:
+    - port: "http"
+      path: "/metrics"
+---
+# Source: full/templates/app.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: t-full-preinstall
+  namespace: default
+  labels:
+    helm.sh/chart: full-0.1.0
+    app.kubernetes.io/name: full
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-5"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 3
+  completions: 1
+  parallelism: 1
+  activeDeadlineSeconds: 300
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: full
+        app.kubernetes.io/instance: t
+    spec:
+      restartPolicy: Never
+      serviceAccountName: t-full
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        fsGroup: 1001
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - command:
+          - /bin/sh
+          - /scripts/script.sh
+          image: docker.io/example/app:1.2.3
+          imagePullPolicy: IfNotPresent
+          name: full-preinstall
+          resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+            requests:
+              cpu: 100m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1001
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+          - mountPath: /scripts
+            name: job-script
+            readOnly: true
+      volumes:
+        - configMap:
+            defaultMode: 365
+            name: t-full-preinstall-script
+          name: job-script

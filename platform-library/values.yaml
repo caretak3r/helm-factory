@@ -3,9 +3,9 @@ exports:
     # =============================================================================
     # Platform Library Chart - Default Values
     # =============================================================================
-    # These defaults are designed to work with the service configuration.yaml
-    # template. Service teams should NOT modify this file directly - instead,
-    # customize the configuration.yaml file for their service.
+    # These defaults are exported to consumer charts via `import-values: [defaults]`
+    # and land at the ROOT of the consumer's values scope. Service teams should NOT
+    # modify this file — override fields in the consumer chart's values.yaml.
     # =============================================================================
 
     # -----------------------------------------------------------------------------
@@ -32,10 +32,13 @@ exports:
     # -----------------------------------------------------------------------------
     # Container Image
     # -----------------------------------------------------------------------------
+    # Either `digest` (preferred — immutable, e.g. "sha256:<64 hex chars>") or
+    # `tag` MUST be set; rendering fails otherwise. There is no `latest`
+    # fallback. When both are set, digest wins.
     image:
       registry: docker.io
       repository: ""
-      tag: latest
+      tag: ""
       digest: ""
       pullPolicy: IfNotPresent
       pullSecrets: []
@@ -184,8 +187,15 @@ exports:
     # -----------------------------------------------------------------------------
     # Secret
     # -----------------------------------------------------------------------------
+    # WARNING: data/stringData put secret material into values files and Helm
+    # release manifests. Prefer a Secret created out-of-band (External Secrets
+    # Operator, Sealed Secrets, SOPS, kubectl) and set existingSecret to its
+    # name — the chart then renders NO Secret. Consume it via envVarsSecret or
+    # envVars valueFrom. existingSecret is mutually exclusive with
+    # data/stringData (rendering fails if both are set).
     secret:
       enabled: false
+      existingSecret: ""
       type: Opaque
       data: {}
       stringData: {}
@@ -209,6 +219,12 @@ exports:
       path: /
       pathType: ImplementationSpecific
       annotations: {}
+      # TLS is opt-in (an enabled default would reference a `<hostname>-tls`
+      # Secret that nothing provisions). When enabled with a hostname, the
+      # secretName is ingress.existingSecret, else "<hostname>-tls" — provide
+      # it via cert-manager (certificate block / issuer annotation),
+      # ingress.existingSecret, or ingress.secrets. Serving a hostname without
+      # TLS prints an install-time WARNING via NOTES.txt.
       tls: false
       existingSecret: ""
       selfSigned: false
@@ -272,15 +288,29 @@ exports:
     # -----------------------------------------------------------------------------
     # mTLS Policy
     # -----------------------------------------------------------------------------
+    # Fail-closed: when enabled, allowedPrincipals MUST list the SPIFFE
+    # principals allowed to call this workload or rendering fails. Easy
+    # same-namespace default:
+    #   allowedPrincipals:
+    #     - "cluster.local/ns/<your-namespace>/sa/*"
+    # Setting allowAllPrincipals: true is an explicit opt-in that renders the
+    # wildcard principal "cluster.local/ns/*/sa/*" (mutual TLS with no
+    # meaningful authorization). Ignored when allowedPrincipals is non-empty.
     mtls:
       enabled: false
       policy: STRICT
-      allowedPrincipals:
-        - "cluster.local/ns/*/sa/*"
+      allowedPrincipals: []
+      allowAllPrincipals: false
 
     # -----------------------------------------------------------------------------
-    # Self-Signed TLS
+    # Self-Signed TLS (DEV-ONLY)
     # -----------------------------------------------------------------------------
+    # Generates a self-signed CA + certificate into the Secret <fullname>-tls.
+    # On install/upgrade against a real cluster the existing Secret is looked up
+    # and reused, so the CA/key are stable across upgrades; under
+    # `helm template` / client-side --dry-run the lookup is empty and a fresh
+    # throwaway cert is generated on every render. Do NOT use in production —
+    # use the cert-manager `certificate` block above instead.
     tlsSelfSigned:
       enabled: false
       commonName: ""
@@ -291,9 +321,14 @@ exports:
     # Jobs (Helm Hooks)
     # -----------------------------------------------------------------------------
     jobs:
+      # Hook-job image. Empty repository/tag/digest inherit from the main
+      # `image:` block (digest is inherited only when the repository is the
+      # same). The effective image must resolve to a tag or digest, or
+      # rendering fails.
       image:
         repository: ""
-        tag: "latest"
+        tag: ""
+        digest: ""
         pullPolicy: IfNotPresent
       backoffLimit: 3
       completions: 1
@@ -358,12 +393,8 @@ exports:
       startingDeadlineSeconds: 200
       suspend: false
       containers: []
-      initContainers:
-        enabled: false
-        containers: []
-      sidecars:
-        enabled: false
-        containers: []
+      initContainers: []
+      sidecars: []
       volumes: []
       annotations: {}
       podAnnotations: {}
@@ -412,29 +443,46 @@ exports:
     # -----------------------------------------------------------------------------
     # Service Account
     # -----------------------------------------------------------------------------
+    # A dedicated ServiceAccount is created by default so every app gets its own
+    # least-privilege identity. The API token is NOT mounted by default
+    # (automountServiceAccountToken: false is rendered on both the ServiceAccount
+    # and the pod spec); apps that call the Kubernetes API must opt in.
     serviceAccount:
-      create: false
+      create: true
       name: ""
-      automountServiceAccountToken: true
+      automountServiceAccountToken: false
       annotations: {}
       labels: {}
 
     # -----------------------------------------------------------------------------
     # Security Context
     # -----------------------------------------------------------------------------
+    # Enabled by default. The zero-config output targets the Pod Security
+    # Standards "restricted" profile: runAsNonRoot, no privilege escalation,
+    # all capabilities dropped, RuntimeDefault seccomp, read-only root
+    # filesystem. Set enabled: false on either block to opt out entirely, or
+    # override individual fields (e.g. readOnlyRootFilesystem: false for apps
+    # that write to their root filesystem; use extraVolumes/extraVolumeMounts
+    # with an emptyDir for scratch space instead where possible).
+    # Every key except `enabled` is rendered verbatim into the manifest.
     podSecurityContext:
-      enabled: false
+      enabled: true
       fsGroup: 1001
+      runAsNonRoot: true
+      seccompProfile:
+        type: RuntimeDefault
 
     containerSecurityContext:
-      enabled: false
+      enabled: true
       runAsUser: 1001
       runAsNonRoot: true
-      readOnlyRootFilesystem: false
+      readOnlyRootFilesystem: true
       allowPrivilegeEscalation: false
       capabilities:
         drop:
           - ALL
+      seccompProfile:
+        type: RuntimeDefault
 
     # -----------------------------------------------------------------------------
     # Pod Scheduling
@@ -447,6 +495,10 @@ exports:
     terminationGracePeriodSeconds: 30
     podRestartPolicy: Always
     hostAliases: []
+    # Do not inject <SVCNAME>_SERVICE_HOST/_PORT env vars from every Service in
+    # the namespace (information leak + env bloat). Set true to restore the
+    # legacy Kubernetes behavior.
+    enableServiceLinks: false
 
     # -----------------------------------------------------------------------------
     # Volumes
@@ -530,3 +582,48 @@ exports:
     annotations: {}
     podLabels: {}
     podAnnotations: {}
+
+    # -----------------------------------------------------------------------------
+    # Capability negotiation
+    # -----------------------------------------------------------------------------
+    # Every generator picks the best apiVersion the target cluster serves and
+    # skips CRD-backed objects whose API is absent. When rendering without a
+    # cluster (helm template / CI), the API discovery set is minimal, so list
+    # the group/versions (or group/version/Kind) to force-assume as present.
+    # Example:
+    #   capabilities:
+    #     apiVersions:
+    #       - gateway.networking.k8s.io/v1
+    #       - cert-manager.io/v1
+    capabilities:
+      apiVersions: []
+
+    # -----------------------------------------------------------------------------
+    # Long-tail Kubernetes objects (tier-2)
+    # -----------------------------------------------------------------------------
+    # A map of Kind -> list of object specs. Each object is rendered with the
+    # negotiated apiVersion, standard labels, and namespace handling, and is
+    # skipped when no supported apiVersion is present. Any top-level field on a
+    # spec other than name/namespace/labels/annotations/apiVersion/kind is passed
+    # through verbatim (rules, subjects, roleRef, spec, data, webhooks, ...).
+    # Example:
+    #   extraObjects:
+    #     Role:
+    #       - name: app-reader
+    #         rules:
+    #           - apiGroups: [""]
+    #             resources: ["configmaps"]
+    #             verbs: ["get", "list", "watch"]
+    # Cluster-scoped Kinds (ClusterRole, ClusterRoleBinding, webhooks, CRDs,
+    # PriorityClass, StorageClass, ...) in extraObjects are refused by default:
+    # a namespace-scoped app chart granting itself cluster-wide objects should
+    # be a deliberate, reviewed decision. Set true to allow them.
+    allowClusterScopedExtras: false
+    extraObjects: {}
+
+    # -----------------------------------------------------------------------------
+    # Raw manifests escape hatch
+    # -----------------------------------------------------------------------------
+    # A list of fully-formed manifests (maps) or template strings rendered
+    # verbatim. Use for anything the library does not model natively.
+    extraManifests: []

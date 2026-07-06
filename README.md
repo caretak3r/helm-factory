@@ -1,8 +1,15 @@
 # platform-library
 
-> Helm library chart for standardized Kubernetes deployments.
+> Capability-gated Helm common library — the basis for generating product charts.
 
-`platform-library` provides a single, opinionated set of Helm templates that generate all common Kubernetes resources from one configuration file. Service teams never write templates — they fill out `configuration.yaml` and the library renders everything.
+`platform-library` (chart name `platform`, `type: library`, **v2**) is a **pure** Helm library chart: it ships no installable templates of its own. Product charts depend on it and render everything through a single entrypoint, `platform.render`. Service teams never write manifests — they set values and the library generates the resources.
+
+**Two things make v2 different from an ordinary helper library:**
+
+1. **Capability gates.** Every generator negotiates the best `apiVersion` the target cluster actually serves (e.g. `autoscaling/v2` → `v2beta2`) and **silently skips** CRD-backed objects whose API is absent — so a rendered chart never conflicts on deploy. Built-in Kinds always render with their best version; CRD/optional Kinds skip when missing. See [`docs/specs/platform-library-v2-architecture.md`](docs/specs/platform-library-v2-architecture.md).
+2. **Comprehensive coverage.** Beyond the opinionated primary-app objects below, `extraObjects` renders *any* Kubernetes Kind (RBAC, StorageClass, PriorityClass, admission webhooks, CRDs, …) through one capability-gated generic renderer, and `extraManifests` is a raw escape hatch.
+
+Targets **Kubernetes 1.31–1.36** and **Helm 4.0+**. Migrating from v1? See [`docs/migration/v1-to-v2.md`](docs/migration/v1-to-v2.md).
 
 ## Overview
 
@@ -17,8 +24,19 @@
 | Storage | PersistentVolumeClaim, VolumeClaimTemplates (StatefulSet) |
 | Jobs | Pre/Post-install hooks, CronJob |
 | HA | Pod anti-affinity presets, topology spread constraints |
+| **Everything else** | **`extraObjects` (any Kind, capability-gated) + `extraManifests` (raw)** |
 
 ## Quick Start
+
+### Fastest: scaffold a new chart
+
+```bash
+scripts/new-app-chart.sh my-service --repo oci://ghcr.io/caretak3r/charts --version "^2.0.0"
+helm dependency update my-service
+helm template my-service my-service
+```
+
+This generates a chart already wired to the library (dependency + `import-values`, an entrypoint template, an overrides-only `values.yaml`, and a `values.schema.json`). Or do it by hand:
 
 ### 1. Add the dependency
 
@@ -28,17 +46,26 @@ apiVersion: v2
 name: my-service
 version: 1.0.0
 dependencies:
-  - name: platform-library
-    version: "^1.0.0"
-    repository: "oci://registry.example.com/charts"
-    alias: platform
+  - name: platform                     # the chart name, not "platform-library"
+    version: "^2.0.0"
+    repository: "oci://ghcr.io/caretak3r/charts"
+    import-values:                     # REQUIRED — without this the library
+      - defaults                       # defaults never reach your root values
 ```
 
-### 2. Configure your service
+### 2. Add the entrypoint template
+
+The library is pure; your chart renders it. Create exactly one template:
 
 ```yaml
-# configuration.yaml
-serviceName: my-service
+# templates/app.yaml
+{{ include "platform.render" . }}
+```
+
+### 3. Configure your service
+
+```yaml
+# values.yaml  (values land at the root because of import-values: [defaults])
 image:
   repository: gcr.io/my-project/my-service
   tag: v1.0.0
@@ -53,14 +80,19 @@ service:
 ingress:
   enabled: true
   hostname: my-service.example.com
+
+# When rendering in CI (no cluster), force-assume CRD groups you use so their
+# objects are not skipped:
+# capabilities:
+#   apiVersions: [cert-manager.io/v1, monitoring.coreos.com/v1]
 ```
 
-### 3. Render and deploy
+### 4. Render and deploy
 
 ```bash
 helm dependency update .
-helm template my-service . -f configuration.yaml
-helm install my-service . -f configuration.yaml
+helm template my-service .
+helm install my-service .
 ```
 
 ## Installation
@@ -113,12 +145,17 @@ workload:
 
 ### Container Image
 
+A **tag or digest is required** — there is no `latest` fallback, and rendering
+fails with a clear error when neither is set. **Digest is the preferred pin**
+(immutable, survives tag mutation, exact rollbacks); when both are set the
+digest wins.
+
 ```yaml
 image:
   registry: docker.io
   repository: myorg/myapp       # REQUIRED
-  tag: v1.0.0                   # Recommend immutable tags
-  digest: ""                    # sha256:... — overrides tag if set
+  tag: v1.0.0                   # REQUIRED unless digest is set; quote numeric tags
+  digest: ""                    # sha256:... — preferred pin, overrides tag if set
   pullPolicy: IfNotPresent
   pullSecrets: []               # Merged with global.imagePullSecrets
 ```
@@ -165,6 +202,12 @@ ingress:
     cert-manager.io/cluster-issuer: letsencrypt-prod
 ```
 
+`ingress.tls` defaults to `false` and is deliberately not flipped: when `true`, the Ingress
+references `ingress.existingSecret` or the conventional `<hostname>-tls` Secret, which **must be
+provisioned** — by cert-manager (the `certificate` block or a cert-manager ingress annotation),
+`ingress.existingSecret`, or `ingress.secrets`. Enabling an ingress hostname without TLS prints an
+install-time `WARNING:` in the release notes.
+
 Additional hosts, paths, TLS configs, and custom rules:
 
 ```yaml
@@ -177,6 +220,10 @@ ingress:
       hosts:
         - admin.example.com
 ```
+
+> **TLS secrets:** prefer cert-manager (see the `certificate` block) or a pre-created Secret via
+> `ingress.existingSecret`. `ingress.secrets` embeds raw cert/key material in values — same caveats
+> as `secret.stringData` above.
 
 ### Gateway API
 
@@ -331,20 +378,36 @@ resources:
 
 ### Security Context
 
+Pod and container security contexts are **enabled by default**, and the defaults
+target the [Pod Security Standards `restricted`](https://kubernetes.io/docs/concepts/security/pod-security-standards/)
+profile: non-root user, no privilege escalation, all capabilities dropped,
+`RuntimeDefault` seccomp, and a read-only root filesystem. The same contexts are
+applied to the main workload, CronJob, and pre/post-install hook Job pods.
+
 ```yaml
 podSecurityContext:
-  enabled: true
+  enabled: true                  # set false to emit no pod securityContext at all
   fsGroup: 1001
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
 
 containerSecurityContext:
-  enabled: true
+  enabled: true                  # set false to emit no container securityContext at all
   runAsUser: 1001
   runAsNonRoot: true
-  readOnlyRootFilesystem: true
+  readOnlyRootFilesystem: true   # apps that write to / must opt out or mount an emptyDir
   allowPrivilegeEscalation: false
   capabilities:
     drop: [ALL]
+  seccompProfile:
+    type: RuntimeDefault
 ```
+
+Every key except `enabled` is rendered verbatim, so individual fields can be
+overridden without disabling the whole block. User-supplied `sidecars`,
+`initContainers`, and `cronJob.containers` are rendered verbatim and must bring
+their own `securityContext`.
 
 ### Environment Variables
 
@@ -383,13 +446,30 @@ configMap:
 
 ### Secret
 
+> **Warning — secrets in values are plaintext.** Anything under `secret.data`/`secret.stringData`
+> (and raw cert/key material under `ingress.secrets`) ends up in your values files (git) and in the
+> Helm release manifest (a Secret in the release namespace). For production, create the Secret
+> out-of-band — [External Secrets Operator](https://external-secrets.io/),
+> [Sealed Secrets](https://github.com/bitnami-labs/sealed-secrets), or SOPS — and point the chart at
+> it with `secret.existingSecret`. The chart then renders **no** Secret.
+
 ```yaml
+# Recommended: reference a pre-created Secret
+secret:
+  existingSecret: my-app-secrets   # chart renders no Secret; conflicts with data/stringData
+envVarsSecret: my-app-secrets      # bulk-import it as environment variables
+
+# Dev/test only: chart-managed Secret from values
 secret:
   enabled: true
   type: Opaque
   stringData:
     api-key: my-secret-value
 ```
+
+The chart-managed Secret is named `<fullname>-secret`; it is not mounted or injected
+automatically — reference it explicitly via `envVarsSecret` or `envVars` `valueFrom`.
+For TLS, the equivalent pattern already exists: `ingress.existingSecret` (see Ingress).
 
 ### Persistence / Storage
 
@@ -457,6 +537,13 @@ jobs:
     args: ["curl -X POST http://slack-webhook/notify"]
 ```
 
+`jobs.image` inherits from the main `image:` block: an empty `repository`
+inherits the main repository, and when neither `jobs.image.tag` nor
+`jobs.image.digest` is set the main pin is inherited (the main **digest** is
+only inherited when the repositories match — digests are repository-specific).
+If the effective hook image ends up with neither a tag nor a digest, rendering
+fails.
+
 ### CronJob
 
 ```yaml
@@ -478,6 +565,10 @@ cronJob:
 
 Creates PeerAuthentication and AuthorizationPolicy resources.
 
+**Fail-closed:** when `mtls.enabled: true`, `allowedPrincipals` must list the SPIFFE
+principals allowed to call this workload — rendering fails otherwise. The easy
+same-namespace default is `cluster.local/ns/<your-namespace>/sa/*`.
+
 ```yaml
 mtls:
   enabled: true
@@ -485,6 +576,15 @@ mtls:
   allowedPrincipals:
     - "cluster.local/ns/frontend/sa/frontend-sa"
     - "cluster.local/ns/api-gateway/sa/gateway-sa"
+```
+
+To explicitly allow **every** workload in the mesh (mutual TLS with no meaningful
+authorization — the pre-2.x behavior), opt in with:
+
+```yaml
+mtls:
+  enabled: true
+  allowAllPrincipals: true   # renders principal "cluster.local/ns/*/sa/*"
 ```
 
 ### Certificates (cert-manager)
@@ -500,9 +600,18 @@ certificate:
   renewBefore: 360h
 ```
 
-### TLS (Self-Signed)
+### TLS (Self-Signed) — dev only
 
-Generate self-signed certificates for development or internal services.
+> **Dev-only.** For production TLS use the [cert-manager `certificate` block](#certificates-cert-manager),
+> which handles issuance, renewal, and rotation properly.
+
+Generates a self-signed CA and certificate into the Secret `<fullname>-tls`.
+On `helm install`/`helm upgrade` against a real cluster the chart **looks up the
+existing Secret and reuses its `tls.crt`/`tls.key`/`ca.crt`**, so the CA and key
+are stable across upgrades. Under `helm template` or client-side `--dry-run`
+Helm's `lookup` returns nothing, so a fresh throwaway certificate is generated
+on every render — fine for dev/CI, and another reason not to rely on this in
+production. To force rotation, delete the Secret and upgrade.
 
 ```yaml
 tlsSelfSigned:
@@ -511,10 +620,16 @@ tlsSelfSigned:
   dnsNames:
     - my-service.default.svc
     - my-service.default.svc.cluster.local
-  validityDays: 365
+  validityDays: 365   # only applies when the cert is (re)generated
 ```
 
 ### Network Policy
+
+> **Default-deny footgun:** `networkPolicy.enabled: true` with empty `ingress`/`egress` rules
+> renders a policy that selects the app pods with `policyTypes: [Ingress, Egress]` and no allow
+> rules — i.e. **all traffic to and from the pods is denied, including DNS**. That is a valid
+> hardening baseline, but if it is not what you meant, add allow rules like the example below.
+> An install-time `WARNING:` is printed in the release notes when this shape is detected.
 
 ```yaml
 networkPolicy:
@@ -538,13 +653,26 @@ networkPolicy:
 
 ### Service Account
 
+A dedicated ServiceAccount is created by default (`create: true`) and the API
+token is **not** mounted (`automountServiceAccountToken: false` is set on both
+the ServiceAccount and every pod spec). Pods also run with
+`enableServiceLinks: false`. Apps that call the Kubernetes API must opt in:
+
 ```yaml
 serviceAccount:
   create: true
   name: ""                       # Auto-generated from fullname
+  automountServiceAccountToken: true   # only if the app talks to the API server
   annotations:
     eks.amazonaws.com/role-arn: arn:aws:iam::123456789:role/myapp
 ```
+
+> **Pre-install hooks caveat:** hook Job pods run under the same ServiceAccount.
+> On a *first* install, pre-install hooks run before regular resources exist, so
+> the SA is not yet created. If you enable `jobs.preInstall`, either set
+> `serviceAccount.create: false`, pre-create the SA, or turn the SA into a hook
+> itself via `serviceAccount.annotations` (`helm.sh/hook: pre-install,pre-upgrade`,
+> `helm.sh/hook-weight: "-10"`, `helm.sh/hook-delete-policy: before-hook-creation`).
 
 ### Service Monitor / Pod Monitor (Prometheus)
 
@@ -684,7 +812,7 @@ gatewayApi:
 ### 2. Validate Gateway API routing works
 
 ```bash
-helm template my-service . -f configuration.yaml | grep -A 20 "kind: HTTPRoute"
+helm template my-service . | grep -A 20 "kind: HTTPRoute"
 ```
 
 ### 3. Disable Ingress
@@ -713,17 +841,83 @@ gatewayApi:
 | Multi-tenancy | Limited | Built-in via Gateway/Route separation |
 | Header matching | Controller-specific annotations | Native spec support |
 
+## Extending: any Kubernetes object
+
+Beyond the opinionated blocks above, `extraObjects` renders **any** Kind through one capability-gated generic renderer. It is a map of `Kind → list of specs`; each spec's `name` is required, and every field other than `name`/`namespace`/`labels`/`annotations`/`apiVersion`/`kind`/`clusterScoped` is passed through verbatim. Standard labels are added, namespace is stamped for namespaced Kinds, and the object is skipped if no supported `apiVersion` is present.
+
+> **Trust model — values are code.** `extraObjects`, `extraManifests`, `sidecars`, `initContainers`,
+> and `extraVolumes` are verbatim escape hatches: whoever writes those values authors arbitrary
+> Kubernetes objects (and, for `extraManifests` strings, arbitrary template code executed with the
+> full chart context). Review values changes like code changes. Two guardrails apply:
+>
+> - Cluster-scoped Kinds in `extraObjects` **fail rendering** unless you set
+>   `allowClusterScopedExtras: true` (the failure names the offending Kind). Unknown cluster-scoped
+>   CRD Kinds can only be caught when you mark them `clusterScoped: true` on the spec.
+> - Install-time `WARNING:` notes are printed (via `NOTES.txt`) when extras contain `hostPath`
+>   volumes, `privileged: true` containers, or cluster-scoped RBAC.
+
+```yaml
+allowClusterScopedExtras: true   # PriorityClass/StorageClass below are cluster-scoped
+extraObjects:
+  Role:
+    - name: app-reader
+      rules:
+        - apiGroups: [""]
+          resources: [configmaps, secrets]
+          verbs: [get, list, watch]
+  PriorityClass:
+    - name: app-high            # cluster-scoped Kinds skip the namespace automatically
+      value: 1000000
+      globalDefault: false
+  StorageClass:
+    - name: fast
+      provisioner: kubernetes.io/aws-ebs
+      parameters: { type: gp3 }
+```
+
+For anything the library does not model, `extraManifests` renders raw manifests (maps or `tpl` strings) verbatim:
+
+```yaml
+extraManifests:
+  - apiVersion: v1
+    kind: ConfigMap
+    metadata: { name: raw-config }
+    data: { raw: "true" }
+```
+
+## Capability gating
+
+Every generator picks the best `apiVersion` the target cluster serves and skips CRD-backed objects whose API is absent — charts never conflict on deploy. Built-in Kinds always render (best version, GA fallback); CRD/optional Kinds skip when their API is missing.
+
+When rendering **without a cluster** (`helm template`, CI), Helm's API discovery is minimal, so CRD-backed objects would be skipped. Force-assume the groups you use:
+
+```yaml
+capabilities:
+  apiVersions:
+    - gateway.networking.k8s.io/v1
+    - cert-manager.io/v1
+    - monitoring.coreos.com/v1
+    - security.istio.io/v1beta1
+```
+
+Equivalently, pass `helm template --api-versions <group/version>` (and `--kube-version <x.y>` to set `.Capabilities.KubeVersion`). See [`docs/specs/platform-library-v2-architecture.md`](docs/specs/platform-library-v2-architecture.md) for the full Kind→apiVersion registry and negotiation rules.
+
 ## Architecture
 
 ```
-configuration.yaml          ← Service team edits this
-        │
+my-service/values.yaml      ← Service team edits this (overrides only)
+        │  (defaults imported at root via import-values: [defaults])
         ▼
 platform-library/
+├── Chart.yaml              ← chart name `platform`, type: library
 ├── values.yaml             ← Defaults (exports.defaults pattern)
+├── values.schema.reference.json ← Root values contract (copied into consumers)
 ├── templates/
-│   ├── _app.yaml           ← Orchestrator (calls all templates)
-│   ├── _helpers.tpl        ← Shared helpers (naming, labels, image, affinity)
+│   ├── _app.yaml           ← Orchestrator + `platform.render` entrypoint
+│   ├── _capabilities.tpl   ← Kind→apiVersion registry, negotiation & gating
+│   ├── _util.tpl           ← emit, deep-merge, genericResource, extraObjects/extraManifests
+│   ├── _helpers.tpl        ← Shared helpers (naming, labels, image, pod template, affinity)
+│   ├── _notes.tpl          ← Install-time security warnings (consumer NOTES.txt)
 │   ├── _deployment.yaml    ← Deployment workload
 │   ├── _statefulset.yaml   ← StatefulSet workload
 │   ├── _daemonset.yaml     ← DaemonSet workload
@@ -734,6 +928,7 @@ platform-library/
 │   ├── _pdb.yaml           ← PodDisruptionBudget
 │   ├── _networkpolicy.yaml ← NetworkPolicy
 │   ├── _configmap.yaml     ← ConfigMap
+│   ├── _configmap-script.yaml ← Hook script ConfigMaps
 │   ├── _secret.yaml        ← Secret
 │   ├── _certificate.yaml   ← cert-manager Certificate
 │   ├── _mtls.yaml          ← Istio mTLS policies
@@ -741,12 +936,36 @@ platform-library/
 │   ├── _tls-selfsigned.yaml ← Self-signed TLS generation
 │   ├── _pvc.yaml           ← PersistentVolumeClaim
 │   ├── _cronjob.yaml       ← CronJob
-│   ├── _job-*.yaml         ← Pre/Post install hook Jobs
+│   ├── _job-preinstall.yaml / _job-postinstall.yaml ← Hook Jobs
 │   ├── _servicemonitor.yaml ← Prometheus ServiceMonitor
 │   └── _podmonitor.yaml    ← Prometheus PodMonitor
 ```
 
-**Rendering flow:** `_app.yaml` iterates through all features, checking `.enabled` flags, and includes the corresponding template. Every `_<name>.yaml` is a `define` block — the matching `<name>.yaml` (no underscore) is the wrapper that calls `include`.
+**Rendering flow:** the consumer's `templates/app.yaml` includes `platform.render`, which composes `platform.app` (the tier-1 orchestrator in `_app.yaml` — checks each feature's `.enabled` flag and capability gate, then emits the object), `platform.extraObjects`, and `platform.extraManifests`. Every template is an underscore-prefixed `define` block; the library ships no directly-rendered templates.
+
+## Releasing
+
+Releases are cut from semver tags and published as an OCI chart to
+**`oci://ghcr.io/caretak3r/charts`** (the production repository; consumers set
+`repository: "oci://ghcr.io/caretak3r/charts"` in their dependency). The
+scaffold's default `--repo file://../platform-library` is for local development
+only.
+
+Flow (see `.github/workflows/release.yaml`):
+
+1. Bump `version:` in `platform-library/Chart.yaml` (semver — major for any
+   breaking values/template change).
+2. Move the `[Unreleased]` notes in `CHANGELOG.md` under a new
+   `## [X.Y.Z] - YYYY-MM-DD` heading.
+3. Commit via PR; CI must pass.
+4. Tag and push: `git tag vX.Y.Z && git push origin vX.Y.Z`.
+
+The release workflow refuses tags that do not match the chart version, reruns
+the full CI gate (shellcheck, `helm lint`, schema metaschema check,
+`scripts/lint-library.sh` with kubeconform + check-jsonschema required), then
+runs `helm package` and `helm push` to GHCR using the workflow's
+`GITHUB_TOKEN` (`packages: write`). Chart signing/provenance (cosign) is
+tracked as future work.
 
 ## Contributing
 
@@ -755,15 +974,16 @@ See [CORE.md](CORE.md) for architecture details, known issues, and maintenance g
 ### Adding a new resource type
 
 1. Create `platform-library/templates/_<resource>.yaml` with a `define "platform.<resource>"` block
-2. Create `platform-library/templates/<resource>.yaml` wrapper: `{{- include "platform.<resource>" . }}`
-3. Add the `include` call to `_app.yaml` guarded by `.Values.<resource>.enabled`
-4. Add defaults to `values.yaml` under `exports.defaults`
-5. Add documented config to `configuration.yaml`
+2. If the Kind is CRD-backed or version-negotiated, register it in the Kind→apiVersion registry in `_capabilities.tpl`
+3. Add the `include` call to `_app.yaml` guarded by `.Values.<resource>.enabled` (and a capability gate for CRD-backed Kinds)
+4. Add defaults to `values.yaml` under `exports.defaults` and extend `values.schema.reference.json`
+5. Cover it in a fixture under `tests/fixtures/`, bump `expected_kinds` in `scripts/lint-library.sh`, and regenerate goldens: `UPDATE_GOLDEN=1 scripts/lint-library.sh`
 6. Update `CORE.md` rendering order and directory listing
 
 ### Validation
 
 ```bash
 helm lint platform-library/
-helm template test platform-library/ -f configuration.yaml
+scripts/lint-library.sh              # render matrix, goldens, kubeconform, guardrails
+UPDATE_GOLDEN=1 scripts/lint-library.sh   # accept intentional render changes
 ```
