@@ -50,3 +50,9 @@ Thumbs.db
 .beads-credential-key
 .beads/proxieddb/
 .relay/
+
+# Repomix output dumps (accidental full-repo AI-context exports)
+repomix-output*.xml
+*.repomix.xml
+docs/helm-docs.xml
+docs/helmet.xml
