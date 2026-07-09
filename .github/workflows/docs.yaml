@@ -8,6 +8,12 @@ on:
       - "platform-library/values.yaml"
       - "platform-library/values.schema.reference.json"
       - "platform-library/templates/_capabilities.tpl"
+  pull_request:
+    paths:
+      - "site/**"
+      - "platform-library/values.yaml"
+      - "platform-library/values.schema.reference.json"
+      - "platform-library/templates/_capabilities.tpl"
   workflow_dispatch:
 
 # A separate workflow from ci.yaml/release.yaml: a docs build failure must never
@@ -24,6 +30,7 @@ concurrency:
 jobs:
   build:
     name: build Docusaurus site
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -53,9 +60,34 @@ jobs:
         with:
           path: site/build
 
+  build-pr:
+    name: build Docusaurus site (PR check)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: site
+
+      - name: Build site
+        run: npm run build
+        working-directory: site
+
   deploy:
     name: deploy to GitHub Pages
     needs: build
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment:
