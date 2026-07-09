@@ -217,6 +217,46 @@ else
   echo "  FAIL: render failed without a schema error"; echo "$out" | tail -3; fail=1
 fi
 
+if out=$("$RENDER" full --set networkPolicy.enabled=true --set 'networkPolicy.policyTypes[0]=Bogus' 2>&1); then
+  echo "  FAIL: render succeeded with networkPolicy.policyTypes[0]=Bogus"; fail=1
+elif grep -q "networkPolicy/policyTypes" <<<"$out"; then
+  echo "  OK: invalid networkPolicy.policyTypes entry rejected by values.schema.json"
+else
+  echo "  FAIL: render failed without a schema error"; echo "$out" | tail -3; fail=1
+fi
+
+if out=$("$RENDER" minimal --set podSecurityContext.fsGroup=-1 2>&1); then
+  echo "  FAIL: render succeeded with podSecurityContext.fsGroup=-1"; fail=1
+elif grep -q "podSecurityContext/fsGroup" <<<"$out"; then
+  echo "  OK: negative podSecurityContext.fsGroup rejected by values.schema.json"
+else
+  echo "  FAIL: render failed without a schema error"; echo "$out" | tail -3; fail=1
+fi
+
+if out=$("$RENDER" minimal --set 'containerSecurityContext.capabilities.drop[0]=all' 2>&1); then
+  echo "  FAIL: render succeeded with containerSecurityContext.capabilities.drop[0]=all"; fail=1
+elif grep -q "containerSecurityContext/capabilities/drop" <<<"$out"; then
+  echo "  OK: lowercase capability name rejected by values.schema.json"
+else
+  echo "  FAIL: render failed without a schema error"; echo "$out" | tail -3; fail=1
+fi
+
+if out=$("$RENDER" minimal --set serviceAccount.name=Invalid_Name 2>&1); then
+  echo "  FAIL: render succeeded with serviceAccount.name=Invalid_Name"; fail=1
+elif grep -q "serviceAccount/name" <<<"$out"; then
+  echo "  OK: non-RFC1123 serviceAccount.name rejected by values.schema.json"
+else
+  echo "  FAIL: render failed without a schema error"; echo "$out" | tail -3; fail=1
+fi
+
+if out=$("$RENDER" minimal --set ingress.hostname=INVALID_HOST 2>&1); then
+  echo "  FAIL: render succeeded with ingress.hostname=INVALID_HOST"; fail=1
+elif grep -q "ingress/hostname" <<<"$out"; then
+  echo "  OK: non-RFC1123 ingress.hostname rejected by values.schema.json"
+else
+  echo "  FAIL: render failed without a schema error"; echo "$out" | tail -3; fail=1
+fi
+
 echo "==> posture guardrails"
 # mTLS fail-closed: enabled with empty principals must fail with guidance.
 # (--set key=null deletes the key from the coalesced values.)
@@ -265,6 +305,65 @@ if out=$("$RENDER" stateful --set secret.existingSecret=preexisting \
   fi
 else
   echo "  FAIL: render failed while checking secret.existingSecret suppression"; echo "$out" | tail -3; fail=1
+fi
+
+echo "==> NOTES warnings (SEC-3): discouraged secret/ingress paths"
+# platform.notes only renders via `helm install`/`helm upgrade` (including
+# --dry-run), never `helm template` — see _notes.tpl:5-8. --dry-run=client
+# avoids any live cluster requirement.
+notes_of() {
+  local fixture="$1"; shift
+  local dir="$REPO_ROOT/tests/fixtures/$fixture"
+  cp "$LIB/values.schema.reference.json" "$dir/values.schema.json"
+  helm dependency update "$dir" >/dev/null 2>&1
+  helm install notes-check "$dir" --dry-run=client "$@"
+}
+
+# secret.enabled with inline stringData (stateful fixture already sets this).
+if out=$(notes_of stateful 2>&1); then
+  if grep -q "secret.stringData/secret.data contain plaintext secret material" <<<"$out"; then
+    echo "  OK: secret.stringData fixture emits the plaintext-secret NOTES warning"
+  else
+    echo "  FAIL: secret.stringData fixture did not emit the expected NOTES warning"; echo "$out" | tail -5; fail=1
+  fi
+else
+  echo "  FAIL: helm install --dry-run=client failed for stateful fixture"; echo "$out" | tail -5; fail=1
+fi
+
+# ingress.secrets non-empty (full fixture has ingress.enabled=true already).
+if out=$(notes_of full \
+  --set 'ingress.secrets[0].name=app-tls' \
+  --set 'ingress.secrets[0].certificate=dummy-cert' \
+  --set 'ingress.secrets[0].key=dummy-key' 2>&1); then
+  if grep -q "ingress.secrets contains inline TLS cert/key material" <<<"$out"; then
+    echo "  OK: ingress.secrets override emits the inline-TLS NOTES warning"
+  else
+    echo "  FAIL: ingress.secrets override did not emit the expected NOTES warning"; echo "$out" | tail -5; fail=1
+  fi
+else
+  echo "  FAIL: helm install --dry-run=client failed for full fixture with ingress.secrets"; echo "$out" | tail -5; fail=1
+fi
+
+# Existing warnings unaffected: minimal fixture has no secret/ingress config, so no WARNING at all.
+if out=$(notes_of minimal 2>&1); then
+  if grep -q "WARNING:" <<<"$out"; then
+    echo "  FAIL: minimal fixture unexpectedly emitted a NOTES warning"; echo "$out" | tail -5; fail=1
+  else
+    echo "  OK: minimal fixture emits no NOTES warnings"
+  fi
+else
+  echo "  FAIL: helm install --dry-run=client failed for minimal fixture"; echo "$out" | tail -5; fail=1
+fi
+
+# Invariant: `helm template` never includes NOTES content.
+if out=$("$RENDER" stateful 2>&1); then
+  if grep -q "WARNING:\|^NOTES:" <<<"$out"; then
+    echo "  FAIL: helm template unexpectedly rendered NOTES content"; fail=1
+  else
+    echo "  OK: helm template output excludes NOTES content"
+  fi
+else
+  echo "  FAIL: helm template failed for stateful fixture"; echo "$out" | tail -5; fail=1
 fi
 
 if [[ $fail -eq 0 ]]; then echo "==> PASS"; else echo "==> FAIL"; fi
