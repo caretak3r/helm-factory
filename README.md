@@ -972,7 +972,8 @@ Flow (see `.github/workflows/release.yaml`):
 3. Commit via PR; CI must pass.
 4. Tag and push: `git tag vX.Y.Z && git push origin vX.Y.Z`.
 
-The release workflow refuses tags that do not match the chart version, reruns
+The release workflow refuses tags that do not match the chart version and
+refuses tags without a matching `## [X.Y.Z]` heading in `CHANGELOG.md`, reruns
 the full CI gate (shellcheck, `helm lint`, schema metaschema check,
 `scripts/lint-library.sh` with kubeconform + check-jsonschema required), then
 runs `helm package` and `helm push` to GHCR using the workflow's

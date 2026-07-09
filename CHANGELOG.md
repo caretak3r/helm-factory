@@ -65,8 +65,9 @@ The v2 rewrite. Everything below ships together as **2.0.0**.
 - Test fixtures (`tests/fixtures/`): `minimal`, `full`, `stateful`, `daemon`
   consumer charts with golden snapshots under `tests/golden/`.
 - Release automation (`.github/workflows/release.yaml`): semver-tag-triggered;
-  verifies the tag against `Chart.yaml`, reruns the full CI gate, then
-  `helm package` + `helm push` to `oci://ghcr.io/<owner>/charts`. This CHANGELOG.
+  verifies the tag against `Chart.yaml` and that this CHANGELOG has a matching
+  dated `## [X.Y.Z]` entry, reruns the full CI gate, then `helm package` +
+  `helm push` to `oci://ghcr.io/<owner>/charts`.
 
 ### Fixed
 
