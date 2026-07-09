@@ -3,6 +3,12 @@
 > Status: proposed · Scope: `platform-library` (chart `platform`, v2), `scripts/`, `tests/`, `.github/`, `docs/`
 > Baseline: `main` @ `4fb9386` ("platform-library v2 — capability gates + secure-by-default hardening")
 > Prior review reconciled: `fable5-review.md` (2026-07-01, committed at repo root as of this branch)
+>
+> **Support-window update (2026-07-09):** the library has since adopted an n-2 support
+> policy — the latest supported Kubernetes minor plus two behind it, currently
+> **1.34–1.36** (`kubeVersion: ">=1.34.0-0 <1.37.0-0"`). Statements below that
+> analyze a 1.31 floor or a 1.31–1.36 window describe the state at the time this
+> plan was written; forward-looking work items have been re-targeted at the new window.
 
 ## Executive summary
 
@@ -78,7 +84,7 @@ Every finding from `fable5-review.md`, checked against `main` as of this branch.
 | HV4-10 | Watch item: Charts v3 | Helm v4 adoption | P3 | S | — |
 | TEST-1 | Combined-coverage fixture (hooks × StatefulSet/DaemonSet × persistence) | Testing | P1 | M | CAP-9, SEC-2 |
 | TEST-3 | Expand values-schema negative-fixture coverage | Testing | P2 | M | SEC-1 |
-| TEST-4 | Per-version golden snapshots at floor (1.31) + ceiling (1.36) | Testing | P2 | M | CAP-1..CAP-13 |
+| TEST-4 | Per-version golden snapshots at floor (1.34) + ceiling (1.36) | Testing | P2 | M | CAP-1..CAP-13 |
 | TEST-2 | Make kubeconform required-by-default locally | Testing | P2 | S | — |
 | TEST-5 | Resync `docs/specs`+`docs/prd` to actual test harness | Testing | P2 | S | TEST-1 |
 | TEST-6 | `helm test` golden coverage | Testing | P3 | S | HV4-12 |
@@ -129,7 +135,7 @@ The zero-config target (PSS `restricted`, pinned images, dedicated SA, no token 
 This is the section with the deepest research obligation. Findings below are each cited to the specific Helm v4 doc page fetched during this review (`helm.sh/docs`, version 4.2.2 as served).
 
 ### HV4-1 — Publish a Helm↔Kubernetes version-skew compatibility matrix
-**Problem:** README.md/CORE.md/Chart.yaml (`kubeVersion: ">=1.31.0-0 <1.37.0-0"`) advertise support for Kubernetes 1.31–1.36 under "Helm 4.0+." Helm's own version-skew policy (`https://helm.sh/docs/topics/version_skew/`) states each Helm 4.x *minor* is compiled against a specific Kubernetes client and supports only n-3 versions back:
+**Problem:** README.md/CORE.md/Chart.yaml (`kubeVersion: ">=1.31.0-0 <1.37.0-0"`) advertised support for Kubernetes 1.31–1.36 under "Helm 4.0+" (window since tightened to 1.34–1.36). Helm's own version-skew policy (`https://helm.sh/docs/topics/version_skew/`) states each Helm 4.x *minor* is compiled against a specific Kubernetes client and supports only n-3 versions back:
 
 | Helm version | Supported Kubernetes versions |
 |---|---|
@@ -137,14 +143,14 @@ This is the section with the deepest research obligation. Findings below are eac
 | 4.1.x | 1.35.x – 1.32.x |
 | 4.2.x | 1.36.x – 1.33.x |
 
-CI currently pins Helm 4.2.0 (`.github/workflows/ci.yaml:23`) and validates rendering with `--kube-version 1.31` through `1.36` (`lint-library.sh:31`). This is safe for `helm template`/lint purposes — no real cluster connection happens, so API-version negotiation is simulated regardless of the installed Helm client's compiled-in K8s version — but it means CI's simulated 1.31 pass does **not** prove a real `helm install`/`upgrade` against a live 1.31 cluster works, because Helm 4.2.x's own version-skew policy says it isn't supported against 1.31 in the first place. The gap between "renders correctly" and "safe to actually run" against the floor of the advertised range is currently undocumented.
-**Change:** Add a compatibility matrix (Helm version → supported K8s versions, sourced from the table above) to README.md and the new docs site, with an explicit note: *the library's `helm template`/lint validation covers the full 1.31–1.36 matrix regardless of the Helm binary used, but consumers running real installs/upgrades against 1.31 or 1.32 clusters should use a Helm 4.0.x or 4.1.x client per Helm's version-skew policy, not 4.2.x.*
+At the time of writing, CI pinned Helm 4.2.0 (`.github/workflows/ci.yaml:23`) and validated rendering with `--kube-version 1.31` through `1.36` (`lint-library.sh:31`; since narrowed to 1.34–1.36 under the n-2 policy). This is safe for `helm template`/lint purposes — no real cluster connection happens, so API-version negotiation is simulated regardless of the installed Helm client's compiled-in K8s version — but it means CI's simulated 1.31 pass does **not** prove a real `helm install`/`upgrade` against a live 1.31 cluster works, because Helm 4.2.x's own version-skew policy says it isn't supported against 1.31 in the first place. The gap between "renders correctly" and "safe to actually run" against the floor of the advertised range is currently undocumented.
+**Change:** Add a compatibility matrix (Helm version → supported K8s versions, sourced from the table above) to README.md and the new docs site, with an explicit note: *the library's `helm template`/lint validation covers the full supported matrix (now 1.34–1.36) regardless of the Helm binary used; within that window a 1.34 cluster works with any Helm 4.x, 1.35 needs 4.1.x+, and 1.36 needs 4.2.x per Helm's version-skew policy.*
 **Priority/Effort:** P1 / S. **Dependencies:** none.
 **Acceptance criteria:** matrix appears in README and docs site with a citation to `helm.sh/docs/topics/version_skew`; CI workflow comment cross-references it.
 
 ### HV4-2 — CI leg pinning the oldest-supported Helm 4.0.x binary
 **Problem:** Following from HV4-1, CI only ever exercises the library through a single Helm 4.2.0 binary. Template-syntax or function behavior that differs between Helm 4.0.x and 4.2.x (e.g., any function added in a later 4.x point release) would not be caught until a consumer on an older Helm binary hits it.
-**Change:** Add a second CI job (or a manual local step, if a full matrix job is judged not worth the CI minutes) that runs `scripts/lint-library.sh` against a pinned Helm 4.0.x binary, at minimum for the `--kube-version 1.31` leg.
+**Change:** Add a second CI job (or a manual local step, if a full matrix job is judged not worth the CI minutes) that runs `scripts/lint-library.sh` against a pinned Helm 4.0.x binary, at minimum for the `--kube-version 1.34` leg.
 **Priority/Effort:** P2 / M. **Dependencies:** HV4-1.
 **Acceptance criteria:** CI has a passing job using a Helm 4.0.x binary; failure clearly distinguishes "template incompatible with older Helm" from other lint failures.
 
@@ -196,8 +202,8 @@ Audited `_capabilities.tpl`'s Kind→apiVersion registry (lines 68-158) against 
 **Priority/Effort:** P2 / S. **Dependencies:** none.
 **Acceptance criteria:** golden snapshots unchanged (these fallbacks never won negotiation on any tested version); `_capabilities.tpl` registry comment updated to note the floor-version assumption so future contributors don't re-add fallbacks below 1.31.
 
-### Missing Kinds — new/GA within the library's own 1.31–1.36 window
-- **CAP-6 — Register Dynamic Resource Allocation Kinds.** DRA's core API (`resource.k8s.io/v1`: `ResourceClaim`, `ResourceClaimTemplate`, `DeviceClass`) graduated to GA in Kubernetes 1.34 with the feature gate locked (non-disable-able) as of 1.35 — squarely inside the library's advertised 1.31–1.36 range. GPU/hardware-accelerator consumers currently have no registry entry and must manually set `apiVersion` on every `extraObjects` DRA spec. **Priority/Effort:** P2 / S.
+### Missing Kinds — new/GA within the library's own supported window
+- **CAP-6 — Register Dynamic Resource Allocation Kinds.** DRA's core API (`resource.k8s.io/v1`: `ResourceClaim`, `ResourceClaimTemplate`, `DeviceClass`) graduated to GA in Kubernetes 1.34 with the feature gate locked (non-disable-able) as of 1.35 — squarely inside the library's advertised 1.34–1.36 range. GPU/hardware-accelerator consumers currently have no registry entry and must manually set `apiVersion` on every `extraObjects` DRA spec. **Priority/Effort:** P2 / S.
 - **CAP-2 — Register `MutatingAdmissionPolicy`/`MutatingAdmissionPolicyBinding`.** The registry already carries `ValidatingAdmissionPolicy`/`...Binding` (`_capabilities.tpl:123-124`) but not their mutating counterpart, a newer addition to the same `admissionregistration.k8s.io` family. **Priority/Effort:** P2 / S.
 - **CAP-3 — Register the VolumeSnapshot family** (`snapshot.storage.k8s.io/v1`: `VolumeSnapshot`, `VolumeSnapshotClass`, `VolumeSnapshotContent`). Long-GA upstream and a natural pairing with the library's existing PVC/StatefulSet generators, but entirely absent from the registry today — any consumer using `extraObjects` for snapshot Kinds gets no negotiation and must classify `VolumeSnapshotClass`'s cluster scope manually. **Priority/Effort:** P2 / S.
 
@@ -211,7 +217,7 @@ Audited `_capabilities.tpl`'s Kind→apiVersion registry (lines 68-158) against 
 - **CAP-9 — Add `persistentVolumeClaimRetentionPolicy` to StatefulSet.** GA since Kubernetes 1.27, entirely absent from `_statefulset.yaml`; without it, PVCs created from `volumeClaimTemplates` are never automatically reclaimed on scale-down or StatefulSet deletion, which is surprising default behavior for a "secure/sane by default" library. **Priority/Effort:** P1 / S (bumped above the other CAP items because it's a data-lifecycle correctness gap, not just a missing knob).
 - **CAP-10 — Add `minReadySeconds`.** Missing from Deployment, StatefulSet, and DaemonSet (grep-confirmed absent repo-wide); a standard rollout-safety field with no library support today. **Priority/Effort:** P2 / S.
 - **CAP-13 — Add `tlsConfig`/`sampleLimit`/`scheme` to ServiceMonitor/PodMonitor.** Both generators expose selector/endpoint/relabeling fields but nothing for mTLS-scraped targets or cardinality limits — a real gap for any consumer running Prometheus Operator with mesh mTLS (which this library's own `mtls.*` feature would produce). **Priority/Effort:** P2 / S.
-- **CAP-11 — Service dual-stack/topology fields** (`ipFamilyPolicy`, `ipFamilies`, `internalTrafficPolicy`, `trafficDistribution` — the last GA in 1.33, inside the library's own version window). **Priority/Effort:** P3 / M.
+- **CAP-11 — Service dual-stack/topology fields** (`ipFamilyPolicy`, `ipFamilies`, `internalTrafficPolicy`, `trafficDistribution` — the last GA in 1.33, so available across the library's whole supported window). **Priority/Effort:** P3 / M.
 - **CAP-12 — ConfigMap `binaryData` support.** `_configmap.yaml` only handles string `data`; no `binaryData` field. **Priority/Effort:** P3 / S.
 
 All CAP-2/3/6/7/8/9/10/12/13 items touch `_capabilities.tpl` and/or their respective single-Kind template file — bundle CAP-1/2/3/6 (all pure `_capabilities.tpl` registry edits) into one PR to avoid repeated merge churn on the same file; the per-Kind template edits (CAP-7 through CAP-13) can land independently.
@@ -220,7 +226,7 @@ All CAP-2/3/6/7/8/9/10/12/13 items touch `_capabilities.tpl` and/or their respec
 
 ## 4. Testing strategy
 
-`scripts/lint-library.sh` already does far more than the fable5-review baseline assumed: shellcheck runs in CI (not the script itself — `ci.yaml:36-37`), `helm lint`, a JSON Schema metaschema check (`lint-library.sh:91-97`), a full k8s 1.31–1.36 render matrix (`lint-library.sh:31,111-127`), kubeconform with native + CRD schemas (native + datreeio catalog, `lint-library.sh:36,150-162`) — required in CI/release via `REQUIRE_KUBECONFORM=1` but optional locally by default (`lint-library.sh:68-77`) — golden-file diffs (`lint-library.sh:129-148`), expected-kind-count assertions per fixture (`lint-library.sh:41-49`), a negative render proving CRD-backed objects drop when their API is absent (`lint-library.sh:165-176`), image-pin enforcement (`lint-library.sh:178-201`), and values-schema/posture guardrail checks (`lint-library.sh:203-268`). Four fixtures now exist (`minimal`/`full`/`stateful`/`daemon`, each with a committed golden) instead of the two the fable5-review and `docs/specs` still describe.
+`scripts/lint-library.sh` already does far more than the fable5-review baseline assumed: shellcheck runs in CI (not the script itself — `ci.yaml:36-37`), `helm lint`, a JSON Schema metaschema check (`lint-library.sh:91-97`), a full supported-window render matrix (now k8s 1.34–1.36) (`lint-library.sh:31,111-127`), kubeconform with native + CRD schemas (native + datreeio catalog, `lint-library.sh:36,150-162`) — required in CI/release via `REQUIRE_KUBECONFORM=1` but optional locally by default (`lint-library.sh:68-77`) — golden-file diffs (`lint-library.sh:129-148`), expected-kind-count assertions per fixture (`lint-library.sh:41-49`), a negative render proving CRD-backed objects drop when their API is absent (`lint-library.sh:165-176`), image-pin enforcement (`lint-library.sh:178-201`), and values-schema/posture guardrail checks (`lint-library.sh:203-268`). Four fixtures now exist (`minimal`/`full`/`stateful`/`daemon`, each with a committed golden) instead of the two the fable5-review and `docs/specs` still describe.
 
 ### TEST-1 — Combined-coverage fixture (hooks × StatefulSet/DaemonSet × persistence)
 **Problem:** Coverage is now real but siloed: `full` exercises hooks/mTLS/Certificate/Gateway/RBAC-in-extras but not persistence/StatefulSet/DaemonSet/tlsSelfSigned; `stateful` exercises persistence+probes+ConfigMap+Secret but not hooks; `daemon` exercises initContainers/sidecars/tlsSelfSigned but not hooks or persistence. No fixture exercises `jobs.postInstall` at all, and no fixture exercises the SEC-2 failure mode (hooks + default SA) in its *fixed* (fail-fast) form.
@@ -240,11 +246,11 @@ All CAP-2/3/6/7/8/9/10/12/13 items touch `_capabilities.tpl` and/or their respec
 **Priority/Effort:** P2 / M. **Dependencies:** SEC-1.
 **Acceptance criteria:** 1:1 correspondence between new schema constraints and new negative-fixture assertions.
 
-### TEST-4 — Per-version golden snapshots at floor (1.31) and ceiling (1.36)
-**Problem:** The task's testing-strategy goal explicitly asks for "golden snapshots per k8s version." Today there is exactly one golden set per fixture (README.md/CORE.md describe it as pinned to k8s 1.31); the 1.32–1.36 legs of the render matrix are validated only by kind-count assertions and kubeconform, not a full-content diff. That's reasonable for the *middle* of the matrix (negotiated apiVersions rarely change release-to-release), but it means a regression at the matrix's ceiling — e.g. a new GA apiVersion for a Kind that only becomes available at 1.36 — would pass kind-count/kubeconform checks (both are apiVersion-agnostic or schema-driven) while silently changing rendered output.
-**Change:** Add a second golden directory (`tests/golden-1.36/` or equivalent) capturing full-content diffs at the ceiling version, alongside the existing 1.31-floor goldens. Document explicitly (in the script and in TEST-5's docs resync) why the *middle* of the matrix intentionally stays kind-count+kubeconform-only rather than full-diff, so this isn't rediscovered as a gap later.
+### TEST-4 — Per-version golden snapshots at floor (1.34) and ceiling (1.36)
+**Problem:** The task's testing-strategy goal explicitly asks for "golden snapshots per k8s version." Today there is exactly one golden set per fixture (README.md/CORE.md describe it as pinned to the floor version, k8s 1.34); the non-floor legs of the render matrix are validated only by kind-count assertions and kubeconform, not a full-content diff. That's reasonable for the *middle* of the matrix (negotiated apiVersions rarely change release-to-release), but it means a regression at the matrix's ceiling — e.g. a new GA apiVersion for a Kind that only becomes available at 1.36 — would pass kind-count/kubeconform checks (both are apiVersion-agnostic or schema-driven) while silently changing rendered output.
+**Change:** Add a second golden directory (`tests/golden-1.36/` or equivalent) capturing full-content diffs at the ceiling version, alongside the existing 1.34-floor goldens. Document explicitly (in the script and in TEST-5's docs resync) why the *middle* of the matrix intentionally stays kind-count+kubeconform-only rather than full-diff, so this isn't rediscovered as a gap later.
 **Priority/Effort:** P2 / M. **Dependencies:** CAP-1 through CAP-13 landing first (so the new goldens reflect the final registry, not an interim state that needs re-golden-ing).
-**Acceptance criteria:** two full golden sets exist (1.31, 1.36) per fixture; `UPDATE_GOLDEN=1` workflow documented for both; rationale for not full-diffing the middle versions is written down.
+**Acceptance criteria:** two full golden sets exist (1.34, 1.36) per fixture; `UPDATE_GOLDEN=1` workflow documented for both; rationale for not full-diffing the middle versions is written down.
 
 ### TEST-5 — Resync `docs/specs`/`docs/prd` to the actual test harness
 **Problem:** `docs/specs/platform-library-v2-architecture.md:349-357` still describes only `minimal`/`full` fixtures and calls `full` "exercises every tier-1 generator" (the exact framing the original fable5-review flagged as false, `fable5-review.md:140-142` — now doubly stale since coverage moved to `stateful`/`daemon` rather than being fixed inside `full`). The same doc's kubeconform description (`:342-343,367`) still says `-ignore-missing-schemas` — a flag that doesn't appear anywhere in current `lint-library.sh` (grep-confirmed absent); the original fable5-review additionally noted this flag was paired with a single hardcoded 1.31.0 version (`fable5-review.md:133`), a detail from the pre-hardening state that also no longer applies. `docs/prd/platform-library-v2.md:116-126`'s acceptance criteria have the same drift.
@@ -280,7 +286,7 @@ CI (`.github/workflows/ci.yaml`) and release (`.github/workflows/release.yaml`) 
 **Acceptance criteria:** SBOM attestation retrievable via `cosign verify-attestation` for a released chart.
 
 ### CI-4 — GitHub Actions matrix parallelization (no action recommended)
-CI is currently a single job; the k8s 1.31–1.36 matrix runs as an internal loop inside `lint-library.sh` rather than a GH Actions `strategy.matrix` (`.github/workflows/ci.yaml`, single `lint` job). Wall-clock is not currently a stated pain point. **Recommendation: no action** unless CI duration becomes a problem; noted here so it isn't rediscovered as an unaddressed gap.
+CI is currently a single job; the supported-window k8s matrix (now 1.34–1.36) runs as an internal loop inside `lint-library.sh` rather than a GH Actions `strategy.matrix` (`.github/workflows/ci.yaml`, single `lint` job). Wall-clock is not currently a stated pain point. **Recommendation: no action** unless CI duration becomes a problem; noted here so it isn't rediscovered as an unaddressed gap.
 
 ---
 

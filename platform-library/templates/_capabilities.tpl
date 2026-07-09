@@ -65,12 +65,13 @@ preference table. Covers every built-in Kubernetes Kind creatable via a
 manifest plus the CRD families this library ships opinionated generators for.
 The first entry per Kind is the preferred (newest GA) version.
 
-The library's floor is Kubernetes 1.31 (Chart.yaml kubeVersion). Do not add
-fallback entries for apiVersions removed before 1.31 (e.g. batch/v1beta1,
+The library's floor is Kubernetes 1.34 (Chart.yaml kubeVersion). Do not add
+fallback entries for apiVersions removed before 1.34 (e.g. batch/v1beta1,
 policy/v1beta1, autoscaling/v2beta1|v2beta2, networking.k8s.io/v1beta1,
-extensions/v1beta1) — they can never negotiate on any supported cluster and
-are dead weight. Only add a fallback below the preferred entry when it is
-still served by a cluster within the 1.31-1.36 support window.
+extensions/v1beta1, flowcontrol.apiserver.k8s.io/v1beta3) — they can never
+negotiate on any supported cluster and are dead weight. Only add a fallback
+below the preferred entry when it is still served by a cluster within the
+1.34-1.36 support window.
 */}}
 {{- define "platform.capabilities.registry" -}}
 # ---- core/v1 (always GA) ----
@@ -138,8 +139,8 @@ CertificateSigningRequest: ["certificates.k8s.io/v1/CertificateSigningRequest"]
 # ---- apiregistration.k8s.io/v1 ----
 APIService: ["apiregistration.k8s.io/v1/APIService"]
 # ---- flowcontrol.apiserver.k8s.io ----
-FlowSchema: ["flowcontrol.apiserver.k8s.io/v1/FlowSchema", "flowcontrol.apiserver.k8s.io/v1beta3/FlowSchema"]
-PriorityLevelConfiguration: ["flowcontrol.apiserver.k8s.io/v1/PriorityLevelConfiguration", "flowcontrol.apiserver.k8s.io/v1beta3/PriorityLevelConfiguration"]
+FlowSchema: ["flowcontrol.apiserver.k8s.io/v1/FlowSchema"]
+PriorityLevelConfiguration: ["flowcontrol.apiserver.k8s.io/v1/PriorityLevelConfiguration"]
 # ---- Gateway API CRDs ----
 GatewayClass: ["gateway.networking.k8s.io/v1/GatewayClass", "gateway.networking.k8s.io/v1beta1/GatewayClass"]
 Gateway: ["gateway.networking.k8s.io/v1/Gateway", "gateway.networking.k8s.io/v1beta1/Gateway"]
@@ -213,7 +214,7 @@ Usage: include "platform.capabilities.apiVersionForOrDefault" (list $top "Horizo
 
 {{/*
 platform.capabilities.isStable — returns "true" (else "") when a Kind belongs
-to a built-in Kubernetes API group (always present on a real cluster >=1.31).
+to a built-in Kubernetes API group (always present on a real cluster >=1.34).
 Derived from the group of the Kind's first registry preference, so CRD families
 (gateway/cert-manager/istio/monitoring) return "" and must skip-if-absent.
 Usage: include "platform.capabilities.isStable" (list $top "Role")

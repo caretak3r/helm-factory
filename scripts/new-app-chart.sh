@@ -78,7 +78,7 @@ description: ${name} — generated from platform-library
 type: application
 version: 0.1.0
 appVersion: "${app_version}"
-kubeVersion: ">=1.31.0-0 <1.37.0-0"
+kubeVersion: ">=1.34.0-0 <1.37.0-0"
 dependencies:
   - name: platform
     version: "${version}"

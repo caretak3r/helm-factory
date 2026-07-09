@@ -9,13 +9,13 @@
 1. **Capability gates.** Every generator negotiates the best `apiVersion` the target cluster actually serves (e.g. `autoscaling/v2` → `autoscaling/v1`) and **silently skips** CRD-backed objects whose API is absent — so a rendered chart never conflicts on deploy. Built-in Kinds always render with their best version; CRD/optional Kinds skip when missing. See [`docs/specs/platform-library-v2-architecture.md`](docs/specs/platform-library-v2-architecture.md).
 2. **Comprehensive coverage.** Beyond the opinionated primary-app objects below, `extraObjects` renders *any* Kubernetes Kind (RBAC, StorageClass, PriorityClass, admission webhooks, CRDs, …) through one capability-gated generic renderer, and `extraManifests` is a raw escape hatch.
 
-Targets **Kubernetes 1.31–1.36** and **Helm 4.0+**. Migrating from v1? See [`docs/migration/v1-to-v2.md`](docs/migration/v1-to-v2.md).
+Targets **Kubernetes 1.34–1.36** and **Helm 4.0+**. The support policy is n-2: the latest supported Kubernetes minor plus two behind it, currently 1.34–1.36. Migrating from v1? See [`docs/migration/v1-to-v2.md`](docs/migration/v1-to-v2.md).
 
 **Full docs:** https://caretak3r.github.io/helm-factory/ (values reference, capability catalog, security model, examples).
 
 ### Helm ↔ Kubernetes version skew
 
-This library's `helm template`/lint validation covers the full Kubernetes 1.31–1.36 matrix regardless of which Helm binary runs it — no cluster connection happens, so API-version negotiation is simulated for every target version. Real `helm install`/`upgrade` against a live cluster is different: each Helm 4.x minor is compiled against a specific Kubernetes client and, per [Helm's version-skew policy](https://helm.sh/docs/topics/version_skew), only supports that version and three minors back (n-3):
+This library's `helm template`/lint validation covers the full Kubernetes 1.34–1.36 matrix regardless of which Helm binary runs it — no cluster connection happens, so API-version negotiation is simulated for every target version. Real `helm install`/`upgrade` against a live cluster is different: each Helm 4.x minor is compiled against a specific Kubernetes client and, per [Helm's version-skew policy](https://helm.sh/docs/topics/version_skew), only supports that version and three minors back (n-3):
 
 | Helm version | Supported Kubernetes versions |
 |---|---|
@@ -23,7 +23,7 @@ This library's `helm template`/lint validation covers the full Kubernetes 1.31�
 | 4.1.x | 1.35.x – 1.32.x |
 | 4.2.x | 1.36.x – 1.33.x |
 
-Consumers running real installs/upgrades against 1.31 or 1.32 clusters should use a Helm 4.0.x or 4.1.x client — not 4.2.x, which does not support those versions per the policy above, even though this library's own `--kube-version` validation passes for them.
+This library no longer targets Kubernetes 1.31–1.33 (its `kubeVersion` floor is 1.34), so the old caveat about picking an older Helm client for 1.31/1.32 clusters no longer applies here — those clusters are simply out of the library's support window. Within the supported 1.34–1.36 range, pick a Helm client whose skew row covers your cluster: 1.34 works with any Helm 4.x, 1.35 needs 4.1.x+, and 1.36 needs 4.2.x.
 
 ## Overview
 

@@ -14,11 +14,11 @@ name: platform
 type: library
 version: 2.0.0
 appVersion: "2.0.0"
-kubeVersion: ">=1.31.0-0 <1.37.0-0"   # Kubernetes 1.31 – 1.36
+kubeVersion: ">=1.34.0-0 <1.37.0-0"   # Kubernetes 1.34 – 1.36
 ```
 
 - Pure `type: library`: not installable, contains only `_`-prefixed templates.
-- Targets Helm 4.0–4.2 (verified on Helm v4.2.0) and Kubernetes 1.31–1.36.
+- Targets Helm 4.0–4.2 (verified on Helm v4.2.0) and Kubernetes 1.34–1.36 (n-2 policy: the latest supported minor plus two behind).
 
 ## 2. Rendering model
 
@@ -130,11 +130,12 @@ LimitRange, Endpoints, Event, ReplicationController, PodTemplate.
 
 **batch**: Job `["batch/v1"]`; CronJob `["batch/v1"]`.
 
-The registry's floor is Kubernetes 1.31 (`Chart.yaml` `kubeVersion`). Fallback
-entries are only kept for `apiVersion`s still served somewhere in the 1.31–1.36
-support window; versions removed before 1.31 (`batch/v1beta1`,
+The registry's floor is Kubernetes 1.34 (`Chart.yaml` `kubeVersion`). Fallback
+entries are only kept for `apiVersion`s still served somewhere in the 1.34–1.36
+support window; versions removed before 1.34 (`batch/v1beta1`,
 `policy/v1beta1`, `autoscaling/v2beta1`, `autoscaling/v2beta2`,
-`networking.k8s.io/v1beta1`, `extensions/v1beta1`) are pruned rather than
+`networking.k8s.io/v1beta1`, `extensions/v1beta1`,
+`flowcontrol.apiserver.k8s.io/v1beta3`) are pruned rather than
 carried as dead weight. `autoscaling/v1` is kept as the HPA fallback because
 that version was never removed upstream.
 
@@ -361,7 +362,7 @@ It produces a consumer chart wired with:
    `containerSecurityContext.capabilities.drop` entry, and a non-RFC1123
    `serviceAccount.name`/`ingress.hostname` are all rejected).
 3. The render matrix — `tests/render.sh <fixture> --kube-version <kv>` for both
-   `minimal` and `full` across `--kube-version 1.31 … 1.36`.
+   `minimal` and `full` across `--kube-version 1.34 … 1.36`.
 4. `kubeconform -strict -ignore-missing-schemas` on each fixture render (when
    `kubeconform` is on `PATH`).
 5. A **negative render** — `tests/render.sh full --set capabilities.apiVersions=null`
@@ -388,7 +389,7 @@ use fixture consumer charts under `tests/fixtures/`:
 runs `helm dependency update`, then `helm template`. Verified checks:
 
 - `helm lint` clean.
-- Render matrix across `--kube-version 1.31 … 1.36`.
+- Render matrix across `--kube-version 1.34 … 1.36`.
 - **Negative render:** `--set capabilities.apiVersions=null` proves CRD-backed
   objects drop while built-ins remain (validates the OrDefault-vs-strict split)
   and that no empty `{}` document is emitted.

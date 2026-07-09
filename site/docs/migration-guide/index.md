@@ -37,7 +37,7 @@ with a single render entrypoint and capability-negotiated API versions.
 
 3. **The chart was renamed and re-versioned.** The dependency name is now
    `platform` (directory `platform-library/`), `version: 2.0.0`,
-   `kubeVersion: ">=1.31.0-0 <1.37.0-0"`.
+   `kubeVersion: ">=1.34.0-0 <1.37.0-0"`.
 
 4. **API versions are now negotiated, not hard-coded.** HPA, Ingress, PDB,
    CronJob, Certificate, mTLS, Gateway API, ServiceMonitor and PodMonitor now

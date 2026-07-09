@@ -158,7 +158,7 @@ helm-factory/
 └── tests/
     ├── render.sh                 # Renders a fixture with the schema enforced
     ├── fixtures/                 # minimal, full, stateful, daemon consumer charts
-    └── golden/                   # Committed golden snapshots (k8s 1.31)
+    └── golden/                   # Committed golden snapshots (k8s 1.34)
 ```
 
 ## Consumer Chart Integration
@@ -172,7 +172,7 @@ description: my-service — generated from platform-library
 type: application
 version: 0.1.0
 appVersion: "1.0.0"
-kubeVersion: ">=1.31.0-0 <1.37.0-0"
+kubeVersion: ">=1.34.0-0 <1.37.0-0"
 dependencies:
   - name: platform                       # the chart name, not "platform-library"
     version: ">=2.0.0-0"
@@ -281,7 +281,7 @@ Not workload types (separate features):
 ### Render a test fixture (schema-enforced, like a real consumer)
 ```bash
 tests/render.sh full
-tests/render.sh full --kube-version 1.31 --api-versions cert-manager.io/v1
+tests/render.sh full --kube-version 1.34 --api-versions cert-manager.io/v1
 ```
 
 ### Run the full validation gate

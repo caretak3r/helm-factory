@@ -13,13 +13,21 @@ The v2 rewrite. Everything below ships together as **2.0.0**.
 
 ### Changed (breaking)
 
+- Tightened the supported Kubernetes window to an n-2 policy — the latest
+  supported minor plus two behind it, currently **1.34–1.36**. `Chart.yaml`
+  now enforces `kubeVersion: ">=1.34.0-0 <1.37.0-0"`, so consumers on
+  Kubernetes 1.33 or older can no longer install charts built on this library
+  and must stay on a pre-tightening release or upgrade their clusters. The CI
+  render/kubeconform matrix, golden snapshots (now rendered at 1.34), and docs
+  were narrowed to match, and the dead `flowcontrol.apiserver.k8s.io/v1beta3`
+  fallbacks (removed upstream in 1.32) were pruned from the capability registry.
 - Rewrote `platform-library` as a pure, capability-gated common library (chart
   `platform`, v2): no self-rendering stub templates. Consumers depend on it with
   `import-values: [defaults]` and render everything through the single public
   entrypoint `{{ include "platform.render" . }}`.
 - Every generator negotiates the best available `apiVersion` through the
   Kind→apiVersion registry in `_capabilities.tpl` and skips CRD-backed objects
-  whose API is absent. Targets Kubernetes 1.31–1.36 and Helm 4.
+  whose API is absent. Targets Kubernetes 1.34–1.36 and Helm 4.
 - Security defaults pass the Pod Security Standards "restricted" profile out of
   the box: `podSecurityContext`/`containerSecurityContext` enabled by default
   (runAsNonRoot, seccompProfile RuntimeDefault, readOnlyRootFilesystem).
@@ -63,7 +71,7 @@ The v2 rewrite. Everything below ships together as **2.0.0**.
   `secret.stringData`/`secret.data` or inline TLS material under
   `ingress.secrets`.
 - CI (`.github/workflows/ci.yaml`): shellcheck, `helm lint`, metaschema check,
-  and `scripts/lint-library.sh` — fixture render matrix across k8s 1.31–1.36
+  and `scripts/lint-library.sh` — fixture render matrix across k8s 1.34–1.36
   with expected-object-count assertions, committed golden snapshots,
   kubeconform (native + datreeio CRD schemas) across the matrix, a negative
   render proving CRD-backed objects drop when their API is absent, image-pin
