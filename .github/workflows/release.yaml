@@ -44,6 +44,15 @@ jobs:
           fi
           echo "Releasing platform ${chart_version}"
 
+      - name: Verify CHANGELOG has an entry for this version
+        run: |
+          tag_version="${GITHUB_REF_NAME#v}"
+          if ! grep -qE "^## \[${tag_version//./\\.}\]" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no '## [${tag_version}]' heading — add a dated entry before tagging"
+            exit 1
+          fi
+          echo "CHANGELOG.md has an entry for ${tag_version}"
+
       # Full CI gate (mirrors ci.yaml) — a tag never ships unvalidated code.
       - name: shellcheck
         run: shellcheck scripts/*.sh tests/render.sh
