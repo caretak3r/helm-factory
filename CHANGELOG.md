@@ -67,6 +67,12 @@ The v2 rewrite. Everything below ships together as **2.0.0**.
 - Release automation (`.github/workflows/release.yaml`): semver-tag-triggered;
   verifies the tag against `Chart.yaml`, reruns the full CI gate, then
   `helm package` + `helm push` to `oci://ghcr.io/<owner>/charts`. This CHANGELOG.
+- Documentation site (`site/`): a Docusaurus site with Getting Started and
+  Migration Guide ported from the README/`docs/migration/v1-to-v2.md`, plus
+  stubs for Values Reference, Capability Catalog, Security Model, and Examples
+  & Recipes pending their own follow-up work. Deployed to GitHub Pages by
+  `.github/workflows/docs.yaml`, kept separate from `ci.yaml`/`release.yaml` so
+  a docs build failure never blocks a chart release.
 
 ### Fixed
 
