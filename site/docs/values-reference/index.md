@@ -5,7 +5,7 @@ description: Every configurable key in values.yaml, generated from source.
 
 # Values Reference
 
-:::info Stub — pending generation pipeline
+:::info[Stub — pending generation pipeline]
 This page is a placeholder. The full reference will be generated from
 `platform-library/values.yaml` (inline `#` section comments) and
 `platform-library/values.schema.reference.json` (types, `enum`s, descriptions) by a

@@ -5,7 +5,7 @@ description: Trust boundaries, secrets handling, and the secure-by-default postu
 
 # Security Model
 
-:::info Stub — consolidation pending
+:::info[Stub — consolidation pending]
 This page is a placeholder. A full write-up consolidating the PSS-restricted target
 and rationale, the escape-hatch trust model, the secrets-in-values warning, the mTLS
 fail-closed design, and the SSA/`extraObjects`-conflict behavior into one authoritative

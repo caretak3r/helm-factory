@@ -5,7 +5,7 @@ description: Worked examples per workload type and common integration patterns.
 
 # Examples & Recipes
 
-:::info Stub — worked examples pending
+:::info[Stub — worked examples pending]
 This page is a placeholder for a set of worked examples: one per workload type
 (Deployment / StatefulSet / DaemonSet), one for Gateway API, one for the mTLS +
 NetworkPolicy combination, and one for `extraObjects` (RBAC + PriorityClass).

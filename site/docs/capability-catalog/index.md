@@ -5,7 +5,7 @@ description: The Kind → apiVersion registry that drives capability-gated rende
 
 # Capability Catalog
 
-:::info Stub — pending generated table
+:::info[Stub — pending generated table]
 This page is a placeholder. The full catalog will be generated from the
 `platform.capabilities.registry` YAML block embedded in
 `platform-library/templates/_capabilities.tpl` and rendered as a sortable/searchable
