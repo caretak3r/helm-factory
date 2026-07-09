@@ -451,7 +451,8 @@ configMap:
 > Helm release manifest (a Secret in the release namespace). For production, create the Secret
 > out-of-band — [External Secrets Operator](https://external-secrets.io/),
 > [Sealed Secrets](https://github.com/bitnami-labs/sealed-secrets), or SOPS — and point the chart at
-> it with `secret.existingSecret`. The chart then renders **no** Secret.
+> it with `secret.existingSecret`. The chart then renders **no** Secret. An install-time `WARNING:`
+> is printed in the release notes when `secret.stringData`/`secret.data` or `ingress.secrets` is set.
 
 ```yaml
 # Recommended: reference a pre-created Secret
