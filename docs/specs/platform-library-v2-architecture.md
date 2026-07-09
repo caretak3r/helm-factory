@@ -157,7 +157,7 @@ that version was never removed upstream.
 | CustomResourceDefinition | apiextensions.k8s.io | `v1` |
 | CertificateSigningRequest | certificates.k8s.io | `v1` |
 | APIService | apiregistration.k8s.io | `v1` |
-| FlowSchema, PriorityLevelConfiguration | flowcontrol.apiserver.k8s.io | `v1`, `v1beta3` |
+| FlowSchema, PriorityLevelConfiguration | flowcontrol.apiserver.k8s.io | `v1` |
 | GatewayClass, Gateway, HTTPRoute | gateway.networking.k8s.io | `v1`, `v1beta1` |
 | GRPCRoute | gateway.networking.k8s.io | `v1`, `v1alpha2` |
 | ReferenceGrant | gateway.networking.k8s.io | `v1beta1`, `v1alpha2` |
