@@ -51,6 +51,11 @@ Thumbs.db
 .beads/proxieddb/
 .relay/
 
+# Docusaurus site (site/)
+site/node_modules/
+site/build/
+site/.docusaurus/
+
 # Repomix output dumps (accidental full-repo AI-context exports)
 repomix-output*.xml
 *.repomix.xml

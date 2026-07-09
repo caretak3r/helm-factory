@@ -11,6 +11,8 @@
 
 Targets **Kubernetes 1.31–1.36** and **Helm 4.0+**. Migrating from v1? See [`docs/migration/v1-to-v2.md`](docs/migration/v1-to-v2.md).
 
+**Full docs:** https://caretak3r.github.io/helm-factory/ (values reference, capability catalog, security model, examples).
+
 ### Helm ↔ Kubernetes version skew
 
 This library's `helm template`/lint validation covers the full Kubernetes 1.31–1.36 matrix regardless of which Helm binary runs it — no cluster connection happens, so API-version negotiation is simulated for every target version. Real `helm install`/`upgrade` against a live cluster is different: each Helm 4.x minor is compiled against a specific Kubernetes client and, per [Helm's version-skew policy](https://helm.sh/docs/topics/version_skew), only supports that version and three minors back (n-3):

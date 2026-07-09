@@ -111,13 +111,15 @@ Fixed since the v1 review (no longer issues): DaemonSet+HPA (guarded in `_hpa.ya
 helm-factory/
 ├── .github/workflows/
 │   ├── ci.yaml                   # PR/main gate: shellcheck, lint, schema, lint-library.sh
-│   └── release.yaml              # Tag-triggered: gate + helm package/push to GHCR (OCI)
+│   ├── release.yaml              # Tag-triggered: gate + helm package/push to GHCR (OCI)
+│   └── docs.yaml                 # Builds site/ and deploys to GitHub Pages (push to main); separate from ci/release
 ├── CHANGELOG.md                  # Keep-a-Changelog release notes
 ├── CORE.md                       # This file
 ├── README.md                     # Consumer-facing reference
 ├── docs/
 │   ├── migration/v1-to-v2.md
 │   └── specs/platform-library-v2-architecture.md
+├── site/                         # Docusaurus docs site (Getting Started, Migration Guide, + stubs) — see AGENTS.md
 ├── platform-library/             # The library chart (name: platform, type: library)
 │   ├── Chart.yaml
 │   ├── values.yaml               # Defaults under exports.defaults
@@ -346,6 +348,6 @@ values/template changes.
 
 ---
 
-**Last Updated:** 2026-07-04
+**Last Updated:** 2026-07-08
 **Maintainer:** Rohit Gudi (@caretak3r)
 **License:** MIT
