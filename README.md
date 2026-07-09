@@ -165,6 +165,7 @@ image:
 ```yaml
 replicaCount: 3
 revisionHistoryLimit: 10
+minReadySeconds: 0             # Deployment/StatefulSet/DaemonSet; 0 omits the field (Kubernetes default)
 ```
 
 When `autoscaling.enabled: true`, `replicaCount` is ignored.
@@ -495,6 +496,18 @@ statefulSet:
       storage: 10Gi
 ```
 
+By default PVCs from `volumeClaimTemplates` are never auto-deleted (Kubernetes'
+implicit `Retain`/`Retain`). To reclaim them on scale-down or StatefulSet
+deletion, set `persistentVolumeClaimRetentionPolicy` (valid values: `Retain`,
+`Delete`):
+
+```yaml
+statefulSet:
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Delete
+```
+
 ### Init Containers & Sidecars
 
 ```yaml
@@ -593,6 +606,7 @@ mtls:
 certificate:
   enabled: true
   issuer: letsencrypt-prod
+  issuerKind: ClusterIssuer      # ClusterIssuer (default) | Issuer (namespaced, multi-tenant)
   dnsNames:
     - api.example.com
     - "*.api.example.com"
@@ -681,7 +695,11 @@ serviceMonitor:
   enabled: true
   port: http
   path: /metrics
+  scheme: https                 # optional; pairs with mTLS-scraped targets
+  tlsConfig:                    # optional Prometheus Operator TLSConfig
+    insecureSkipVerify: false
   interval: 30s
+  sampleLimit: 0                # optional per-target series cap; 0 = no limit
   labels:
     release: prometheus
 ```
@@ -691,7 +709,11 @@ podMonitor:
   enabled: true
   port: http
   path: /metrics
+  scheme: https                 # optional; pairs with mTLS-scraped targets
+  tlsConfig:                    # optional Prometheus Operator TLSConfig
+    insecureSkipVerify: false
   interval: 30s
+  sampleLimit: 0                # optional per-target series cap; 0 = no limit
 ```
 
 ### Pod Disruption Budget

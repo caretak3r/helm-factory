@@ -233,7 +233,8 @@ workload.type (schema enum — case-sensitive)
 │   ├── Supports: HPA, rolling updates, config/secret checksum rollouts
 │   └── Use for: stateless services
 ├── StatefulSet
-│   ├── Supports: HPA, statefulSet.volumeClaimTemplates, stable network IDs
+│   ├── Supports: HPA, statefulSet.volumeClaimTemplates, stable network IDs,
+│   │   statefulSet.persistentVolumeClaimRetentionPolicy (PVC reclaim on scale-down/delete)
 │   └── Use for: databases, stateful apps
 └── DaemonSet
     ├── Supports: one pod per node (HPA is skipped)
