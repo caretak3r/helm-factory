@@ -5,8 +5,8 @@ description: Upgrading a consumer chart from platform-library v1 to v2.
 
 :::note[Source]
 Ported from [`docs/migration/v1-to-v2.md`](https://github.com/caretak3r/helm-factory/blob/main/docs/migration/v1-to-v2.md)
-in the repository. The Helm 3 → Helm 4 / server-side-apply section referenced in the
-productionization plan (**DOC-7**) will be added here once that work lands.
+in the repository. A Helm 3 → Helm 4 / server-side-apply section is pending a future
+write-up pass and will be added here once that work lands.
 :::
 
 # Migration Guide — `platform` Library v1 → v2

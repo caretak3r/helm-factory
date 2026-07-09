@@ -9,8 +9,8 @@ description: Trust boundaries, secrets handling, and the secure-by-default postu
 This page is a placeholder. A full write-up consolidating the PSS-restricted target
 and rationale, the escape-hatch trust model, the secrets-in-values warning, the mTLS
 fail-closed design, and the SSA/`extraObjects`-conflict behavior into one authoritative
-page is tracked as **DOC-6** in the productionization plan. Until then, the source
-material is linked below.
+page is pending a future write-up pass. Until then, the source material is linked
+below.
 :::
 
 ## Trust model — values are code

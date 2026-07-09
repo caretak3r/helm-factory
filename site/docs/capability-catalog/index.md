@@ -10,9 +10,10 @@ This page is a placeholder. The full catalog will be generated from the
 `platform.capabilities.registry` YAML block embedded in
 `platform-library/templates/_capabilities.tpl` and rendered as a sortable/searchable
 table: Kind, preferred `apiVersion`, fallback chain, and cluster-scoped status
-(cross-referenced with `platform.capabilities.clusterScoped`). This work is tracked as
-**DOC-4** in the productionization plan, and is best done once the in-flight capability
-additions land so the first published table doesn't need an immediate follow-up edit.
+(cross-referenced with `platform.capabilities.clusterScoped`). This page is a
+placeholder pending a future generation/write-up pass, best done once the in-flight
+capability additions land so the first published table doesn't need an immediate
+follow-up edit.
 :::
 
 ## How capability gating works today

@@ -9,9 +9,9 @@ description: Every configurable key in values.yaml, generated from source.
 This page is a placeholder. The full reference will be generated from
 `platform-library/values.yaml` (inline `#` section comments) and
 `platform-library/values.schema.reference.json` (types, `enum`s, descriptions) by a
-values-doc generation pipeline (tracked as **DOC-2** in the productionization plan), not
-hand-written here — a hand-maintained reference drifts from source the moment either
-file changes.
+values-doc generation pipeline, not hand-written here — a hand-maintained reference
+drifts from source the moment either file changes. This page is a placeholder pending
+a future generation/write-up pass.
 
 **Known complication for the generator:** this library's defaults live under the
 `exports.defaults:` key rather than at the file root, so the generator needs either a
