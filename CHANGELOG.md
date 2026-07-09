@@ -73,6 +73,16 @@ The v2 rewrite. Everything below ships together as **2.0.0**.
 - Release automation (`.github/workflows/release.yaml`): semver-tag-triggered;
   verifies the tag against `Chart.yaml`, reruns the full CI gate, then
   `helm package` + `helm push` to `oci://ghcr.io/<owner>/charts`. This CHANGELOG.
+- `statefulSet.persistentVolumeClaimRetentionPolicy.whenDeleted` /
+  `.whenScaled` — reclaim `volumeClaimTemplates` PVCs on scale-down or
+  StatefulSet deletion; unset (default) preserves Kubernetes' implicit
+  `Retain`/`Retain` behavior.
+- `certificate.issuerKind` — defaults to `ClusterIssuer`; set to `Issuer` to
+  reference a namespaced cert-manager Issuer in multi-tenant clusters.
+- Root-level `minReadySeconds` (default `0`, omitted from the manifest) for
+  Deployment, StatefulSet, and DaemonSet.
+- `serviceMonitor`/`podMonitor` `scheme`, `tlsConfig` (mTLS-scraped targets),
+  and `sampleLimit` (per-target series cap).
 - Documentation site (`site/`): a Docusaurus site with Getting Started and
   Migration Guide ported from the README/`docs/migration/v1-to-v2.md`, plus
   stubs for Values Reference, Capability Catalog, Security Model, and Examples

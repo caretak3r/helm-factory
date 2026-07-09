@@ -117,6 +117,8 @@ This document provides context, commands, and templating conventions for AI agen
 - **NOTES.txt**: Plain text usage notes printed after install.
 - **crds/**: Custom Resource Definitions. Plain YAML only. No templating allowed here in Helm 3/4.
 - **charts/**: Managed by helm dependency. Do not manually modify unless vendoring.
+- **platform-library/values.schema.reference.json**: `additionalProperties: true` on nearly every nested object (`certificate`, `serviceMonitor`, `podMonitor`, etc.), and several workload blocks (`statefulSet`, `daemonSet`) have no schema entry at all. Additive, optional values knobs under those keys don't require a schema edit — only add schema constraints when a field needs type/enum validation.
+- **scripts/lint-library.sh kubeconform checks**: pull CRD schemas over the network (datreeio CRDs-catalog, yannh kubernetes-json-schema) on every run. Transient `giving up after 3 attempt(s)` failures for `PeerAuthentication`/`Certificate`/`HTTPRoute`/`AuthorizationPolicy` at specific k8s versions are network flakes, not regressions — rerun before treating them as a real failure. Golden-snapshot and values-schema checks in the same script are network-independent and authoritative.
 
 ### Templating & Built-in Objects
 

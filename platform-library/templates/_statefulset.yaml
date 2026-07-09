@@ -30,6 +30,18 @@ spec:
   {{- if .Values.statefulSet.updateStrategy }}
   updateStrategy: {{- toYaml .Values.statefulSet.updateStrategy | nindent 4 }}
   {{- end }}
+  {{- if .Values.minReadySeconds }}
+  minReadySeconds: {{ .Values.minReadySeconds }}
+  {{- end }}
+  {{- if or .Values.statefulSet.persistentVolumeClaimRetentionPolicy.whenDeleted .Values.statefulSet.persistentVolumeClaimRetentionPolicy.whenScaled }}
+  persistentVolumeClaimRetentionPolicy:
+    {{- if .Values.statefulSet.persistentVolumeClaimRetentionPolicy.whenDeleted }}
+    whenDeleted: {{ .Values.statefulSet.persistentVolumeClaimRetentionPolicy.whenDeleted }}
+    {{- end }}
+    {{- if .Values.statefulSet.persistentVolumeClaimRetentionPolicy.whenScaled }}
+    whenScaled: {{ .Values.statefulSet.persistentVolumeClaimRetentionPolicy.whenScaled }}
+    {{- end }}
+  {{- end }}
   selector:
     matchLabels:
       {{- include "platform.selectorLabels" . | nindent 6 }}
