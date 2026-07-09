@@ -6,10 +6,24 @@
 
 **Two things make v2 different from an ordinary helper library:**
 
-1. **Capability gates.** Every generator negotiates the best `apiVersion` the target cluster actually serves (e.g. `autoscaling/v2` → `v2beta2`) and **silently skips** CRD-backed objects whose API is absent — so a rendered chart never conflicts on deploy. Built-in Kinds always render with their best version; CRD/optional Kinds skip when missing. See [`docs/specs/platform-library-v2-architecture.md`](docs/specs/platform-library-v2-architecture.md).
+1. **Capability gates.** Every generator negotiates the best `apiVersion` the target cluster actually serves (e.g. `autoscaling/v2` → `autoscaling/v1`) and **silently skips** CRD-backed objects whose API is absent — so a rendered chart never conflicts on deploy. Built-in Kinds always render with their best version; CRD/optional Kinds skip when missing. See [`docs/specs/platform-library-v2-architecture.md`](docs/specs/platform-library-v2-architecture.md).
 2. **Comprehensive coverage.** Beyond the opinionated primary-app objects below, `extraObjects` renders *any* Kubernetes Kind (RBAC, StorageClass, PriorityClass, admission webhooks, CRDs, …) through one capability-gated generic renderer, and `extraManifests` is a raw escape hatch.
 
 Targets **Kubernetes 1.31–1.36** and **Helm 4.0+**. Migrating from v1? See [`docs/migration/v1-to-v2.md`](docs/migration/v1-to-v2.md).
+
+**Full docs:** https://caretak3r.github.io/helm-factory/ (values reference, capability catalog, security model, examples).
+
+### Helm ↔ Kubernetes version skew
+
+This library's `helm template`/lint validation covers the full Kubernetes 1.31–1.36 matrix regardless of which Helm binary runs it — no cluster connection happens, so API-version negotiation is simulated for every target version. Real `helm install`/`upgrade` against a live cluster is different: each Helm 4.x minor is compiled against a specific Kubernetes client and, per [Helm's version-skew policy](https://helm.sh/docs/topics/version_skew), only supports that version and three minors back (n-3):
+
+| Helm version | Supported Kubernetes versions |
+|---|---|
+| 4.0.x | 1.34.x – 1.31.x |
+| 4.1.x | 1.35.x – 1.32.x |
+| 4.2.x | 1.36.x – 1.33.x |
+
+Consumers running real installs/upgrades against 1.31 or 1.32 clusters should use a Helm 4.0.x or 4.1.x client — not 4.2.x, which does not support those versions per the policy above, even though this library's own `--kube-version` validation passes for them.
 
 ## Overview
 
@@ -452,7 +466,8 @@ configMap:
 > Helm release manifest (a Secret in the release namespace). For production, create the Secret
 > out-of-band — [External Secrets Operator](https://external-secrets.io/),
 > [Sealed Secrets](https://github.com/bitnami-labs/sealed-secrets), or SOPS — and point the chart at
-> it with `secret.existingSecret`. The chart then renders **no** Secret.
+> it with `secret.existingSecret`. The chart then renders **no** Secret. An install-time `WARNING:`
+> is printed in the release notes when `secret.stringData`/`secret.data` or `ingress.secrets` is set.
 
 ```yaml
 # Recommended: reference a pre-created Secret
@@ -982,7 +997,8 @@ Flow (see `.github/workflows/release.yaml`):
 3. Commit via PR; CI must pass.
 4. Tag and push: `git tag vX.Y.Z && git push origin vX.Y.Z`.
 
-The release workflow refuses tags that do not match the chart version, reruns
+The release workflow refuses tags that do not match the chart version and
+refuses tags without a matching `## [X.Y.Z]` heading in `CHANGELOG.md`, reruns
 the full CI gate (shellcheck, `helm lint`, schema metaschema check,
 `scripts/lint-library.sh` with kubeconform + check-jsonschema required), then
 runs `helm package` and `helm push` to GHCR using the workflow's

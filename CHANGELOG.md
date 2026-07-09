@@ -45,17 +45,23 @@ The v2 rewrite. Everything below ships together as **2.0.0**.
   `values.yaml`, `values.schema.json`) with validated inputs (semver charsets,
   repo scheme allowlist, control-character/newline rejection).
 - Values contract: `platform-library/values.schema.reference.json` (enums for
-  `workload.type`, `image.pullPolicy`, `service.type`, `mtls.policy`; conditional
-  Gateway API `parentRefs`), copied into fixtures and scaffolded charts as
-  `values.schema.json` so Helm enforces the coalesced post-import values.
+  `workload.type`, `image.pullPolicy`, `service.type`, `mtls.policy`,
+  `networkPolicy.policyTypes`; conditional Gateway API `parentRefs`; typed,
+  pattern-constrained shapes for `podSecurityContext`, `containerSecurityContext`,
+  `serviceAccount.name`, and `ingress.hostname`), copied into fixtures and
+  scaffolded charts as `values.schema.json` so Helm enforces the coalesced
+  post-import values. Declared as draft-07 (`$schema`), matching the dialect
+  Helm's built-in `gojsonschema` validator actually implements (helm/helm#13069).
 - `secret.existingSecret` to reference a pre-created Secret; mutually exclusive
   with inline `data`/`stringData`; suppresses the chart-managed Secret and its
   rollout checksum.
 - Self-signed TLS Secret reuse across upgrades via `lookup` — no certificate
   churn on `helm upgrade`.
 - Install-time `NOTES.txt` warnings (`platform.notes`): plain-HTTP ingress,
-  default-deny NetworkPolicy, and hostPath / privileged / cluster-scoped RBAC
-  content in the extras escape hatches.
+  default-deny NetworkPolicy, hostPath / privileged / cluster-scoped RBAC
+  content in the extras escape hatches, and plaintext secret material under
+  `secret.stringData`/`secret.data` or inline TLS material under
+  `ingress.secrets`.
 - CI (`.github/workflows/ci.yaml`): shellcheck, `helm lint`, metaschema check,
   and `scripts/lint-library.sh` — fixture render matrix across k8s 1.31–1.36
   with expected-object-count assertions, committed golden snapshots,
@@ -77,6 +83,12 @@ The v2 rewrite. Everything below ships together as **2.0.0**.
   Deployment, StatefulSet, and DaemonSet.
 - `serviceMonitor`/`podMonitor` `scheme`, `tlsConfig` (mTLS-scraped targets),
   and `sampleLimit` (per-target series cap).
+- Documentation site (`site/`): a Docusaurus site with Getting Started and
+  Migration Guide ported from the README/`docs/migration/v1-to-v2.md`, plus
+  stubs for Values Reference, Capability Catalog, Security Model, and Examples
+  & Recipes pending their own follow-up work. Deployed to GitHub Pages by
+  `.github/workflows/docs.yaml`, kept separate from `ci.yaml`/`release.yaml` so
+  a docs build failure never blocks a chart release.
 
 ### Fixed
 

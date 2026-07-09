@@ -128,13 +128,21 @@ LimitRange, Endpoints, Event, ReplicationController, PodTemplate.
 
 **apps/v1**: Deployment, StatefulSet, DaemonSet, ReplicaSet, ControllerRevision.
 
-**batch**: Job `["batch/v1"]`; CronJob `["batch/v1", "batch/v1beta1"]`.
+**batch**: Job `["batch/v1"]`; CronJob `["batch/v1"]`.
+
+The registry's floor is Kubernetes 1.31 (`Chart.yaml` `kubeVersion`). Fallback
+entries are only kept for `apiVersion`s still served somewhere in the 1.31–1.36
+support window; versions removed before 1.31 (`batch/v1beta1`,
+`policy/v1beta1`, `autoscaling/v2beta1`, `autoscaling/v2beta2`,
+`networking.k8s.io/v1beta1`, `extensions/v1beta1`) are pruned rather than
+carried as dead weight. `autoscaling/v1` is kept as the HPA fallback because
+that version was never removed upstream.
 
 | Kind | Group | Preference order |
 |---|---|---|
-| HorizontalPodAutoscaler | autoscaling | `v2`, `v2beta2`, `v2beta1`, `v1` |
-| PodDisruptionBudget | policy | `v1`, `v1beta1` |
-| Ingress | networking.k8s.io | `v1`, then `v1beta1`, then `extensions/v1beta1` |
+| HorizontalPodAutoscaler | autoscaling | `v2`, `v1` |
+| PodDisruptionBudget | policy | `v1` |
+| Ingress | networking.k8s.io | `v1` |
 | IngressClass, NetworkPolicy | networking.k8s.io | `v1` |
 | Role, RoleBinding, ClusterRole, ClusterRoleBinding | rbac.authorization.k8s.io | `v1` |
 | StorageClass, VolumeAttachment, CSIDriver, CSINode, CSIStorageCapacity | storage.k8s.io | `v1` |
@@ -144,6 +152,7 @@ LimitRange, Endpoints, Event, ReplicationController, PodTemplate.
 | EndpointSlice | discovery.k8s.io | `v1` |
 | ValidatingWebhookConfiguration, MutatingWebhookConfiguration | admissionregistration.k8s.io | `v1` |
 | ValidatingAdmissionPolicy, ValidatingAdmissionPolicyBinding | admissionregistration.k8s.io | `v1`, `v1beta1` |
+| MutatingAdmissionPolicy, MutatingAdmissionPolicyBinding | admissionregistration.k8s.io | `v1`, `v1beta1` |
 | CustomResourceDefinition | apiextensions.k8s.io | `v1` |
 | CertificateSigningRequest | certificates.k8s.io | `v1` |
 | APIService | apiregistration.k8s.io | `v1` |
@@ -156,6 +165,8 @@ LimitRange, Endpoints, Event, ReplicationController, PodTemplate.
 | VirtualService | networking.istio.io | `v1`, `v1beta1`, `v1alpha3` |
 | DestinationRule, ServiceEntry, Sidecar | networking.istio.io | `v1`, `v1beta1` |
 | ServiceMonitor, PodMonitor, PrometheusRule, Probe | monitoring.coreos.com | `v1` |
+| VolumeSnapshot, VolumeSnapshotClass, VolumeSnapshotContent | snapshot.storage.k8s.io | `v1` |
+| ResourceClaim, ResourceClaimTemplate, DeviceClass | resource.k8s.io | `v1` |
 
 ### 3.4 The two negotiation modes — and why
 
@@ -180,7 +191,9 @@ The selector between them is:
   node.k8s.io, coordination.k8s.io, discovery.k8s.io, admissionregistration.k8s.io,
   apiextensions.k8s.io, certificates.k8s.io, apiregistration.k8s.io,
   flowcontrol.apiserver.k8s.io, authentication.k8s.io, authorization.k8s.io,
-  events.k8s.io). CRD families (gateway/cert-manager/istio/monitoring) return `""`.
+  events.k8s.io). CRD families (gateway/cert-manager/istio/monitoring) and
+  optional built-in groups that require cluster feature support
+  (snapshot.storage.k8s.io, resource.k8s.io) return `""`.
 
 **Why the split (the core rationale to preserve):** under bare `helm template`
 with no cluster, Helm's default API discovery set is *minimal* — it does not
@@ -206,9 +219,11 @@ ClusterRoleBinding, StorageClass, VolumeAttachment, CSIDriver, CSINode,
 PriorityClass, RuntimeClass, IngressClass, CustomResourceDefinition, APIService,
 CertificateSigningRequest, ValidatingWebhookConfiguration,
 MutatingWebhookConfiguration, ValidatingAdmissionPolicy,
-ValidatingAdmissionPolicyBinding, FlowSchema, PriorityLevelConfiguration,
-GatewayClass, ClusterIssuer, ComponentStatus). The generic renderer uses it to
-decide whether to stamp a `metadata.namespace`.
+ValidatingAdmissionPolicyBinding, MutatingAdmissionPolicy,
+MutatingAdmissionPolicyBinding, FlowSchema, PriorityLevelConfiguration,
+GatewayClass, ClusterIssuer, ComponentStatus, VolumeSnapshotClass,
+VolumeSnapshotContent, DeviceClass). The generic renderer uses it to decide
+whether to stamp a `metadata.namespace`.
 
 ## 4. The generic renderer (`platform.genericResource`)
 
@@ -290,12 +305,17 @@ The root-contract JSON Schema ships as
 against a `values.schema.json` in that chart's directory; the library's own
 values are wrapped under `exports.defaults`, so a root schema describing the
 *post-import* (unwrapped) contract would validate against the wrapped structure
-and fail. The reference file (`$schema` draft 2020-12, `title: "platform-library
-consumer values"`, `additionalProperties: true`) instead documents the contract
-for **consumers**: the scaffold generator copies it into each consumer chart as
-`values.schema.json`, where the post-import root values do match it (e.g. it
-requires `image.repository`, constrains `workload.type` to the three workload
-Kinds, `image.pullPolicy` to the pull-policy enum, etc.). `scripts/lint-library.sh`
+and fail. The reference file (`$schema` draft-07 — Helm's built-in `gojsonschema`
+validator only implements draft-04 through draft-07, so the declared dialect
+must match what Helm actually enforces (helm/helm#13069) — `title:
+"platform-library consumer values"`, `additionalProperties: true`) instead
+documents the contract for **consumers**: the scaffold generator copies it into
+each consumer chart as `values.schema.json`, where the post-import root values
+do match it (e.g. it requires `image.repository`, constrains `workload.type` to
+the three workload Kinds, `image.pullPolicy` to the pull-policy enum, and
+`podSecurityContext`/`containerSecurityContext`/`networkPolicy.policyTypes`/
+`serviceAccount.name`/`ingress.hostname` to typed, pattern-constrained shapes,
+etc.). `scripts/lint-library.sh`
 validates the reference file against its metaschema and every fixture's values
 against it (`check-jsonschema`), and `tests/render.sh` copies it into each
 fixture as `values.schema.json` so Helm itself enforces the contract on every
@@ -335,8 +355,11 @@ It produces a consumer chart wired with:
 1. `helm lint` on `platform-library/`.
 2. Values-contract validation: metaschema check plus per-fixture
    `check-jsonschema` validation, and helm-side enforcement via the schema
-   copied into each fixture (negative legs prove e.g. `workload.type=deployment`
-   and `image.tag=latest` are rejected).
+   copied into each fixture (negative legs prove e.g. `workload.type=deployment`,
+   `image.tag=latest`, `networkPolicy.policyTypes[0]=Bogus`, a negative
+   `podSecurityContext.fsGroup`, a lowercase
+   `containerSecurityContext.capabilities.drop` entry, and a non-RFC1123
+   `serviceAccount.name`/`ingress.hostname` are all rejected).
 3. The render matrix — `tests/render.sh <fixture> --kube-version <kv>` for both
    `minimal` and `full` across `--kube-version 1.31 … 1.36`.
 4. `kubeconform -strict -ignore-missing-schemas` on each fixture render (when
@@ -345,6 +368,11 @@ It produces a consumer chart wired with:
    — asserting that no CRD-backed Kind (Certificate, HTTPRoute, GRPCRoute,
    PeerAuthentication, AuthorizationPolicy, ServiceMonitor, PodMonitor) rendered,
    and that no empty `{}` document was emitted.
+6. Posture guardrails and `platform.notes` (`NOTES.txt`) warning checks — via
+   `helm install --dry-run=client` (NOTES only renders on install/upgrade, never
+   `helm template`) — asserting the `secret.stringData`/`secret.data` and
+   `ingress.secrets` warnings fire when set and stay silent otherwise, and that
+   `helm template` output never includes NOTES content.
 
 ## 8. Test strategy
 

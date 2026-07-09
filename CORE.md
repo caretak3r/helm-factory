@@ -104,20 +104,22 @@ re-verified still present at these locations:
 | Unknown workload type silently falls back to Deployment | `hf-klw` | `_helpers.tpl:440-448` | Mitigated: `values.schema.json` (fixtures/scaffold) rejects anything outside the `Deployment`/`StatefulSet`/`DaemonSet` enum at render time; only consumers without the schema hit the silent fallback |
 | Duplicate imagePullSecrets possible | `hf-k9c` | `_helpers.tpl:194-206` | The same secret listed in both `global.imagePullSecrets` and `image.pullSecrets` appears twice |
 
-Fixed since the v1 review (no longer issues): DaemonSet+HPA (guarded in `_hpa.yaml:2`), silent hook-script skip (fails with a message in `_configmap-script.yaml:41`). Full history: [`CHANGELOG.md`](CHANGELOG.md) and `fable5-review.md`.
+Fixed since the v1 review (no longer issues): DaemonSet+HPA (guarded in `_hpa.yaml:2`), silent hook-script skip (fails with a message in `_configmap-script.yaml:41`). Full history: [`CHANGELOG.md`](CHANGELOG.md) and `fable5-review.md`. For the current reconciliation of `fable5-review.md` against `main`, plus the outstanding productionization/Helm-v4-modernization backlog, see [`docs/productionization-plan.md`](docs/productionization-plan.md).
 
 ## Directory Structure
 ```
 helm-factory/
 ├── .github/workflows/
 │   ├── ci.yaml                   # PR/main gate: shellcheck, lint, schema, lint-library.sh
-│   └── release.yaml              # Tag-triggered: gate + helm package/push to GHCR (OCI)
+│   ├── release.yaml              # Tag-triggered: gate + helm package/push to GHCR (OCI)
+│   └── docs.yaml                 # Builds site/ and deploys to GitHub Pages (push to main); separate from ci/release
 ├── CHANGELOG.md                  # Keep-a-Changelog release notes
 ├── CORE.md                       # This file
 ├── README.md                     # Consumer-facing reference
 ├── docs/
 │   ├── migration/v1-to-v2.md
 │   └── specs/platform-library-v2-architecture.md
+├── site/                         # Docusaurus docs site (Getting Started, Migration Guide, + stubs) — see AGENTS.md
 ├── platform-library/             # The library chart (name: platform, type: library)
 │   ├── Chart.yaml
 │   ├── values.yaml               # Defaults under exports.defaults
@@ -347,6 +349,6 @@ values/template changes.
 
 ---
 
-**Last Updated:** 2026-07-04
+**Last Updated:** 2026-07-08
 **Maintainer:** Rohit Gudi (@caretak3r)
 **License:** MIT

@@ -17,6 +17,12 @@ Usage (consumer chart templates/NOTES.txt):
 {{- if and .Values.networkPolicy.enabled (empty .Values.networkPolicy.ingress) (empty .Values.networkPolicy.egress) -}}
 {{- $warnings = append $warnings "networkPolicy.enabled=true with EMPTY ingress and egress rules is a DEFAULT-DENY policy: it blocks all traffic to and from the pods (including DNS). If that is not intentional, add allow rules under networkPolicy.ingress/egress." -}}
 {{- end -}}
+{{- if and .Values.secret.enabled (not .Values.secret.existingSecret) (or .Values.secret.stringData .Values.secret.data) -}}
+{{- $warnings = append $warnings "secret.stringData/secret.data contain plaintext secret material in values (DISCOURAGED): it ends up in git and in Helm release manifests. Prefer secret.existingSecret (External Secrets / Sealed Secrets / kubectl)." -}}
+{{- end -}}
+{{- if not (empty .Values.ingress.secrets) -}}
+{{- $warnings = append $warnings "ingress.secrets contains inline TLS cert/key material in values (DISCOURAGED). Prefer cert-manager (certificate block) or a pre-created Secret via ingress.existingSecret." -}}
+{{- end -}}
 {{- $extrasYaml := printf "%s\n%s\n%s\n%s\n%s" (toYaml (.Values.extraObjects | default dict)) (toYaml (.Values.extraManifests | default list)) (toYaml (.Values.extraVolumes | default list)) (toYaml (.Values.sidecars | default dict)) (toYaml (.Values.initContainers | default dict)) -}}
 {{- if contains "hostPath:" $extrasYaml -}}
 {{- $warnings = append $warnings "extraObjects/extraManifests/extraVolumes/sidecars contain a hostPath volume. hostPath breaks pod isolation and violates the PSS restricted profile — make sure this is intentional and reviewed." -}}
