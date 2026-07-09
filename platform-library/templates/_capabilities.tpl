@@ -64,6 +64,13 @@ platform.capabilities.registry — the canonical Kind -> ordered apiVersion
 preference table. Covers every built-in Kubernetes Kind creatable via a
 manifest plus the CRD families this library ships opinionated generators for.
 The first entry per Kind is the preferred (newest GA) version.
+
+The library's floor is Kubernetes 1.31 (Chart.yaml kubeVersion). Do not add
+fallback entries for apiVersions removed before 1.31 (e.g. batch/v1beta1,
+policy/v1beta1, autoscaling/v2beta1|v2beta2, networking.k8s.io/v1beta1,
+extensions/v1beta1) — they can never negotiate on any supported cluster and
+are dead weight. Only add a fallback below the preferred entry when it is
+still served by a cluster within the 1.31-1.36 support window.
 */}}
 {{- define "platform.capabilities.registry" -}}
 # ---- core/v1 (always GA) ----
@@ -89,13 +96,13 @@ ReplicaSet: ["apps/v1/ReplicaSet"]
 ControllerRevision: ["apps/v1/ControllerRevision"]
 # ---- batch/v1 (always GA) ----
 Job: ["batch/v1/Job"]
-CronJob: ["batch/v1/CronJob", "batch/v1beta1/CronJob"]
+CronJob: ["batch/v1/CronJob"]
 # ---- autoscaling (negotiated) ----
-HorizontalPodAutoscaler: ["autoscaling/v2/HorizontalPodAutoscaler", "autoscaling/v2beta2/HorizontalPodAutoscaler", "autoscaling/v2beta1/HorizontalPodAutoscaler", "autoscaling/v1/HorizontalPodAutoscaler"]
+HorizontalPodAutoscaler: ["autoscaling/v2/HorizontalPodAutoscaler", "autoscaling/v1/HorizontalPodAutoscaler"]
 # ---- policy/v1 ----
-PodDisruptionBudget: ["policy/v1/PodDisruptionBudget", "policy/v1beta1/PodDisruptionBudget"]
+PodDisruptionBudget: ["policy/v1/PodDisruptionBudget"]
 # ---- networking.k8s.io/v1 ----
-Ingress: ["networking.k8s.io/v1/Ingress", "networking.k8s.io/v1beta1/Ingress", "extensions/v1beta1/Ingress"]
+Ingress: ["networking.k8s.io/v1/Ingress"]
 IngressClass: ["networking.k8s.io/v1/IngressClass"]
 NetworkPolicy: ["networking.k8s.io/v1/NetworkPolicy"]
 # ---- rbac.authorization.k8s.io/v1 ----
@@ -122,6 +129,8 @@ ValidatingWebhookConfiguration: ["admissionregistration.k8s.io/v1/ValidatingWebh
 MutatingWebhookConfiguration: ["admissionregistration.k8s.io/v1/MutatingWebhookConfiguration"]
 ValidatingAdmissionPolicy: ["admissionregistration.k8s.io/v1/ValidatingAdmissionPolicy", "admissionregistration.k8s.io/v1beta1/ValidatingAdmissionPolicy"]
 ValidatingAdmissionPolicyBinding: ["admissionregistration.k8s.io/v1/ValidatingAdmissionPolicyBinding", "admissionregistration.k8s.io/v1beta1/ValidatingAdmissionPolicyBinding"]
+MutatingAdmissionPolicy: ["admissionregistration.k8s.io/v1/MutatingAdmissionPolicy", "admissionregistration.k8s.io/v1beta1/MutatingAdmissionPolicy"]
+MutatingAdmissionPolicyBinding: ["admissionregistration.k8s.io/v1/MutatingAdmissionPolicyBinding", "admissionregistration.k8s.io/v1beta1/MutatingAdmissionPolicyBinding"]
 # ---- apiextensions.k8s.io ----
 CustomResourceDefinition: ["apiextensions.k8s.io/v1/CustomResourceDefinition"]
 # ---- certificates.k8s.io/v1 ----
@@ -155,6 +164,14 @@ ServiceMonitor: ["monitoring.coreos.com/v1/ServiceMonitor"]
 PodMonitor: ["monitoring.coreos.com/v1/PodMonitor"]
 PrometheusRule: ["monitoring.coreos.com/v1/PrometheusRule"]
 Probe: ["monitoring.coreos.com/v1/Probe"]
+# ---- snapshot.storage.k8s.io/v1 (CSI volume snapshots) ----
+VolumeSnapshot: ["snapshot.storage.k8s.io/v1/VolumeSnapshot"]
+VolumeSnapshotClass: ["snapshot.storage.k8s.io/v1/VolumeSnapshotClass"]
+VolumeSnapshotContent: ["snapshot.storage.k8s.io/v1/VolumeSnapshotContent"]
+# ---- resource.k8s.io (Dynamic Resource Allocation, GA 1.34) ----
+ResourceClaim: ["resource.k8s.io/v1/ResourceClaim"]
+ResourceClaimTemplate: ["resource.k8s.io/v1/ResourceClaimTemplate"]
+DeviceClass: ["resource.k8s.io/v1/DeviceClass"]
 {{- end -}}
 
 {{/*
@@ -219,7 +236,7 @@ platform.capabilities.clusterScoped — space-delimited set of cluster-scoped
 Kinds, used by the generic renderer to decide whether to stamp a namespace.
 */}}
 {{- define "platform.capabilities.clusterScoped" -}}
-Namespace Node PersistentVolume ClusterRole ClusterRoleBinding StorageClass VolumeAttachment CSIDriver CSINode PriorityClass RuntimeClass IngressClass CustomResourceDefinition APIService CertificateSigningRequest ValidatingWebhookConfiguration MutatingWebhookConfiguration ValidatingAdmissionPolicy ValidatingAdmissionPolicyBinding FlowSchema PriorityLevelConfiguration GatewayClass ClusterIssuer ComponentStatus
+Namespace Node PersistentVolume ClusterRole ClusterRoleBinding StorageClass VolumeAttachment CSIDriver CSINode PriorityClass RuntimeClass IngressClass CustomResourceDefinition APIService CertificateSigningRequest ValidatingWebhookConfiguration MutatingWebhookConfiguration ValidatingAdmissionPolicy ValidatingAdmissionPolicyBinding MutatingAdmissionPolicy MutatingAdmissionPolicyBinding FlowSchema PriorityLevelConfiguration GatewayClass ClusterIssuer ComponentStatus VolumeSnapshotClass VolumeSnapshotContent DeviceClass
 {{- end -}}
 
 {{/*
