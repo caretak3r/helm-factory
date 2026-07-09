@@ -11,6 +11,8 @@
 
 Targets **Kubernetes 1.31–1.36** and **Helm 4.0+**. Migrating from v1? See [`docs/migration/v1-to-v2.md`](docs/migration/v1-to-v2.md).
 
+**Full docs:** https://caretak3r.github.io/helm-factory/ (values reference, capability catalog, security model, examples).
+
 ## Overview
 
 | Feature | Description |
