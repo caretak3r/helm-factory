@@ -8,6 +8,13 @@ Beads is issue tracking that lives in your repo, making it perfect for AI coding
 
 **Learn more:** [github.com/steveyegge/beads](https://github.com/steveyegge/beads)
 
+## This repository
+
+The rest of this file is the generic Beads introduction. Two project-specific facts override it:
+
+- Issues use the prefix `hf` (`issue-prefix` in `config.yaml`), so IDs look like `hf-7a1`.
+- The Dolt remote is not yet hydrated with this repo's 25 seed issues, so `issues.jsonl` is the seed of record rather than a passive export, and `bd sync` is **not** safe to run until a maintainer imports the JSONL into the Dolt DB. See the "Beads tracker notes" section of [`AGENTS.md`](../AGENTS.md).
+
 ## Quick Start
 
 ### Essential Commands

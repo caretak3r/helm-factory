@@ -93,16 +93,18 @@
 - **Fail-closed guardrails:** unpinned images, mTLS without principals, `existingSecret` + inline data, and cluster-scoped extras (without opt-in) all `fail` at render time with actionable messages
 
 ## Known Issues (Tracked)
-Lower-priority issues, verified still present at these locations:
+Tracked in the Beads issue tracker (`bd ready`, `bd show <id>`; the git-tracked seed
+is [`.beads/issues.jsonl`](.beads/issues.jsonl)). The long-standing ones below were
+re-verified still present at these locations:
 
-| Issue | File:Line | Impact |
-|-------|-----------|--------|
-| Probe condition redundancy | `_helpers.tpl:244-251` | `omit` returns a dict (always truthy); `and enabled (omit ...)` reduces to `enabled` — works but misleading |
-| Service selector includes mutable labels | `_service.yaml:51-55` | `commonLabels` are added to the Service selector; selectors are immutable, so changing `commonLabels` breaks the Service |
-| Unknown workload type silently falls back to Deployment | `_helpers.tpl:440-448` | Mitigated: `values.schema.json` (fixtures/scaffold) rejects anything outside the `Deployment`/`StatefulSet`/`DaemonSet` enum at render time; only consumers without the schema hit the silent fallback |
-| Duplicate imagePullSecrets possible | `_helpers.tpl:194-206` | The same secret listed in both `global.imagePullSecrets` and `image.pullSecrets` appears twice |
+| Issue | Bead | File:Line | Impact |
+|-------|------|-----------|--------|
+| Probe render condition is subtle | `hf-d97` | `_helpers.tpl:244-251` | `omit ... "enabled"` yields an empty dict when the probe carries no other keys, and Go templates treat an empty dict as false — so `and enabled (omit ...)` is a real guard against emitting an empty probe, not a redundancy. Worth a comment or a clearer helper |
+| Service selector includes mutable labels | `hf-7a1` | `_service.yaml:51-55` | `commonLabels` are added to the Service selector; selectors are immutable, so changing `commonLabels` breaks the Service |
+| Unknown workload type silently falls back to Deployment | `hf-klw` | `_helpers.tpl:440-448` | Mitigated: `values.schema.json` (fixtures/scaffold) rejects anything outside the `Deployment`/`StatefulSet`/`DaemonSet` enum at render time; only consumers without the schema hit the silent fallback |
+| Duplicate imagePullSecrets possible | `hf-k9c` | `_helpers.tpl:194-206` | The same secret listed in both `global.imagePullSecrets` and `image.pullSecrets` appears twice |
 
-Fixed since the v1 review (no longer issues): DaemonSet+HPA (guarded in `_hpa.yaml:2`), silent hook-script skip (fails with a message in `_configmap-script.yaml:41`). Full history: [`CHANGELOG.md`](CHANGELOG.md) and `fable5-review.md`.
+Fixed since the v1 review (no longer issues): DaemonSet+HPA (guarded in `_hpa.yaml:2`), silent hook-script skip (fails with a message in `_configmap-script.yaml:41`). Full history: [`CHANGELOG.md`](CHANGELOG.md) and `fable5-review.md`. For the current reconciliation of `fable5-review.md` against `main`, plus the outstanding productionization/Helm-v4-modernization backlog, see [`docs/productionization-plan.md`](docs/productionization-plan.md).
 
 ## Directory Structure
 ```

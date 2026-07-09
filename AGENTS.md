@@ -9,7 +9,7 @@ bd ready              # Find available work
 bd show <id>          # View issue details
 bd update <id> --status in_progress  # Claim work
 bd close <id>         # Complete work
-bd sync               # Sync with git
+bd sync               # Sync with git (see "Beads tracker notes" below — not yet safe in this repo)
 ```
 
 ## Landing the Plane (Session Completion)
@@ -24,7 +24,7 @@ bd sync               # Sync with git
 4. **PUSH TO REMOTE** - This is MANDATORY:
    ```bash
    git pull --rebase
-   bd sync
+   bd sync    # skip until the Dolt remote is hydrated — see "Beads tracker notes" below
    git push
    git status  # MUST show "up to date with origin"
    ```
@@ -68,6 +68,21 @@ chart itself — it documents `platform-library`, not part of the chart's render
   Security Model, and Examples & Recipes are intentionally stubs pending their own
   generation/write-up work (values-doc pipeline, capability-registry table,
   security-model consolidation, worked examples).
+  
+## Productionization plan
+
+`docs/productionization-plan.md` is the current master plan for hardening and modernizing
+`platform-library`: a fable5-review reconciliation (what's already fixed on `main` vs. still
+open, with file:line proof), a Helm v4 capability-adoption backlog, a `_capabilities.tpl`
+registry audit, a testing/CI/supply-chain backlog, and a Docusaurus docs-site plan. Read it
+before starting new template, CI, or docs work in this repo so you don't re-derive an audit
+that already exists — extract beads from it rather than re-auditing from scratch.
+
+`docs/helm-docs.xml` and `docs/helmet.xml` are accidental Repomix full-repo dumps (not
+real documentation) flagged for removal in that plan (LAY-1) — do not treat them as source
+of truth or add to them.
+
+---
 
 ## Helm Chart Development Context
 
@@ -351,3 +366,10 @@ bd prime                # Refresh Beads context
 
 **Architecture in one line:** issues live in a local Dolt DB; sync uses `refs/dolt/data` on your git remote; `.beads/issues.jsonl` is a passive export. See https://github.com/gastownhall/beads/blob/main/docs/SYNC_CONCEPTS.md for details and anti-patterns.
 <!-- END BEADS CODEX SETUP -->
+
+## Beads tracker notes (project-specific)
+
+- The issue prefix is `hf` (set in `.beads/config.yaml` `issue-prefix`); issues render as `hf-<hash>`.
+- `.beads/issues.jsonl` is the git-tracked interchange artifact (25 seed issues filed 2026-07-06); the local Dolt DB under `.beads/embeddeddolt/` is NOT tracked.
+- The Dolt remote (`refs/dolt/data`) has NOT yet been hydrated with these 25 seed issues, so despite the managed block above calling `.beads/issues.jsonl` a "passive export", the git-tracked JSONL is the seed of record until a maintainer imports it into the Dolt DB on a healthy checkout (e.g. `bd import` from the JSONL) and syncs; until then do not run `bd sync` from a checkout whose Dolt data lacks the seed, as it could clobber or shadow the JSONL seed.
+- Known pitfall in fresh worktrees: the local Dolt DB can exist without an `issue_prefix`, making every `bd create` fail with "database not initialized", while `bd init` refuses to reinit because `.beads/config.yaml` declares a `sync.remote`. Do NOT run `bd sync`/`bd bootstrap` to fix this from a disposable worktree. Working fallback: `bd init --prefix hf` in a scratch directory outside the repo, file issues there, then `bd export -o <repo>/.beads/issues.jsonl` (export embeds labels, dependencies, and comments per issue line).
