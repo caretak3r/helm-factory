@@ -14,7 +14,7 @@ What remains is threefold:
 2. **Helm v4 capability adoption that hasn't been exercised yet**: version-skew-aware tooling, Server-Side-Apply migration guidance, OCI-digest installs, and a signed/attested release pipeline (the CHANGELOG already flags cosign as deliberately deferred).
 3. **A documentation and repo-hygiene debt**: 740KB of accidentally-committed full-repo dumps sitting in `docs/`, `docs/specs`/`docs/prd` describing a test harness that no longer matches `scripts/lint-library.sh`, and no public docs site despite a schema-rich, capability-gated library that badly wants one.
 
-None of the work below requires re-doing anything already shipped. Total: 7 dimensions, 46 work items, 0 items rated P0 (nothing exploitable is currently open), 9 rated P1.
+None of the work below requires re-doing anything already shipped. Total: 7 dimensions, 49 work items, 0 items rated P0 (nothing exploitable is currently open), 13 rated P1.
 
 ---
 
@@ -96,7 +96,7 @@ Every finding from `fable5-review.md`, checked against `main` as of this branch.
 | DOC-7 | Migration guide refresh (Helm-4-minor + SSA) | Documentation site | P2 | S | DOC-1, HV4-4 |
 | DOC-5 | Fix remaining `docs/specs`/`docs/prd` drift (= TEST-5) | Documentation site | P2 | S | TEST-1 |
 
-46 items: 0 P0, 9 P1, 27 P2, 10 P3.
+49 items: 0 P0, 13 P1, 24 P2, 12 P3.
 
 ---
 
