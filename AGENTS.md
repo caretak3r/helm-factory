@@ -42,6 +42,21 @@ Use 'bd' for task tracking
 
 ---
 
+## Productionization plan
+
+`docs/productionization-plan.md` is the current master plan for hardening and modernizing
+`platform-library`: a fable5-review reconciliation (what's already fixed on `main` vs. still
+open, with file:line proof), a Helm v4 capability-adoption backlog, a `_capabilities.tpl`
+registry audit, a testing/CI/supply-chain backlog, and a Docusaurus docs-site plan. Read it
+before starting new template, CI, or docs work in this repo so you don't re-derive an audit
+that already exists — extract beads from it rather than re-auditing from scratch.
+
+`docs/helm-docs.xml` and `docs/helmet.xml` are accidental Repomix full-repo dumps (not
+real documentation) flagged for removal in that plan (LAY-1) — do not treat them as source
+of truth or add to them.
+
+---
+
 ## Helm Chart Development Context
 
 This document provides context, commands, and templating conventions for AI agents working on Helm v4 Charts. Use this for ideation, templating, and validating Kubernetes manifests.
