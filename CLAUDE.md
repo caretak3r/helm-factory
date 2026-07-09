@@ -57,6 +57,14 @@ This protocol applies when ending a Beads implementation workflow. It is subordi
 - If a required sync or push is blocked, stop and report the exact command and error.
 <!-- END BEADS INTEGRATION -->
 
+## Beads tracker notes (project-specific)
+
+- The issue prefix is `hf` (set in `.beads/config.yaml` `issue-prefix`); issues render as `hf-<hash>`.
+- `.beads/issues.jsonl` is the git-tracked interchange artifact (25 seed issues filed 2026-07-06); the local Dolt DB under `.beads/embeddeddolt/` is NOT tracked.
+- The Dolt remote (`refs/dolt/data`) has NOT yet been hydrated with these 25 seed issues, so despite the managed block above calling `.beads/issues.jsonl` a "passive export", the git-tracked JSONL is the seed of record until a maintainer imports it into the Dolt DB on a healthy checkout (e.g. `bd import` from the JSONL) and syncs. Until then do not run `bd sync` from a checkout whose Dolt data lacks the seed, as it could clobber or shadow the JSONL seed.
+- Known pitfall in fresh worktrees: the local Dolt DB can exist without an `issue_prefix`, making every `bd create` fail with "database not initialized", while `bd init` refuses to reinit because `.beads/config.yaml` declares a `sync.remote`. Do NOT run `bd sync`/`bd bootstrap` to fix this from a disposable worktree. Working fallback: `bd init --prefix hf` in a scratch directory outside the repo, file issues there, then `bd export -o <repo>/.beads/issues.jsonl`.
+
+See [AGENTS.md](AGENTS.md) for the same notes alongside the full agent instructions.
 
 ## Build & Test
 
