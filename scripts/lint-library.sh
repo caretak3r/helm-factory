@@ -31,9 +31,16 @@ FIXTURES=(minimal full stateful daemon)
 KUBE_VERSIONS=(1.31 1.32 1.33 1.34 1.35 1.36)
 GOLDEN_KUBE_VERSION=1.31   # canonical version for golden snapshots
 KUBECONFORM_CACHE="${TMPDIR:-/tmp}/kubeconform-schema-cache"
+# Both schema locations are served through the jsdelivr CDN mirror rather than
+# raw.githubusercontent.com directly: raw.githubusercontent.com applies a low
+# per-IP rate limit that CI runners (shared IP pools, ~150 schema fetches per
+# run across kinds x k8s versions) exhaust mid-run, turning every subsequent
+# fetch into a 429. jsdelivr mirrors the same GitHub repos/content with a much
+# higher, CDN-backed limit.
+NATIVE_SCHEMA_LOCATION='https://cdn.jsdelivr.net/gh/yannh/kubernetes-json-schema@master/{{ .NormalizedKubernetesVersion }}-standalone{{ .StrictSuffix }}/{{ .ResourceKind }}{{ .KindSuffix }}.json'
 # CRD schemas: the datreeio CRDs-catalog covers cert-manager, Gateway API,
 # Prometheus Operator, and Istio — every CRD-backed Kind the library emits.
-CRD_SCHEMA_LOCATION='https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
+CRD_SCHEMA_LOCATION='https://cdn.jsdelivr.net/gh/datreeio/CRDs-catalog@main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
 fail=0
 
 # Expected number of rendered objects (top-level `kind:` lines) per fixture.
@@ -152,7 +159,7 @@ for fx in "${FIXTURES[@]}"; do
     for kv in "${KUBE_VERSIONS[@]}"; do
       if ! kubeconform -strict -summary \
              -kubernetes-version "$kv.0" \
-             -schema-location default \
+             -schema-location "$NATIVE_SCHEMA_LOCATION" \
              -schema-location "$CRD_SCHEMA_LOCATION" \
              -cache "$KUBECONFORM_CACHE" \
              <<<"$raw"; then
