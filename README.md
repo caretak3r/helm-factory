@@ -965,11 +965,16 @@ the full CI gate (shellcheck, `helm lint`, schema metaschema check,
 `scripts/lint-library.sh` with kubeconform + check-jsonschema required), then
 runs `helm package` and `helm push` to GHCR using the workflow's
 `GITHUB_TOKEN` (`packages: write`). Chart signing/provenance (cosign) is
-tracked as future work.
+tracked as future work (bead `hf-j30`).
 
 ## Contributing
 
 See [CORE.md](CORE.md) for architecture details, known issues, and maintenance guidelines.
+
+Open work is tracked with [Beads](https://github.com/steveyegge/beads) under the `hf`
+issue prefix: run `bd ready` to find available work, or read the git-tracked seed at
+[`.beads/issues.jsonl`](.beads/issues.jsonl). Check the "Beads tracker notes" section
+of [AGENTS.md](AGENTS.md) before running `bd sync`.
 
 ### Adding a new resource type
 
