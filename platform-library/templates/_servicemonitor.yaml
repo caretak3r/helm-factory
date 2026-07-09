@@ -37,11 +37,17 @@ spec:
   endpoints:
     - port: {{ .Values.serviceMonitor.port | default "http" | quote }}
       path: {{ .Values.serviceMonitor.path | default "/metrics" | quote }}
+      {{- if .Values.serviceMonitor.scheme }}
+      scheme: {{ .Values.serviceMonitor.scheme }}
+      {{- end }}
       {{- if .Values.serviceMonitor.interval }}
       interval: {{ .Values.serviceMonitor.interval }}
       {{- end }}
       {{- if .Values.serviceMonitor.scrapeTimeout }}
       scrapeTimeout: {{ .Values.serviceMonitor.scrapeTimeout }}
+      {{- end }}
+      {{- if .Values.serviceMonitor.tlsConfig }}
+      tlsConfig: {{- toYaml .Values.serviceMonitor.tlsConfig | nindent 8 }}
       {{- end }}
       {{- if .Values.serviceMonitor.relabelings }}
       relabelings: {{- toYaml .Values.serviceMonitor.relabelings | nindent 8 }}
@@ -54,6 +60,9 @@ spec:
       {{- end }}
   {{- if .Values.serviceMonitor.jobLabel }}
   jobLabel: {{ .Values.serviceMonitor.jobLabel }}
+  {{- end }}
+  {{- if .Values.serviceMonitor.sampleLimit }}
+  sampleLimit: {{ .Values.serviceMonitor.sampleLimit }}
   {{- end }}
 {{- end }}
 {{- end }}

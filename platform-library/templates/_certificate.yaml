@@ -31,7 +31,7 @@ spec:
   secretName: {{ .Values.certificate.secretName | default (printf "%s-tls" (include "platform.fullname" .)) }}
   issuerRef:
     name: {{ .Values.certificate.issuer }}
-    kind: ClusterIssuer
+    kind: {{ .Values.certificate.issuerKind | default "ClusterIssuer" }}
   {{- if .Values.certificate.duration }}
   duration: {{ .Values.certificate.duration }}
   {{- end }}

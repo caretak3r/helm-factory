@@ -25,6 +25,9 @@ spec:
   selector:
     matchLabels:
       {{- include "platform.selectorLabels" . | nindent 6 }}
+  {{- if .Values.minReadySeconds }}
+  minReadySeconds: {{ .Values.minReadySeconds }}
+  {{- end }}
   {{- if .Values.daemonSet.updateStrategy }}
   updateStrategy: {{- toYaml .Values.daemonSet.updateStrategy | nindent 4 }}
   {{- end }}

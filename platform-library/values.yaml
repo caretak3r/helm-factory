@@ -48,6 +48,9 @@ exports:
     # -----------------------------------------------------------------------------
     replicaCount: 1
     revisionHistoryLimit: 10
+    # Optional rollout-safety field for Deployment/StatefulSet/DaemonSet;
+    # unset (0) preserves current behavior (field omitted from the manifest).
+    minReadySeconds: 0
 
     # -----------------------------------------------------------------------------
     # Container Ports
@@ -276,6 +279,9 @@ exports:
     certificate:
       enabled: false
       issuer: ""
+      # ClusterIssuer (default, cluster-scoped) or Issuer (namespaced, for
+      # multi-tenant clusters where teams own their own cert-manager Issuer).
+      issuerKind: ClusterIssuer
       secretName: ""
       duration: 2160h
       renewBefore: 360h
@@ -429,6 +435,13 @@ exports:
         rollingUpdate:
           partition: 0
       volumeClaimTemplates: []
+      # Unset (both empty) preserves the Kubernetes default of Retain/Retain —
+      # PVCs created from volumeClaimTemplates are never auto-deleted. Set to
+      # "Delete" to reclaim PVCs on scale-down (whenScaled) or StatefulSet
+      # deletion (whenDeleted); valid values: Retain, Delete.
+      persistentVolumeClaimRetentionPolicy:
+        whenDeleted: ""
+        whenScaled: ""
 
     # -----------------------------------------------------------------------------
     # DaemonSet Specific
@@ -535,6 +548,12 @@ exports:
       metricRelabelings: []
       selector: {}
       namespaceSelector: {}
+      # Optional: scrape scheme ("http"/"https"), Prometheus Operator TLSConfig
+      # (for mTLS-scraped targets, e.g. alongside this library's mtls.* feature),
+      # and a per-target series cap. All unset by default (no effect on render).
+      scheme: ""
+      tlsConfig: {}
+      sampleLimit: 0
 
     # -----------------------------------------------------------------------------
     # Pod Monitor (Prometheus)
@@ -554,6 +573,12 @@ exports:
       metricRelabelings: []
       selector: {}
       namespaceSelector: {}
+      # Optional: scrape scheme ("http"/"https"), Prometheus Operator TLSConfig
+      # (for mTLS-scraped targets, e.g. alongside this library's mtls.* feature),
+      # and a per-target series cap. All unset by default (no effect on render).
+      scheme: ""
+      tlsConfig: {}
+      sampleLimit: 0
 
     # -----------------------------------------------------------------------------
     # Network Policy
