@@ -271,6 +271,16 @@ Assign variables to persist data across scopes or simplify paths.
 
 - Remember that `with` and `range` change the `.` scope. Use `$` to access the root scope (e.g., `$.Values`, `$.Release`, `$.Chart`) from inside a loop or with block.
 
+### Values Schema Dialect
+
+- Helm's built-in schema validator (`gojsonschema`) only implements JSON Schema draft-04 through draft-07 — it does **not** understand 2020-12 keywords, even on Helm v4 (helm/helm#13069, closed not-planned). `platform-library/values.schema.reference.json` therefore declares `"$schema": "http://json-schema.org/draft-07/schema#"`; do not upgrade this to a 2020-12/2019-09 URI even though newer dialects validate fine with external tools like `check-jsonschema` — that mismatch is exactly what misleads chart authors' IDEs into checking against a dialect Helm doesn't enforce.
+- Only use draft-07-compatible keywords in this schema (`if`/`then`/`allOf`/`anyOf`, `enum`, `pattern`, `type`, `not`, etc.).
+- Every new `enum`/`pattern`/`required` constraint added to `values.schema.reference.json` needs a matching "this should fail" case in the `==> schema enforcement` block of `scripts/lint-library.sh`, keeping 1:1 correspondence between schema constraints and negative tests.
+
+### Testing `platform.notes` (NOTES.txt) Warnings
+
+- `platform.notes` (`platform-library/templates/_notes.tpl`) renders install-time security warnings but is invisible to `helm template` — Helm only renders NOTES.txt on `helm install`/`helm upgrade`. To assert on warning content in a test/CI script, use `helm install <release> <fixture-dir> --dry-run=client` (no live cluster required) and grep the output after the `NOTES:` marker, not `tests/render.sh`.
+
 ### Helm v4 Specific Changes & Flags
 
 - **Flag Renames**: Do not use the old v3 flags.

@@ -305,12 +305,17 @@ The root-contract JSON Schema ships as
 against a `values.schema.json` in that chart's directory; the library's own
 values are wrapped under `exports.defaults`, so a root schema describing the
 *post-import* (unwrapped) contract would validate against the wrapped structure
-and fail. The reference file (`$schema` draft 2020-12, `title: "platform-library
-consumer values"`, `additionalProperties: true`) instead documents the contract
-for **consumers**: the scaffold generator copies it into each consumer chart as
-`values.schema.json`, where the post-import root values do match it (e.g. it
-requires `image.repository`, constrains `workload.type` to the three workload
-Kinds, `image.pullPolicy` to the pull-policy enum, etc.). `scripts/lint-library.sh`
+and fail. The reference file (`$schema` draft-07 — Helm's built-in `gojsonschema`
+validator only implements draft-04 through draft-07, so the declared dialect
+must match what Helm actually enforces (helm/helm#13069) — `title:
+"platform-library consumer values"`, `additionalProperties: true`) instead
+documents the contract for **consumers**: the scaffold generator copies it into
+each consumer chart as `values.schema.json`, where the post-import root values
+do match it (e.g. it requires `image.repository`, constrains `workload.type` to
+the three workload Kinds, `image.pullPolicy` to the pull-policy enum, and
+`podSecurityContext`/`containerSecurityContext`/`networkPolicy.policyTypes`/
+`serviceAccount.name`/`ingress.hostname` to typed, pattern-constrained shapes,
+etc.). `scripts/lint-library.sh`
 validates the reference file against its metaschema and every fixture's values
 against it (`check-jsonschema`), and `tests/render.sh` copies it into each
 fixture as `values.schema.json` so Helm itself enforces the contract on every
@@ -350,8 +355,11 @@ It produces a consumer chart wired with:
 1. `helm lint` on `platform-library/`.
 2. Values-contract validation: metaschema check plus per-fixture
    `check-jsonschema` validation, and helm-side enforcement via the schema
-   copied into each fixture (negative legs prove e.g. `workload.type=deployment`
-   and `image.tag=latest` are rejected).
+   copied into each fixture (negative legs prove e.g. `workload.type=deployment`,
+   `image.tag=latest`, `networkPolicy.policyTypes[0]=Bogus`, a negative
+   `podSecurityContext.fsGroup`, a lowercase
+   `containerSecurityContext.capabilities.drop` entry, and a non-RFC1123
+   `serviceAccount.name`/`ingress.hostname` are all rejected).
 3. The render matrix — `tests/render.sh <fixture> --kube-version <kv>` for both
    `minimal` and `full` across `--kube-version 1.31 … 1.36`.
 4. `kubeconform -strict -ignore-missing-schemas` on each fixture render (when
@@ -360,6 +368,11 @@ It produces a consumer chart wired with:
    — asserting that no CRD-backed Kind (Certificate, HTTPRoute, GRPCRoute,
    PeerAuthentication, AuthorizationPolicy, ServiceMonitor, PodMonitor) rendered,
    and that no empty `{}` document was emitted.
+6. Posture guardrails and `platform.notes` (`NOTES.txt`) warning checks — via
+   `helm install --dry-run=client` (NOTES only renders on install/upgrade, never
+   `helm template`) — asserting the `secret.stringData`/`secret.data` and
+   `ingress.secrets` warnings fire when set and stay silent otherwise, and that
+   `helm template` output never includes NOTES content.
 
 ## 8. Test strategy
 
