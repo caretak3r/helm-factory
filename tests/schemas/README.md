@@ -23,7 +23,7 @@ list this snapshot covers).
 
 Both layouts intentionally match kubeconform's default `-schema-location`
 templating so `scripts/lint-library.sh` only had to swap the remote base URL
-for a local `file://` path — see that script's `NATIVE_SCHEMA_LOCATION` /
+for a local filesystem path — see that script's `NATIVE_SCHEMA_LOCATION` /
 `CRD_SCHEMA_LOCATION` variables.
 
 ## Refreshing

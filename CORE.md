@@ -154,11 +154,15 @@ helm-factory/
 │       └── _podmonitor.yaml      # Prometheus PodMonitor
 ├── scripts/
 │   ├── new-app-chart.sh          # Consumer chart scaffold
-│   └── lint-library.sh           # Full validation gate (matrix, goldens, kubeconform)
+│   ├── lint-library.sh           # Full validation gate (matrix, goldens, kubeconform)
+│   ├── vendor-schemas.sh         # Refreshes tests/schemas/ (only script allowed to hit the network)
+│   └── lib/
+│       └── schema-manifest.sh    # Single source of truth: KUBE_VERSIONS + schema stems to vendor
 └── tests/
     ├── render.sh                 # Renders a fixture with the schema enforced
     ├── fixtures/                 # minimal, full, stateful, daemon consumer charts
-    └── golden/                   # Committed golden snapshots (k8s 1.34)
+    ├── golden/                   # Committed golden snapshots (k8s 1.34)
+    └── schemas/                  # Vendored kubeconform schemas (native + CRD); see schemas/README.md
 ```
 
 ## Consumer Chart Integration
