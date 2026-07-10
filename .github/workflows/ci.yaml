@@ -34,7 +34,7 @@ jobs:
         run: pipx install check-jsonschema
 
       - name: shellcheck
-        run: shellcheck scripts/*.sh tests/render.sh
+        run: shellcheck -x scripts/*.sh tests/render.sh
 
       - name: helm lint
         run: helm lint platform-library/

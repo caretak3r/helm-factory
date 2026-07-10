@@ -76,6 +76,11 @@ The v2 rewrite. Everything below ships together as **2.0.0**.
   kubeconform (native + datreeio CRD schemas) across the matrix, a negative
   render proving CRD-backed objects drop when their API is absent, image-pin
   enforcement, and posture guardrail checks.
+- Vendored kubeconform schemas (`tests/schemas/`): the exact core Kubernetes
+  (1.34–1.36) and CRD schemas the render matrix and fixtures exercise, with
+  provenance recorded in `tests/schemas/README.md` and refreshed by
+  `scripts/vendor-schemas.sh`. `scripts/lint-library.sh` validates against
+  these local copies only — see Fixed below.
 - Test fixtures (`tests/fixtures/`): `minimal`, `full`, `stateful`, `daemon`
   consumer charts with golden snapshots under `tests/golden/`.
 - Release automation (`.github/workflows/release.yaml`): semver-tag-triggered;
@@ -106,6 +111,11 @@ The v2 rewrite. Everything below ships together as **2.0.0**.
 - `tests/render.sh` no longer swallows `helm dependency update` errors.
 - Hook script ConfigMaps fail with an actionable message when the referenced
   script file is missing (previously silently skipped).
+- Recurring kubeconform CI flake: schema validation fetched schemas from the
+  jsdelivr CDN mirror at test time, which intermittently returned hard HTTP
+  403s that survived retries. Schemas are now vendored into `tests/schemas/`
+  and `scripts/lint-library.sh` makes zero network requests; the retry/backoff
+  loop that papered over the CDN flakiness has been removed.
 
 ### Removed
 
