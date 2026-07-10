@@ -28,8 +28,8 @@ LIB="$REPO_ROOT/platform-library"
 RENDER="$REPO_ROOT/tests/render.sh"
 GOLDEN_DIR="$REPO_ROOT/tests/golden"
 FIXTURES=(minimal full stateful daemon)
-KUBE_VERSIONS=(1.31 1.32 1.33 1.34 1.35 1.36)
-GOLDEN_KUBE_VERSION=1.31   # canonical version for golden snapshots
+KUBE_VERSIONS=(1.34 1.35 1.36)
+GOLDEN_KUBE_VERSION=1.34   # canonical version for golden snapshots
 KUBECONFORM_CACHE="${TMPDIR:-/tmp}/kubeconform-schema-cache"
 # Both schema locations are served through the jsdelivr CDN mirror rather than
 # raw.githubusercontent.com directly: raw.githubusercontent.com applies a low

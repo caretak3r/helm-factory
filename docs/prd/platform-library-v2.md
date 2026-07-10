@@ -18,7 +18,7 @@ opinionated configuration, but it carried three structural problems:
    consumers had no clean, single entrypoint to compose against.
 2. **API versions were hard-coded.** HPA, Ingress, PDB, CronJob, Certificate,
    mTLS, Gateway API, ServiceMonitor and PodMonitor all pinned a fixed
-   `apiVersion`. Across a fleet spanning Kubernetes 1.31–1.36 (and clusters that
+   `apiVersion`. Across a fleet spanning Kubernetes 1.34–1.36 (and clusters that
    may or may not have cert-manager, Istio, Gateway API, or the Prometheus
    Operator installed) this produces manifests that either fail admission or
    silently target a version the cluster no longer serves.
@@ -121,7 +121,7 @@ helm install  my-service .            # negotiates against the live cluster
 ### R4 — Clean toolchain across the matrix
 - **Accept:** `scripts/lint-library.sh` passes — `helm lint` clean; the reference
   schema parses; `tests/render.sh full` and `tests/render.sh minimal` render
-  without error across `--kube-version 1.31 … 1.36`; a negative render with
+  without error across `--kube-version 1.34 … 1.36`; a negative render with
   `--set capabilities.apiVersions=null` proves CRD objects drop, built-ins remain,
   and no empty `{}` documents are emitted; `kubeconform -ignore-missing-schemas` clean.
 
@@ -135,21 +135,21 @@ helm install  my-service .            # negotiates against the live cluster
 
 ### R5 — Correct metadata
 - **Accept:** `Chart.yaml` carries `type: library`, `version: 2.0.0`,
-  `kubeVersion: ">=1.31.0-0 <1.37.0-0"`.
+  `kubeVersion: ">=1.34.0-0 <1.37.0-0"`.
 
 ## 6. Version & support matrix
 
 | Dimension | Supported |
 |---|---|
 | Helm | 4.0 – 4.2 (developed/verified against Helm **v4.2.0**) |
-| Kubernetes | 1.31 – 1.36 (`kubeVersion: ">=1.31.0-0 <1.37.0-0"`) |
+| Kubernetes | 1.34 – 1.36 (n-2: latest supported minor plus two behind) (`kubeVersion: ">=1.34.0-0 <1.37.0-0"`) |
 | Built-in API groups | core, apps, batch, autoscaling, policy, networking.k8s.io, rbac, storage.k8s.io, scheduling.k8s.io, node.k8s.io, coordination.k8s.io, discovery.k8s.io, admissionregistration.k8s.io, apiextensions.k8s.io, certificates.k8s.io, apiregistration.k8s.io, flowcontrol.apiserver.k8s.io |
 | CRD families (negotiated, skip-if-absent) | Gateway API (`gateway.networking.k8s.io`), cert-manager (`cert-manager.io`), Istio (`security.istio.io`, `networking.istio.io`), Prometheus Operator (`monitoring.coreos.com`) |
 
 ## 7. Success metrics
 
 - `helm lint platform-library/` reports 0 errors.
-- Render matrix (`minimal` + `full` × K8s 1.31–1.36) renders with 0 errors.
+- Render matrix (`minimal` + `full` × K8s 1.34–1.36) renders with 0 errors.
 - **Zero `apiVersion` conflicts** on target clusters at deploy time (no object
   submitted at a version the API server does not serve).
 - CRD-backed objects **skip** cleanly when their API is absent (verified by the

@@ -10,7 +10,7 @@ library chart: it ships no installable templates of its own. Product charts depe
 it and render everything through a single entrypoint, `platform.render`. Service teams
 never write manifests — they set values and the library generates the resources.
 
-Targets **Kubernetes 1.31–1.36** and **Helm 4.0+**. Migrating from v1? See the
+Targets **Kubernetes 1.34–1.36** and **Helm 4.0+** — the support policy is n-2: the latest supported Kubernetes minor plus two behind it, currently 1.34–1.36. Migrating from v1? See the
 [Migration Guide](/docs/migration-guide/).
 
 ## Fastest: scaffold a new chart
