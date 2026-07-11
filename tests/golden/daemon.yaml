@@ -26,6 +26,8 @@ metadata:
     app.kubernetes.io/instance: t
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/managed-by: Helm
+  annotations:
+    platform/tls-not-after: REDACTED
 type: kubernetes.io/tls
 data:
   tls.crt: REDACTED

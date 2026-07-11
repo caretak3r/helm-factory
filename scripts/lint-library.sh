@@ -61,10 +61,14 @@ expected_kinds() {
 }
 
 # Strip content that is nondeterministic under `helm template`: tlsSelfSigned
-# generates a fresh throwaway cert on every offline render (its Secret lookup
-# is empty without a cluster), so the tls Secret data lines are redacted.
+# generates a fresh throwaway cert (and a freshly computed not-after
+# timestamp) on every offline render (its Secret lookup is empty without a
+# cluster), so the tls Secret data lines and the platform/tls-not-after
+# annotation are redacted.
 normalize_render() {
-  sed -E 's/^(  (tls\.crt|tls\.key|ca\.crt): ).*/\1REDACTED/'
+  sed -E \
+    -e 's/^(  (tls\.crt|tls\.key|ca\.crt): ).*/\1REDACTED/' \
+    -e 's#^(    platform/tls-not-after: ).*#\1REDACTED#'
 }
 
 echo "==> helm lint $LIB"

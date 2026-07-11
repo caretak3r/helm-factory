@@ -313,7 +313,9 @@ exports:
     # -----------------------------------------------------------------------------
     # Generates a self-signed CA + certificate into the Secret <fullname>-tls.
     # On install/upgrade against a real cluster the existing Secret is looked up
-    # and reused, so the CA/key are stable across upgrades; under
+    # and reused, so the CA/key are stable across upgrades, UNLESS the cert is
+    # within renewBeforeDays of its recorded expiry (annotation
+    # platform/tls-not-after), in which case it is regenerated; under
     # `helm template` / client-side --dry-run the lookup is empty and a fresh
     # throwaway cert is generated on every render. Do NOT use in production —
     # use the cert-manager `certificate` block above instead.
@@ -322,6 +324,7 @@ exports:
       commonName: ""
       dnsNames: []
       validityDays: 365
+      renewBeforeDays: 30
 
     # -----------------------------------------------------------------------------
     # Jobs (Helm Hooks)

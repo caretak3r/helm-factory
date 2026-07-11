@@ -639,10 +639,22 @@ certificate:
 Generates a self-signed CA and certificate into the Secret `<fullname>-tls`.
 On `helm install`/`helm upgrade` against a real cluster the chart **looks up the
 existing Secret and reuses its `tls.crt`/`tls.key`/`ca.crt`**, so the CA and key
-are stable across upgrades. Under `helm template` or client-side `--dry-run`
-Helm's `lookup` returns nothing, so a fresh throwaway certificate is generated
-on every render — fine for dev/CI, and another reason not to rely on this in
-production. To force rotation, delete the Secret and upgrade.
+are stable across upgrades — *unless* the cert is within `renewBeforeDays` of
+its recorded expiry, in which case a fresh cert is generated instead. Under
+`helm template` or client-side `--dry-run` Helm's `lookup` returns nothing, so
+a fresh throwaway certificate is generated on every render — fine for dev/CI,
+and another reason not to rely on this in production. To force rotation
+immediately regardless of expiry, delete the Secret and upgrade.
+
+Expiry is tracked with the annotation `platform/tls-not-after` (RFC3339),
+stamped on the Secret when the cert is (re)generated — Helm/sprig cannot parse
+the NotAfter field out of the generated x509 bytes, so the chart computes and
+records it separately (`validityDays` from generation time) instead. A Secret
+reused across an upgrade carries its `platform/tls-not-after` value forward
+unchanged. A **legacy Secret with no `platform/tls-not-after` annotation**
+(created before this rotation support existed) is treated as expired and
+regenerated once; after that it has the annotation and participates in the
+normal renewal check.
 
 ```yaml
 tlsSelfSigned:
@@ -651,7 +663,8 @@ tlsSelfSigned:
   dnsNames:
     - my-service.default.svc
     - my-service.default.svc.cluster.local
-  validityDays: 365   # only applies when the cert is (re)generated
+  validityDays: 365      # only applies when the cert is (re)generated
+  renewBeforeDays: 30    # regenerate instead of reusing once within this many days of expiry
 ```
 
 ### Network Policy

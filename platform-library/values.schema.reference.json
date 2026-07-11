@@ -82,6 +82,17 @@
       "if": { "properties": { "enabled": { "const": true } }, "required": ["enabled"] },
       "then": { "required": ["issuer"], "properties": { "issuer": { "minLength": 1 } } }
     },
+    "tlsSelfSigned": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "commonName": { "type": "string" },
+        "dnsNames": { "type": "array", "items": { "type": "string" } },
+        "validityDays": { "type": "integer", "minimum": 1, "description": "Certificate lifetime in days, applied when the cert is (re)generated." },
+        "renewBeforeDays": { "type": "integer", "minimum": 0, "description": "Regenerate the self-signed cert when within this many days of its recorded expiry (platform/tls-not-after annotation) instead of reusing the looked-up Secret. A legacy Secret without that annotation regenerates once, acquiring rotation metadata." }
+      }
+    },
     "mtls": {
       "type": "object",
       "additionalProperties": true,
