@@ -17,6 +17,10 @@
 {{- include "platform.emit" (include "platform.secret" .) }}
 {{- end }}
 
+{{- if and .Values.certificate.enabled .Values.tlsSelfSigned.enabled -}}
+{{- fail (printf "certificate.enabled and tlsSelfSigned.enabled are both true: both target the Secret %q (certificate.secretName defaults to it), so enabling both collides. Set only one to true — certificate.enabled for cert-manager-issued certificates in production, tlsSelfSigned.enabled for local dev/CI self-signed convenience." (printf "%s-tls" (include "platform.fullname" .))) -}}
+{{- end }}
+
 {{- if and .Values.certificate.enabled (include "platform.capabilities.apiVersionFor" (list . "Certificate")) }}
 {{- include "platform.emit" (include "platform.certificate" .) }}
 {{- end }}

@@ -397,5 +397,16 @@ else
   echo "  FAIL: helm template failed for stateful fixture"; echo "$out" | tail -5; fail=1
 fi
 
+echo "==> TLS mechanism collision"
+# certificate + tlsSelfSigned both target the <fullname>-tls Secret and collide.
+# (full fixture already has certificate.enabled=true.)
+if out=$("$RENDER" full --set tlsSelfSigned.enabled=true 2>&1); then
+  echo "  FAIL: render succeeded with certificate.enabled and tlsSelfSigned.enabled both true"; fail=1
+elif grep -q "certificate.enabled and tlsSelfSigned.enabled are both true" <<<"$out"; then
+  echo "  OK: certificate + tlsSelfSigned collision rejected"
+else
+  echo "  FAIL: certificate/tlsSelfSigned collision failed without the expected message"; echo "$out" | tail -3; fail=1
+fi
+
 if [[ $fail -eq 0 ]]; then echo "==> PASS"; else echo "==> FAIL"; fi
 exit $fail

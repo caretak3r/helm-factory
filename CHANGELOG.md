@@ -122,6 +122,9 @@ The v2 rewrite. Everything below ships together as **2.0.0**.
   403s that survived retries. Schemas are now vendored into `tests/schemas/`
   and `scripts/lint-library.sh` makes zero network requests; the retry/backoff
   loop that papered over the CDN flakiness has been removed.
+- `certificate.enabled` and `tlsSelfSigned.enabled` fail closed when both are
+  `true` (previously both silently targeted the same Secret `<fullname>-tls`
+  and collided).
 
 ### Removed
 

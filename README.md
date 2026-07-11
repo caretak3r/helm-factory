@@ -632,7 +632,9 @@ certificate:
 ### TLS (Self-Signed) — dev only
 
 > **Dev-only.** For production TLS use the [cert-manager `certificate` block](#certificates-cert-manager),
-> which handles issuance, renewal, and rotation properly.
+> which handles issuance, renewal, and rotation properly. `certificate.enabled` and
+> `tlsSelfSigned.enabled` cannot both be `true` — both target the Secret `<fullname>-tls`
+> and the render fails closed naming the collision; pick one mechanism.
 
 Generates a self-signed CA and certificate into the Secret `<fullname>-tls`.
 On `helm install`/`helm upgrade` against a real cluster the chart **looks up the
