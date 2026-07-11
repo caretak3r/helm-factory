@@ -2,8 +2,8 @@
 
 The library has no unit tests; its regression oracle is two committed expectations in [[lint-library-gate]]:
 
-1. **Object counts**: `expected_kinds()` (`scripts/lint-library.sh:41-49`) asserts each fixture's `^kind:` line count across the whole k8s matrix (minimal 3, full 24, stateful 6, daemon 3).
-2. **Golden snapshots**: `tests/golden/*.yaml`, a full normalized render of each fixture at canonical k8s 1.31, diffed byte-for-byte. `normalize_render` (`:54-56`) redacts tlsSelfSigned cert data, the only nondeterministic content (offline renders mint a fresh cert every time because `lookup` is empty under `helm template`).
+1. **Object counts**: `expected_kinds()` (`scripts/lint-library.sh:52-60`) asserts each fixture's `^kind:` line count across the whole k8s matrix (minimal 3, full 24, stateful 6, daemon 3).
+2. **Golden snapshots**: `tests/golden/*.yaml`, a full normalized render of each fixture at canonical k8s 1.34, diffed byte-for-byte. `normalize_render` (`:54-56`) redacts tlsSelfSigned cert data, the only nondeterministic content (offline renders mint a fresh cert every time because `lookup` is empty under `helm template`).
 
 The oracle's value is that it changes **only when a render change is intended**. Discipline:
 - Goldens are never hand-edited; only `UPDATE_GOLDEN=1 scripts/lint-library.sh` regenerates them (`:136-139`), followed by a hunk-by-hunk review of `git diff tests/golden/` — the diff is a review artifact, not noise.

@@ -2,10 +2,10 @@
 
 The load-bearing distinction of the v2 rework. Two negotiation modes in [[capabilities-registry]]:
 
-- **`apiVersionFor`** (strict, `_capabilities.tpl:165-173`): returns `""` when no listed API is served → the object is **skipped**. Contract: a rendered chart never conflicts on deploy. Used for CRD-backed / optional Kinds.
-- **`apiVersionForOrDefault`** (`_capabilities.tpl:184-195`): falls back to the first registry preference → **never empty**. Contract: a bare `helm template` (minimal offline discovery set) never drops a core workload. Used for built-in Kinds.
+- **`apiVersionFor`** (strict, `_capabilities.tpl:183-191`): returns `""` when no listed API is served → the object is **skipped**. Contract: a rendered chart never conflicts on deploy. Used for CRD-backed / optional Kinds.
+- **`apiVersionForOrDefault`** (`_capabilities.tpl:202-213`): falls back to the first registry preference → **never empty**. Contract: a bare `helm template` (minimal offline discovery set) never drops a core workload. Used for built-in Kinds.
 
-The selector is `isStable` (`:204-215`): Kind's first-preference group ∈ hardcoded built-in group list → OrDefault, else strict. `platform.genericResource` applies exactly this rule automatically for extraObjects (`_util.tpl:52-56`).
+The selector is `isStable` (`:222-233`): Kind's first-preference group ∈ hardcoded built-in group list → OrDefault, else strict. `platform.genericResource` applies exactly this rule automatically for extraObjects (`_util.tpl:52-56`).
 
 No exceptions exist in the codebase. Both inversions are bugs:
 - CRD on OrDefault → renders objects that fail admission on clusters without the CRD.

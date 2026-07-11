@@ -9,7 +9,7 @@ description: Use when a consumer chart needs a Kubernetes object the library has
 Escalate through the tiers in order: tier-1 opinionated block if one exists → `extraObjects` (negotiated, labelled, gated) → `extraManifests` (raw, verbatim) only when extraObjects cannot express it. Never reach for extraManifests first — it bypasses apiVersion negotiation, label stamping, and the cluster-scope gate.
 
 ## Steps
-1. Check the registry (`_capabilities.tpl:68-158`) covers the Kind. Registered Kinds get automatic apiVersion negotiation; an unregistered Kind renders only if the spec carries an explicit `apiVersion`, and gets no negotiation.
+1. Check the registry (`_capabilities.tpl:76-176`) covers the Kind. Registered Kinds get automatic apiVersion negotiation; an unregistered Kind renders only if the spec carries an explicit `apiVersion`, and gets no negotiation.
 2. Write the spec under `.Values.extraObjects` — a map of `Kind -> [specs]`:
    ```yaml
    extraObjects:
@@ -22,7 +22,7 @@ Escalate through the tiers in order: tier-1 opinionated block if one exists → 
    ```
    Reserved keys handled by the renderer: `name`, `namespace`, `labels`, `annotations`, `apiVersion`, `kind`, `clusterScoped`, `metadata`. Every other top-level key passes through verbatim (`_util.tpl:76`), so rules/subjects/roleRef/spec/data/webhooks all work.
 3. Gate mode is automatic (`_util.tpl:52-56`): built-in group Kinds (per `isStable`) negotiate with OrDefault fallback — always render; CRD-family Kinds are strict — silently skipped offline unless the group is force-assumed in `capabilities.apiVersions`.
-4. Cluster-scoped Kinds (the set at `_capabilities.tpl:221-223`, or `clusterScoped: true` on the spec) `fail` the render unless the consumer sets `allowClusterScopedExtras: true` (`_util.tpl:98-99`). Namespace is stamped only on namespaced Kinds.
+4. Cluster-scoped Kinds (the set at `_capabilities.tpl:239-241`, or `clusterScoped: true` on the spec) `fail` the render unless the consumer sets `allowClusterScopedExtras: true` (`_util.tpl:98-99`). Namespace is stamped only on namespaced Kinds.
 5. `extraManifests` (`_util.tpl:115-125`) is the last resort: a list of full manifests. Map entries emit via `toYaml`; **string entries run through `tpl` with the full root context** — values are code. Arbitrary template execution lives here; treat consumer values files as trusted input only, and prefer map form.
 6. Render and inspect the emitted object: negotiated apiVersion, standard labels, namespace presence/absence.
 
@@ -35,7 +35,7 @@ REQUIRE_KUBECONFORM=1 REQUIRE_CHECK_JSONSCHEMA=1 scripts/lint-library.sh   # if 
 ```
 
 ## Quality bar
-(1) The consumer renders clean across k8s 1.31-1.36 with the object present (or intentionally skipped offline, stated); (2) the cluster-scope gate and hazard NOTES (hostPath/privileged/cluster-RBAC warnings in `_notes.tpl`) stay intact — enabling `allowClusterScopedExtras` is a consumer decision with stated justification; (3) no ad-hoc keys invented — unknown spec keys pass through to the manifest, so a typoed key becomes an invalid object kubeconform must catch.
+(1) The consumer renders clean across k8s 1.34-1.36 with the object present (or intentionally skipped offline, stated); (2) the cluster-scope gate and hazard NOTES (hostPath/privileged/cluster-RBAC warnings in `_notes.tpl`) stay intact — enabling `allowClusterScopedExtras` is a consumer decision with stated justification; (3) no ad-hoc keys invented — unknown spec keys pass through to the manifest, so a typoed key becomes an invalid object kubeconform must catch.
 
 ## Verification checklist
 - [ ] Object appears in render with correct apiVersion, `platform.labels`, and namespace handling

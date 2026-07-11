@@ -1,6 +1,6 @@
 # Entity: platform-library chart
 
-The repo's single artifact: a pure Helm **library** chart at `platform-library/`. Chart **name is `platform`** (not the directory name), `type: library`, `version: 2.0.0`, `kubeVersion: ">=1.31.0-0 <1.37.0-0"` (`platform-library/Chart.yaml:2-10`).
+The repo's single artifact: a pure Helm **library** chart at `platform-library/`. Chart **name is `platform`** (not the directory name), `type: library`, `version: 2.0.0`, `kubeVersion: ">=1.34.0-0 <1.37.0-0"` (`platform-library/Chart.yaml:2-10`).
 
 Every template file is `_`-prefixed (`define` blocks only), so the chart renders nothing on its own — `helm lint platform-library/` passes even when generators are broken. Evidence only comes from consumer renders; see [[lint-library-gate]] and [[golden-count-oracle]].
 

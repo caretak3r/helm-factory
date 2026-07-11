@@ -7,7 +7,7 @@ Under `helm template` / `helm lint` (no cluster), `.Capabilities.APIVersions` is
 - Offline, strict-gated CRD Kinds (Certificate, HTTPRoute, GRPCRoute, PeerAuthentication, AuthorizationPolicy, ServiceMonitor, PodMonitor) silently vanish.
 - Offline, OrDefault-gated built-ins render with the registry's first preference regardless of discovery.
 
-The bridge for offline/CI rendering is **force-assume**: list served APIs under `.Values.capabilities.apiVersions` (entries match `group/version` or `group/version/Kind`, `_capabilities.tpl:27-42`) or pass `--api-versions` to helm. The full fixture does exactly this (`tests/fixtures/full/values.yaml:75-80`). Caveat (render-verified 2026-07-10): the CLI flag satisfies the gate only in the full `group/version/Kind` form — `has` checks `.Capabilities.APIVersions.Has` with the full gvk string, and only the *values* list gets the bare `group/version` match.
+The bridge for offline/CI rendering is **force-assume**: list served APIs under `.Values.capabilities.apiVersions` (entries match `group/version` or `group/version/Kind`, `_capabilities.tpl:27-45`) or pass `--api-versions` to helm. The full fixture does exactly this (`tests/fixtures/full/values.yaml:75-80`). Caveat (render-verified 2026-07-10): the CLI flag satisfies the gate only in the full `group/version/Kind` form — `has` checks `.Capabilities.APIVersions.Has` with the full gvk string, and only the *values* list gets the bare `group/version` match.
 
 Executor rules derived from this:
 - A "missing" CRD object offline is not a bug; the fix is force-assume, never gate removal.

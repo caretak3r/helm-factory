@@ -13,7 +13,7 @@ Reproduce before you guess. Run the exact failing command yourself and read the 
 2. Classify the failure:
    - **Class A — intentional `fail` guardrail.** Error text names a values path and states the fix (e.g. "image.tag and image.digest are both empty", "mtls.allowedPrincipals is empty", `cluster-scoped Kind "<Kind>"`, "mutually exclusive", "Script file not found"). The message IS the fix — change the consumer values it names. Never weaken the guardrail. Sources: `_helpers.tpl:68`, `_helpers.tpl:640`, `_mtls.yaml:8`, `_util.tpl:99`, `_secret.yaml:3`, `_configmap-script.yaml:41`.
    - **Class B — helm-side schema rejection.** Error cites a JSON-pointer path like `workload/type` or `image/tag`. The consumer's values violate `values.schema.json` (enums are exact-case: `Deployment|StatefulSet|DaemonSet`; `tag: latest` is rejected). Fix the values; if the schema itself is wrong, that's a values-contract-change.
-   - **Class C — object silently missing, no error.** Almost always a capability skip: CRD-backed Kinds (Certificate, HTTPRoute, GRPCRoute, PeerAuthentication, AuthorizationPolicy, ServiceMonitor, PodMonitor) vanish by design under `helm template` without force-assume. Fix: add the group to `capabilities.apiVersions` in values (matches `group/version` or `group/version/Kind`); the CLI equivalent `--api-versions` only works in the full `group/version/Kind` form (a bare `group/version` flag still skips, silently). NOT a bug; never remove the gate or switch it to OrDefault. Other causes, in order: `.enabled` false after coalescing; missing `import-values: [defaults]` (everything empty); missing registry entry (`_capabilities.tpl:68-158`) making `apiVersionFor` return "".
+   - **Class C — object silently missing, no error.** Almost always a capability skip: CRD-backed Kinds (Certificate, HTTPRoute, GRPCRoute, PeerAuthentication, AuthorizationPolicy, ServiceMonitor, PodMonitor) vanish by design under `helm template` without force-assume. Fix: add the group to `capabilities.apiVersions` in values (matches `group/version` or `group/version/Kind`); the CLI equivalent `--api-versions` only works in the full `group/version/Kind` form (a bare `group/version` flag still skips, silently). NOT a bug; never remove the gate or switch it to OrDefault. Other causes, in order: `.enabled` false after coalescing; missing `import-values: [defaults]` (everything empty); missing registry entry (`_capabilities.tpl:76-176`) making `apiVersionFor` return "".
    - **Class D — template/whitespace/YAML error.** Cryptic parse errors. Check, in order: malformed YAML inside the registry define (breaks every render, error far from the edit); missing `platform.emit` wrapper (docs merged together); wrong `nindent` depth; missing `{{- -}}` chomps; a helper emitting `{}` when gated out (`fromYaml ""` → `{}`; gate must sit outside `platform.util.merge` — `_util.tpl:28-29`).
 3. Make ONE change, re-run the same command, compare. Repeat.
 4. If you changed library templates, finish with the full gate (validate-factory).
@@ -23,13 +23,13 @@ Reproduce before you guess. Run the exact failing command yourself and read the 
 tests/render.sh <fixture> 2>&1 | tail -20                     # reproduce
 tests/render.sh full | grep '^kind:'                          # what actually rendered (expect 24)
 tests/render.sh full --set capabilities.apiVersions=null      # prove CRD kinds drop (Class C check)
-tests/render.sh <fixture> --kube-version 1.31 --api-versions cert-manager.io/v1/Certificate   # force one API (CLI needs full group/version/Kind)
+tests/render.sh <fixture> --kube-version 1.34 --api-versions cert-manager.io/v1/Certificate   # force one API (CLI needs full group/version/Kind)
 helm template t tests/fixtures/<fixture> --debug 2>&1 | tail -30   # after render.sh has built charts/; shows partial render
 REQUIRE_KUBECONFORM=1 REQUIRE_CHECK_JSONSCHEMA=1 scripts/lint-library.sh   # if library templates changed
 ```
 
 ## Quality bar
-(1) The fix keeps all four fixtures rendering across k8s 1.31-1.36 (gate `==> PASS`); (2) no guardrail, schema constraint, or capability gate was weakened to make the error go away — the error is usually correct behavior pointed at wrong input; (3) no values key renamed as a "fix".
+(1) The fix keeps all four fixtures rendering across k8s 1.34-1.36 (gate `==> PASS`); (2) no guardrail, schema constraint, or capability gate was weakened to make the error go away — the error is usually correct behavior pointed at wrong input; (3) no values key renamed as a "fix".
 
 ## Verification checklist
 - [ ] Failure reproduced verbatim before any edit; class (A/B/C/D) stated

@@ -2,7 +2,7 @@
 
 Scaffolds a complete consumer chart wired to the library. Usage: `scripts/new-app-chart.sh <name> [--dir <path>] [--repo <url>] [--version <range>] [--app-version <v>]`. Defaults: `repo=file://../platform-library`, `version=">=2.0.0-0"` (`scripts/new-app-chart.sh:28-33`).
 
-Generates the four-piece consumer anatomy ([[exports-defaults-import-mechanics]]): Chart.yaml with the `platform` dependency + `import-values: [defaults]`, `templates/app.yaml` (`{{ include "platform.render" . }}`), overrides-only values.yaml, and a copy of the reference schema as `values.schema.json` — plus NOTES.txt and .helmignore. Stamps `kubeVersion: ">=1.31.0-0 <1.37.0-0"` into the new chart (heredoc at `:81`) — part of the version-bump touch list.
+Generates the four-piece consumer anatomy ([[exports-defaults-import-mechanics]]): Chart.yaml with the `platform` dependency + `import-values: [defaults]`, `templates/app.yaml` (`{{ include "platform.render" . }}`), overrides-only values.yaml, and a copy of the reference schema as `values.schema.json` — plus NOTES.txt and .helmignore. Stamps `kubeVersion: ">=1.34.0-0 <1.37.0-0"` into the new chart (heredoc at `:81`) — part of the version-bump touch list.
 
 Injection-hardened: chart name must match RFC 1123 (`:49-50`); repo/version/app-version charsets are restricted so crafted arguments cannot inject YAML structure (`:58-63`).
 

@@ -26,7 +26,7 @@ REQUIRE_KUBECONFORM=1 REQUIRE_CHECK_JSONSCHEMA=1 scripts/lint-library.sh   # pas
 ```
 
 ## Quality bar
-(1) Gate passes across the 1.31-1.36 matrix including the helm-side schema-rejection legs; (2) no new key weakens a hardening default and no schema constraint is loosened (the `latest` rejection, enum exact-casing, and pin requirements are guardrails, not suggestions); (3) contract stability: additive-only unless a major bump is explicitly on the table.
+(1) Gate passes across the 1.34-1.36 matrix including the helm-side schema-rejection legs; (2) no new key weakens a hardening default and no schema constraint is loosened (the `latest` rejection, enum exact-casing, and pin requirements are guardrails, not suggestions); (3) contract stability: additive-only unless a major bump is explicitly on the table.
 
 ## Verification checklist
 - [ ] Default lives under `exports.defaults`, not top-level values.yaml

@@ -27,7 +27,7 @@ REQUIRE_KUBECONFORM=1 REQUIRE_CHECK_JSONSCHEMA=1 scripts/lint-library.sh   # pas
 ```
 
 ## Quality bar
-(1) All fixtures render byte-identical to goldens across 1.31-1.36 unless the change is intended; (2) no `fail` guardrail softened, no securityContext rendering path altered; (3) helper signatures are public API for advanced consumers — changing an existing define's arguments or output shape is a contract change.
+(1) All fixtures render byte-identical to goldens across 1.34-1.36 unless the change is intended; (2) no `fail` guardrail softened, no securityContext rendering path altered; (3) helper signatures are public API for advanced consumers — changing an existing define's arguments or output shape is a contract change.
 
 ## Verification checklist
 - [ ] New generator has exactly one `define`, no leading `---`, wrapped in `platform.emit` at its `_app.yaml` call site
