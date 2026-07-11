@@ -83,3 +83,22 @@ _Add a brief overview of your project architecture_
 ## Conventions & Patterns
 
 _Add your project-specific conventions here_
+
+## Operating rule
+
+Before starting work, inspect relevant project skills in `.claude/skills/`.
+- Use `validate-factory` for any library/fixture/script change, or to decide whether work is done
+- Use `add-library-kind` when adding a resource type/feature block to the library
+- Use `author-consumer-chart` when creating or modifying a chart that consumes `platform`
+- Use `debug-render-failure` when a render fails or an object is missing from output
+- Use `capability-gates` when touching `_capabilities.tpl` or apiVersion negotiation
+- Use `template-house-style` when editing any `_*.yaml`/`_*.tpl` template
+- Use `values-contract-change` for consumer-facing values or schema changes
+- Use `security-posture-invariants` for anything touching hardening or guardrails
+- Use `extra-objects-runbook` when a consumer needs a Kind the library doesn't model
+- Use `k8s-version-bump` for K8s range changes or apiVersion deprecations
+- Use `release-platform-library` when cutting or publishing a release
+
+Do not load unrelated skills. Do not rewrite large files unless the task requires it.
+Every completion must include the verification command actually run.
+For complex work, read `.claude/operating/fable-to-opus.md` first. For simple work, do not load it.
