@@ -47,7 +47,7 @@ In merge-bar order: (1) the gate passes across the full k8s 1.31–1.36 matrix; 
 - Declaring victory after `helm lint` (§ First rule).
 - Treating a golden diff as noise and accepting it wholesale — the goldens and counts are the regression oracle.
 - Misreading `--set foo=null` in the gate's negative legs (`lint-library.sh:166,223`): it *deletes* the key from coalesced values, it does not set a literal null.
-- Overstating matrix coverage: kubeconform validates the single canonical 1.31 render against each matrix version, not per-version renders (known gap, beads issue helm-factory-uaw).
+- Assuming kubeconform checks a single canonical render: since helm-factory-uaw was fixed (2026-07-11), each matrix version validates its OWN render inside the render loop — a kubeconform failure at k8s X.Y points at that version's render specifically.
 - Running the gate but not reading past the first FAIL — later legs often localize the real cause.
 
 ## Done means

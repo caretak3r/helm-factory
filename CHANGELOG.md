@@ -109,6 +109,9 @@ The v2 rewrite. Everything below ships together as **2.0.0**.
   `ImplementationSpecific`).
 - `full` fixture `mtls.mode` → `mtls.policy` typo.
 - `tests/render.sh` no longer swallows `helm dependency update` errors.
+- `scripts/lint-library.sh` kubeconform legs validate each matrix version's own
+  render (previously the canonical 1.31 render was re-validated against every
+  version's schemas, under-validating version-specific negotiation).
 - Hook script ConfigMaps fail with an actionable message when the referenced
   script file is missing (previously silently skipped).
 - Recurring kubeconform CI flake: schema validation fetched schemas from the

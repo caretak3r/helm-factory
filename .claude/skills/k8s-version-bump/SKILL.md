@@ -16,7 +16,7 @@ The supported range is declared in multiple places that MUST move together; grep
    - `scripts/new-app-chart.sh:81` — the scaffold heredoc stamps the same `kubeVersion` into new consumers. Fixture Chart.yamls do NOT carry kubeVersion — nothing to touch there.
    - Docs claiming the range: `README.md:12`, `docs/specs/platform-library-v2-architecture.md:21,341,363`, `CORE.md:157` (golden version comment), CHANGELOG entry.
 2. For each newly supported version, check K8s deprecations/removals against the registry (`_capabilities.tpl:68-158`): if an apiVersion is removed in the new version, ensure a newer preference is listed FIRST (it is also the OrDefault offline fallback) and keep the old one later in the chain for older clusters. Reordering preferences changes goldens — intentional, review the diff.
-3. Run the matrix. kubeconform downloads new `-kubernetes-version X.Y.0` schemas on first run (network); a missing upstream schema for a brand-new K8s version is an upstream lag issue — report it, don't hack around it. Note the known gap: kubeconform validates the single canonical golden-version render against each matrix version, not per-version renders (beads helm-factory-uaw) — an apiVersion that only appears at newer `--kube-version` values is under-validated; check those renders by eye.
+3. Run the matrix. kubeconform downloads new `-kubernetes-version X.Y.0` schemas on first run (network); a missing upstream schema for a brand-new K8s version is an upstream lag issue — report it, don't hack around it. Since helm-factory-uaw was fixed (2026-07-11), kubeconform validates each matrix version's own render inside the render loop, so version-specific apiVersion negotiation IS schema-validated per version.
 4. If the floor moved: consider whether `GOLDEN_KUBE_VERSION` and the `isStable` assumptions ("always present on a real cluster >=1.31", `_capabilities.tpl:199`) need their comments updated.
 5. Version/CHANGELOG: widening the supported range is at least a minor bump; RAISING the floor drops supported clusters — treat as breaking, major bump.
 6. Full gate; review any golden diffs (negotiated apiVersions may have shifted).
@@ -49,7 +49,7 @@ REQUIRE_KUBECONFORM=1 REQUIRE_CHECK_JSONSCHEMA=1 scripts/lint-library.sh   # ful
 ## Common mistakes
 - Editing only `KUBE_VERSIONS` — the chart's `kubeVersion` constraint still blocks install on the new version.
 - Forgetting the scaffold heredoc — new consumers get stamped with the stale constraint.
-- Assuming green kubeconform means per-version render validation — it validates the canonical render against each version's schemas (known gap).
+- Assuming the kubeconform gap still exists — since 2026-07-11 (helm-factory-uaw) each version's own render is validated; don't add redundant by-eye checks for that.
 - Accepting a golden diff full of apiVersion shifts without checking each one is the intended negotiation outcome.
 - Bumping docs to a range CI does not actually exercise.
 
