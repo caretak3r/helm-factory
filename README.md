@@ -937,7 +937,7 @@ capabilities:
     - security.istio.io/v1beta1
 ```
 
-Equivalently, pass `helm template --api-versions <group/version>` (and `--kube-version <x.y>` to set `.Capabilities.KubeVersion`). See [`docs/specs/platform-library-v2-architecture.md`](docs/specs/platform-library-v2-architecture.md) for the full Kind→apiVersion registry and negotiation rules.
+The CLI flag works too, but **only in the full `group/version/Kind` form**: `helm template --api-versions monitoring.coreos.com/v1/ServiceMonitor` (and `--kube-version <x.y>` to set `.Capabilities.KubeVersion`). A bare `--api-versions group/version` flag does **not** satisfy the gate — the library checks `.Capabilities.APIVersions.Has` with the full group/version/Kind string, so the object is still skipped, silently. Only the `capabilities.apiVersions` values list above accepts the bare `group/version` form. See [`docs/specs/platform-library-v2-architecture.md`](docs/specs/platform-library-v2-architecture.md) for the full Kind→apiVersion registry and negotiation rules.
 
 ## Architecture
 
