@@ -14,7 +14,7 @@ keywords:
   - common
   - platform
   - capability-gates
-home: https://github.com/rohit/helm-factory
+home: https://github.com/caretak3r/helm-factory
 maintainers:
   - name: Rohit Gudi
     email: caret4k3r@gmail.com
