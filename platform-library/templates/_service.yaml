@@ -50,9 +50,6 @@ spec:
   ports: {{- toYaml (index $servicePorts "value") | nindent 4 }}
   selector:
     {{- include "platform.selectorLabels" . | nindent 4 }}
-    {{- range $k, $v := .Values.commonLabels }}
-    {{ $k }}: {{ $v | quote }}
-    {{- end }}
 {{- end }}
 {{- end }}
 

@@ -11,10 +11,15 @@ spec:
   selector:
     matchLabels:
       {{- include "platform.selectorLabels" . | nindent 6 }}
-  {{- if .Values.podDisruptionBudget.minAvailable }}
-  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
-  {{- else if .Values.podDisruptionBudget.maxUnavailable }}
-  maxUnavailable: {{ .Values.podDisruptionBudget.maxUnavailable }}
+  {{- $min := .Values.podDisruptionBudget.minAvailable }}
+  {{- $max := .Values.podDisruptionBudget.maxUnavailable }}
+  {{- if and $min $max }}
+  {{- fail "podDisruptionBudget.minAvailable and podDisruptionBudget.maxUnavailable are mutually exclusive: the PodDisruptionBudget API accepts only one. Set exactly one, or neither to accept the default of minAvailable: 1." }}
+  {{- end }}
+  {{- if $max }}
+  maxUnavailable: {{ $max }}
+  {{- else }}
+  minAvailable: {{ $min | default 1 }}
   {{- end }}
 {{- end }}
 {{- end }}

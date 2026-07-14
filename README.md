@@ -756,15 +756,6 @@ podDisruptionBudget:
   # maxUnavailable: 1
 ```
 
-### Service Endpoints ConfigMap
-
-For umbrella charts — creates a ConfigMap containing all subchart service endpoints.
-
-```yaml
-serviceEndpoints:
-  enabled: true
-```
-
 ### Volumes
 
 Mount additional volumes beyond ConfigMap and PVC.

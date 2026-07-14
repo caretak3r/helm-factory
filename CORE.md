@@ -18,7 +18,7 @@
 - `platform.render` (in `_app.yaml`) is the single public entrypoint: `platform.app` (tier-1) + `platform.extraObjects` (tier-2 generic) + `platform.extraManifests` (raw)
 - `_app.yaml` is the tier-1 orchestrator — routes each object through `platform.emit` (adds the `---` separator) via `include`
 - `_capabilities.tpl` — the Kind→apiVersion registry and negotiation/gating helpers (`platform.capabilities.apiVersionFor`, `...has`, `...isClusterScoped`, …)
-- `_util.tpl` — `platform.emit`, `platform.util.merge`, the generic `platform.genericResource` renderer, and `platform.extraObjects`/`platform.extraManifests`
+- `_util.tpl` — `platform.emit`, the generic `platform.genericResource` renderer, and `platform.extraObjects`/`platform.extraManifests`
 - `_helpers.tpl` — naming/labels/image/podTemplate composition helpers
 - `_notes.tpl` — `platform.notes`, install-time security warnings for the consumer's `NOTES.txt`
 
@@ -44,7 +44,6 @@
 18. PodMonitor — `podMonitor.enabled` + capability gate
 19. CronJob — `cronJob.enabled`
 20. Pre-install Job, then post-install Job — `jobs.preInstall/postInstall.enabled`
-21. Service-endpoints ConfigMap — `serviceEndpoints.enabled`
 
 `platform.render` then appends `platform.extraObjects` (any Kind, capability-negotiated, cluster-scoped Kinds gated by `allowClusterScopedExtras`) and `platform.extraManifests` (raw maps or `tpl` strings).
 
@@ -62,11 +61,10 @@
 - `platform.autoscaling` — HPA definition
 - `platform.workload` — workload dispatcher on `workload.type`
 - `platform.deployment.rolloutAnnotations` — checksum annotations for config/secret-driven rollouts
-- `platform.service.endpoint`, `global.subchartEndpoint`, `global.enabledSubcharts`, `global.allEndpointsDynamic`, `global.allEndpoints`, `platform.serviceEndpoints.configmap` — service-endpoint helpers (single and umbrella charts)
 - `platform.renderHookJob` — pre/post-install hook Job renderer
 
 `_capabilities.tpl`: `platform.capabilities.has`, `.apiVersion`, `.registry`, `.apiVersionFor`, `.apiVersionForOrDefault`, `.isStable`, `.clusterScoped`, `.isClusterScoped`.
-`_util.tpl`: `platform.emit`, `platform.util.merge`, `platform.genericResource`, `platform.extraObjects`, `platform.extraManifests`.
+`_util.tpl`: `platform.emit`, `platform.genericResource`, `platform.extraObjects`, `platform.extraManifests`.
 `_notes.tpl`: `platform.notes`.
 
 ## Configuration Flow

@@ -68,7 +68,6 @@ gating (from the source):
 | 19 | CronJob | `cronJob.enabled` |
 | 20 | Pre-install hook Job | `jobs.preInstall.enabled` |
 | 21 | Post-install hook Job | `jobs.postInstall.enabled` |
-| 22 | serviceEndpoints ConfigMap | `serviceEndpoints.enabled` |
 
 Note the two-part gate on CRD-backed tier-1 objects (Certificate, mTLS, Gateway
 routes, ServiceMonitor, PodMonitor): the feature flag **and** a successful
@@ -265,19 +264,19 @@ Iterates `.Values.extraManifests` (a list). String entries are rendered through
 emitted with `toYaml`. The consumer supplies the full `apiVersion`/`kind` — this
 layer does **no** negotiation, labelling, or namespacing.
 
-## 5. The merge overlay and the "gate outside `fromYaml`" invariant
-
-`platform.util.merge (list $top "overridesTpl" "baseTpl")` is a bitnami-common
-style overlay: it `fromYaml`s an overrides template over a base template with
-`mergeOverwrite` and re-emits via `toYaml`. It is available for advanced
-consumers who want to override a base tier-1 template.
+## 5. The "gate outside `fromYaml`" invariant
 
 **Invariant — gate outside `fromYaml`:** capability/enable gating must happen in
-the *wrapper* **before** calling `platform.util.merge` (or before invoking a
-generator at all). `fromYaml ""` yields `{}`, which would serialize to a bogus
-empty document. The wrapper must decide "render or not" first; the merge helper
-assumes it is only ever called when a document is actually wanted. This is the
-same reasoning behind `platform.emit`'s non-empty guard.
+the *wrapper* **before** invoking a generator at all. `fromYaml ""` yields `{}`,
+which would serialize to a bogus empty document. The wrapper must decide "render
+or not" first; a generator assumes it is only ever called when a document is
+actually wanted. This is the same reasoning behind `platform.emit`'s non-empty
+guard.
+
+> A `platform.util.merge` overlay helper (bitnami-common style) previously lived
+> in `_util.tpl` and was described here as public API for advanced consumers. It
+> had no call sites anywhere in the library and was removed on 2026-07-12 (bead
+> `helm-factory-b01`). The invariant above outlived it.
 
 ## 6. Values contract (`exports.defaults` + `import-values: [defaults]`)
 
@@ -289,7 +288,7 @@ scope. The contract has three tiers:
   `ingress`, `gatewayApi`, `autoscaling`, `podDisruptionBudget`, `persistence`,
   `configMap`, `secret`, `certificate`, `mtls`, `tlsSelfSigned`, `jobs`,
   `cronJob`, `serviceAccount`, `serviceMonitor`, `podMonitor`, `networkPolicy`,
-  `serviceEndpoints`, `highAvailability`, security contexts, scheduling, labels,
+  `highAvailability`, security contexts, scheduling, labels,
   etc. Each has an `enabled` flag where applicable.
 - **Tier-2 — `extraObjects`:** a **map** of
   `Kind: [ {name, namespace?, labels?, annotations?, clusterScoped?, …passthrough} ]`.

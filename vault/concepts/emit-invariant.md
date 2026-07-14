@@ -8,7 +8,7 @@ Failure modes the invariant prevents:
 - Generator emits without the wrapper → its output **merges into the previous document** (invalid or, worse, silently wrong manifests).
 - Gated-out generator still emits a separator or `{}` → bogus empty documents.
 
-Related invariant: enable/capability gating must happen **outside** `platform.util.merge`/`fromYaml`, because `fromYaml ""` yields `{}` — documented in the source comment at `_util.tpl:28-29` (raw/util-emit-merge-source.md).
+Related invariant: enable/capability gating must happen **outside** any `fromYaml` round-trip, because `fromYaml ""` yields `{}`.
 
 Enforced by [[lint-library-gate]]'s negative render, which asserts no `^{}$` documents (`scripts/lint-library.sh:172-176`). Verified passing 2026-07-10.
 

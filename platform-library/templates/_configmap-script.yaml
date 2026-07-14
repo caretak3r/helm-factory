@@ -8,14 +8,13 @@ metadata:
   name: {{ include "platform.fullname" $root }}-{{ $job.type }}-script
   namespace: {{ $root.Release.Namespace }}
   labels:
-    {{- include "platform.labels" $root | nindent 4 }}
+    {{- include "platform.labelsFor" (dict "ctx" $root "component" (printf "job-%s-script" $job.type)) | nindent 4 }}
     {{- range $k, $v := $root.Values.commonLabels }}
     {{ $k }}: {{ $v | quote }}
     {{- end }}
     {{- with $root.Values.labels }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
-    app.kubernetes.io/component: job-{{ $job.type }}-script
 data:
   {{- if $job.script }}
   script.sh: |

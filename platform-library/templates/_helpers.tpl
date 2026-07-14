@@ -29,23 +29,51 @@ Create chart name and version as used by the chart label.
 {{- end }}
 
 {{/*
-Common labels
+Common labels for the main workload and everything that belongs to it.
 */}}
 {{- define "platform.labels" -}}
-helm.sh/chart: {{ include "platform.chart" . }}
-{{ include "platform.selectorLabels" . }}
-{{- if .Chart.AppVersion }}
-app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
-{{- end }}
-app.kubernetes.io/managed-by: {{ .Release.Service }}
+{{- include "platform.labelsFor" (dict "ctx" . "component" "app") -}}
 {{- end }}
 
 {{/*
-Selector labels
+Common labels for a named component. Takes (dict "ctx" $ "component" "<name>").
+CronJob and hook-Job objects use their own component so they are not mislabeled
+as part of the main workload.
+*/}}
+{{- define "platform.labelsFor" -}}
+{{- $ctx := .ctx -}}
+helm.sh/chart: {{ include "platform.chart" $ctx }}
+{{ include "platform.selectorLabelsFor" (dict "ctx" $ctx "component" .component) }}
+{{- if $ctx.Chart.AppVersion }}
+app.kubernetes.io/version: {{ $ctx.Chart.AppVersion | quote }}
+{{- end }}
+app.kubernetes.io/managed-by: {{ $ctx.Release.Service }}
+{{- end }}
+
+{{/*
+Selector labels for the main workload's pods.
+
+These land in immutable selectors (Deployment/StatefulSet/DaemonSet
+spec.selector.matchLabels) and in the Service/PDB/PodMonitor selectors, so they
+must be STABLE: never add a user-controlled value such as commonLabels here.
+Changing a selector orphans the running pods (and, on workloads, is rejected
+outright by the API server as an immutable-field update).
+
+app.kubernetes.io/component is what keeps the Service and the PDB from matching
+CronJob and hook-Job pods, which otherwise carry an identical name+instance pair.
 */}}
 {{- define "platform.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "platform.name" . }}
-app.kubernetes.io/instance: {{ .Release.Name }}
+{{- include "platform.selectorLabelsFor" (dict "ctx" . "component" "app") -}}
+{{- end }}
+
+{{/*
+Selector labels for a named component. Takes (dict "ctx" $ "component" "<name>").
+*/}}
+{{- define "platform.selectorLabelsFor" -}}
+{{- $ctx := .ctx -}}
+app.kubernetes.io/name: {{ include "platform.name" $ctx }}
+app.kubernetes.io/instance: {{ $ctx.Release.Name }}
+app.kubernetes.io/component: {{ .component }}
 {{- end }}
 
 {{/*
@@ -467,130 +495,6 @@ ConfigMaps or Secrets change.
 
 
 {{/*
-Get service endpoint for this service
-*/}}
-{{- define "platform.service.endpoint" -}}
-{{- $serviceName := include "platform.fullname" . }}
-{{- $primary := (include "platform.primaryServicePort" . | fromYaml) }}
-{{- $servicePort := $primary.port | default 80 }}
-{{- $namespace := .Release.Namespace | default "default" }}
-{{- printf "%s.%s.svc.cluster.local:%d" $serviceName $namespace $servicePort }}
-{{- end }}
-
-{{/*
-Get service endpoint for a specific subchart (for umbrella charts)
-*/}}
-{{- define "global.subchartEndpoint" -}}
-{{- $subchartName := .subchartName -}}
-{{- $rootContext := .rootContext -}}
-{{- if $subchartName -}}
-  {{- $subchartContext := index $rootContext.Values $subchartName -}}
-  {{- if $subchartContext -}}
-    {{- $subserviceName := $subchartName -}}
-    {{- if $subchartContext.service.name -}}
-      {{- $subserviceName = $subchartContext.service.name -}}
-    {{- end -}}
-    {{- $subservicePort := 80 -}}
-    {{- if and $subchartContext.service $subchartContext.service.ports }}
-      {{- $first := index $subchartContext.service.ports 0 -}}
-      {{- if $first.port }}
-        {{- $subservicePort = $first.port -}}
-      {{- end -}}
-    {{- end -}}
-    {{- $namespace := $rootContext.Release.Namespace | default "default" -}}
-    {{- if and $subchartContext.global $subchartContext.global.namespace }}
-      {{- $namespace = $subchartContext.global.namespace -}}
-    {{- end }}
-    {{- printf "%s.%s.svc.cluster.local:%d" $subserviceName $namespace $subservicePort -}}
-  {{- end -}}
-{{- end -}}
-{{- end }}
-
-{{/*
-Get all enabled subcharts dynamically
-*/}}
-{{- define "global.enabledSubcharts" -}}
-{{- $enabled := list -}}
-{{- range $chartName, $chartValues := .Values -}}
-  {{- if and (not (eq $chartName "global")) (not (eq $chartName "nameOverride")) (not (eq $chartName "common")) (kindIs "map" $chartValues) }}
-    {{- if or $chartValues.enabled (not (hasKey $chartValues "enabled")) }}
-      {{- $enabled = append $enabled $chartName -}}
-    {{- end -}}
-  {{- end -}}
-{{- end -}}
-{{- $enabled | join "," -}}
-{{- end }}
-
-{{/*
-Get all service endpoints dynamically
-*/}}
-{{- define "global.allEndpointsDynamic" -}}
-{{- $endpoints := dict -}}
-{{- range $chartName, $chartValues := .Values -}}
-  {{- if and (not (eq $chartName "global")) (not (eq $chartName "nameOverride")) (not (eq $chartName "common")) (kindIs "map" $chartValues) }}
-    {{- if or $chartValues.enabled (not (hasKey $chartValues "enabled")) }}
-      {{- $subserviceName := $chartName -}}
-      {{- if and $chartValues.service $chartValues.service.name -}}
-        {{- $subserviceName = $chartValues.service.name -}}
-      {{- end -}}
-      {{- $subservicePort := 80 -}}
-      {{- if and $chartValues.service $chartValues.service.ports }}
-        {{- $first := index $chartValues.service.ports 0 -}}
-        {{- if $first.port }}
-          {{- $subservicePort = $first.port -}}
-        {{- end -}}
-      {{- end -}}
-      {{- if $subservicePort -}}
-        {{- $namespace := $.Release.Namespace | default "default" -}}
-        {{- if and $chartValues.global $chartValues.global.namespace }}
-          {{- $namespace = $chartValues.global.namespace -}}
-        {{- end }}
-        {{- $endpoint := printf "%s.%s.svc.cluster.local:%d" $subserviceName $namespace $subservicePort -}}
-        {{- $endpoints = set $endpoints $subserviceName $endpoint -}}
-      {{- end -}}
-    {{- end -}}
-  {{- end -}}
-{{- end -}}
-{{- $endpoints | toYaml -}}
-{{- end }}
-
-{{/*
-All service endpoints as a dynamic single variable (backward compatibility)
-*/}}
-{{- define "global.allEndpoints" -}}
-{{- include "global.allEndpointsDynamic" . -}}
-{{- end }}
-
-{{/*
-Create ConfigMap with all service endpoints
-*/}}
-{{- define "platform.serviceEndpoints.configmap" -}}
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: {{ include "platform.fullname" . }}-service-endpoints
-  namespace: {{ .Release.Namespace | default "default" }}
-  labels:
-    {{- include "platform.labels" . | nindent 4 }}
-data:
-  # List of enabled subcharts
-  enabled-subcharts: |
-    {{- include "global.enabledSubcharts" . | nindent 4 }}
-
-  # Dynamically generate all enabled service endpoints
-  {{- $allEndpoints := include "global.allEndpointsDynamic" . | fromYaml }}
-  {{- range $service, $endpoint := $allEndpoints }}
-  {{- if $endpoint }}
-  {{ $service }}-endpoint: {{ $endpoint | quote }}
-  {{- end }}
-  {{- end }}
-
-  # All endpoints as structured data
-  service-endpoints.yaml: |
-    {{- include "global.allEndpointsDynamic" . | nindent 4 }}
-{{- end -}}
-
-{{/*
 Render hook jobs (pre/post install)
 */}}
 {{- define "platform.renderHookJob" -}}
@@ -715,7 +619,7 @@ metadata:
   name: {{ printf "%s-%s" (include "platform.fullname" $ctx) $type }}
   namespace: {{ $ctx.Release.Namespace }}
   labels:
-    {{- include "platform.labels" $ctx | nindent 4 }}
+    {{- include "platform.labelsFor" (dict "ctx" $ctx "component" $type) | nindent 4 }}
     {{- range $k, $v := $ctx.Values.commonLabels }}
     {{ $k }}: {{ $v | quote }}
     {{- end }}
@@ -731,7 +635,7 @@ spec:
   template:
     metadata:
       labels:
-        {{- include "platform.selectorLabels" $ctx | nindent 8 }}
+        {{- include "platform.selectorLabelsFor" (dict "ctx" $ctx "component" $type) | nindent 8 }}
     spec:
       restartPolicy: {{ $restartPolicy }}
       serviceAccountName: {{ include "platform.serviceAccountName" $ctx }}

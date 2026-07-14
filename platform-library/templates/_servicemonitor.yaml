@@ -23,9 +23,6 @@ spec:
     {{- else }}
     matchLabels:
       {{- include "platform.selectorLabels" . | nindent 6 }}
-      {{- range $k, $v := .Values.commonLabels }}
-      {{ $k }}: {{ $v | quote }}
-      {{- end }}
     {{- end }}
   namespaceSelector:
     {{- if .Values.serviceMonitor.namespaceSelector }}

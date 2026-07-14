@@ -8,6 +8,7 @@ metadata:
     helm.sh/chart: full-0.1.0
     app.kubernetes.io/name: full
     app.kubernetes.io/instance: t
+    app.kubernetes.io/component: app
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/managed-by: Helm
 description: High priority for the app
@@ -24,6 +25,7 @@ metadata:
     helm.sh/chart: full-0.1.0
     app.kubernetes.io/name: full
     app.kubernetes.io/instance: t
+    app.kubernetes.io/component: app
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/managed-by: Helm
 spec:
@@ -31,6 +33,7 @@ spec:
     matchLabels:
       app.kubernetes.io/name: full
       app.kubernetes.io/instance: t
+      app.kubernetes.io/component: app
   policyTypes:
     - Ingress
     - Egress
@@ -45,6 +48,7 @@ metadata:
     helm.sh/chart: full-0.1.0
     app.kubernetes.io/name: full
     app.kubernetes.io/instance: t
+    app.kubernetes.io/component: app
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/managed-by: Helm
 spec:
@@ -61,6 +65,7 @@ metadata:
     helm.sh/chart: full-0.1.0
     app.kubernetes.io/name: full
     app.kubernetes.io/instance: t
+    app.kubernetes.io/component: app
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/managed-by: Helm
 spec:
@@ -68,6 +73,7 @@ spec:
     matchLabels:
       app.kubernetes.io/name: full
       app.kubernetes.io/instance: t
+      app.kubernetes.io/component: app
   minAvailable: 1
 ---
 # Source: full/templates/app.yaml
@@ -80,6 +86,7 @@ metadata:
     helm.sh/chart: full-0.1.0
     app.kubernetes.io/name: full
     app.kubernetes.io/instance: t
+    app.kubernetes.io/component: app
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/managed-by: Helm
 automountServiceAccountToken: false
@@ -94,6 +101,7 @@ metadata:
     helm.sh/chart: full-0.1.0
     app.kubernetes.io/name: full
     app.kubernetes.io/instance: t
+    app.kubernetes.io/component: app
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/managed-by: Helm
 automountServiceAccountToken: false
@@ -108,9 +116,9 @@ metadata:
     helm.sh/chart: full-0.1.0
     app.kubernetes.io/name: full
     app.kubernetes.io/instance: t
+    app.kubernetes.io/component: job-preinstall-script
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/managed-by: Helm
-    app.kubernetes.io/component: job-preinstall-script
 data:
   script.sh: |
     #!/bin/sh
@@ -126,6 +134,7 @@ metadata:
     helm.sh/chart: full-0.1.0
     app.kubernetes.io/name: full
     app.kubernetes.io/instance: t
+    app.kubernetes.io/component: app
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/managed-by: Helm
 data:
@@ -149,6 +158,7 @@ metadata:
     helm.sh/chart: full-0.1.0
     app.kubernetes.io/name: full
     app.kubernetes.io/instance: t
+    app.kubernetes.io/component: app
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/managed-by: Helm
 rules:
@@ -170,6 +180,7 @@ metadata:
     helm.sh/chart: full-0.1.0
     app.kubernetes.io/name: full
     app.kubernetes.io/instance: t
+    app.kubernetes.io/component: app
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/managed-by: Helm
 rules:
@@ -193,6 +204,7 @@ metadata:
     helm.sh/chart: full-0.1.0
     app.kubernetes.io/name: full
     app.kubernetes.io/instance: t
+    app.kubernetes.io/component: app
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/managed-by: Helm
 roleRef:
@@ -213,6 +225,7 @@ metadata:
     helm.sh/chart: full-0.1.0
     app.kubernetes.io/name: full
     app.kubernetes.io/instance: t
+    app.kubernetes.io/component: app
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/managed-by: Helm
 spec:
@@ -226,6 +239,7 @@ spec:
   selector:
     app.kubernetes.io/name: full
     app.kubernetes.io/instance: t
+    app.kubernetes.io/component: app
 ---
 # Source: full/templates/app.yaml
 apiVersion: apps/v1
@@ -237,6 +251,7 @@ metadata:
     helm.sh/chart: full-0.1.0
     app.kubernetes.io/name: full
     app.kubernetes.io/instance: t
+    app.kubernetes.io/component: app
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/managed-by: Helm
 spec:
@@ -245,6 +260,7 @@ spec:
     matchLabels:
       app.kubernetes.io/name: full
       app.kubernetes.io/instance: t
+      app.kubernetes.io/component: app
   strategy:
     rollingUpdate:
       maxSurge: 25%
@@ -255,6 +271,7 @@ spec:
       labels:
         app.kubernetes.io/name: full
         app.kubernetes.io/instance: t
+        app.kubernetes.io/component: app
     spec:
       serviceAccountName: t-full
       automountServiceAccountToken: false
@@ -295,6 +312,7 @@ metadata:
     helm.sh/chart: full-0.1.0
     app.kubernetes.io/name: full
     app.kubernetes.io/instance: t
+    app.kubernetes.io/component: app
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/managed-by: Helm
 spec:
@@ -322,6 +340,7 @@ metadata:
     helm.sh/chart: full-0.1.0
     app.kubernetes.io/name: full
     app.kubernetes.io/instance: t
+    app.kubernetes.io/component: cronjob
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/managed-by: Helm
 spec:
@@ -338,6 +357,7 @@ spec:
           labels:
             app.kubernetes.io/name: full
             app.kubernetes.io/instance: t
+            app.kubernetes.io/component: cronjob
         spec:
           serviceAccountName: t-full
           automountServiceAccountToken: false
@@ -380,6 +400,7 @@ metadata:
     helm.sh/chart: full-0.1.0
     app.kubernetes.io/name: full
     app.kubernetes.io/instance: t
+    app.kubernetes.io/component: app
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/managed-by: Helm
 spec:
@@ -405,6 +426,7 @@ metadata:
     helm.sh/chart: full-0.1.0
     app.kubernetes.io/name: full
     app.kubernetes.io/instance: t
+    app.kubernetes.io/component: app
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/managed-by: Helm
 spec:
@@ -412,6 +434,7 @@ spec:
     matchLabels:
       app.kubernetes.io/name: full
       app.kubernetes.io/instance: t
+      app.kubernetes.io/component: app
   action: ALLOW
   rules:
   - from:
@@ -429,6 +452,7 @@ metadata:
     helm.sh/chart: full-0.1.0
     app.kubernetes.io/name: full
     app.kubernetes.io/instance: t
+    app.kubernetes.io/component: app
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/managed-by: Helm
 spec:
@@ -455,6 +479,7 @@ metadata:
     helm.sh/chart: full-0.1.0
     app.kubernetes.io/name: full
     app.kubernetes.io/instance: t
+    app.kubernetes.io/component: app
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/managed-by: Helm
 spec:
@@ -485,6 +510,7 @@ metadata:
     helm.sh/chart: full-0.1.0
     app.kubernetes.io/name: full
     app.kubernetes.io/instance: t
+    app.kubernetes.io/component: app
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/managed-by: Helm
 spec:
@@ -494,6 +520,7 @@ spec:
     matchLabels:
       app.kubernetes.io/name: full
       app.kubernetes.io/instance: t
+      app.kubernetes.io/component: app
 ---
 # Source: full/templates/app.yaml
 apiVersion: monitoring.coreos.com/v1
@@ -505,6 +532,7 @@ metadata:
     helm.sh/chart: full-0.1.0
     app.kubernetes.io/name: full
     app.kubernetes.io/instance: t
+    app.kubernetes.io/component: app
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/managed-by: Helm
 spec:
@@ -517,6 +545,7 @@ spec:
     matchLabels:
       app.kubernetes.io/name: full
       app.kubernetes.io/instance: t
+      app.kubernetes.io/component: app
   namespaceSelector:
     matchNames:
       - "default"
@@ -531,6 +560,7 @@ metadata:
     helm.sh/chart: full-0.1.0
     app.kubernetes.io/name: full
     app.kubernetes.io/instance: t
+    app.kubernetes.io/component: app
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/managed-by: Helm
 spec:
@@ -538,6 +568,7 @@ spec:
     matchLabels:
       app.kubernetes.io/name: full
       app.kubernetes.io/instance: t
+      app.kubernetes.io/component: app
   namespaceSelector:
     matchNames:
       - "default"
@@ -555,6 +586,7 @@ metadata:
     helm.sh/chart: full-0.1.0
     app.kubernetes.io/name: full
     app.kubernetes.io/instance: t
+    app.kubernetes.io/component: preinstall
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/managed-by: Helm
   annotations:
@@ -571,6 +603,7 @@ spec:
       labels:
         app.kubernetes.io/name: full
         app.kubernetes.io/instance: t
+        app.kubernetes.io/component: preinstall
     spec:
       restartPolicy: Never
       serviceAccountName: t-full
