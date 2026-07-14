@@ -109,6 +109,9 @@ The v2 rewrite. Everything below ships together as **2.0.0**.
   `ImplementationSpecific`).
 - `full` fixture `mtls.mode` → `mtls.policy` typo.
 - `tests/render.sh` no longer swallows `helm dependency update` errors.
+- `scripts/lint-library.sh` kubeconform legs validate each matrix version's own
+  render (previously the canonical 1.31 render was re-validated against every
+  version's schemas, under-validating version-specific negotiation).
 - Hook script ConfigMaps fail with an actionable message when the referenced
   script file is missing (previously silently skipped).
 - Recurring kubeconform CI flake: schema validation fetched schemas from the
@@ -116,6 +119,16 @@ The v2 rewrite. Everything below ships together as **2.0.0**.
   403s that survived retries. Schemas are now vendored into `tests/schemas/`
   and `scripts/lint-library.sh` makes zero network requests; the retry/backoff
   loop that papered over the CDN flakiness has been removed.
+- `certificate.enabled` and `tlsSelfSigned.enabled` fail closed when both are
+  `true` (previously both silently targeted the same Secret `<fullname>-tls`
+  and collided).
+- Self-signed TLS Secret reuse now rotates near expiry instead of reusing the
+  cert forever: generation stamps the annotation `platform/tls-not-after`
+  (RFC3339, since Helm/sprig cannot parse x509 NotAfter from the looked-up
+  cert), and reuse is skipped once within the new `tlsSelfSigned.renewBeforeDays`
+  (default `30`) of that recorded expiry. A legacy Secret with no
+  `platform/tls-not-after` annotation regenerates once, acquiring rotation
+  metadata for subsequent upgrades.
 
 ### Removed
 

@@ -632,15 +632,29 @@ certificate:
 ### TLS (Self-Signed) — dev only
 
 > **Dev-only.** For production TLS use the [cert-manager `certificate` block](#certificates-cert-manager),
-> which handles issuance, renewal, and rotation properly.
+> which handles issuance, renewal, and rotation properly. `certificate.enabled` and
+> `tlsSelfSigned.enabled` cannot both be `true` — both target the Secret `<fullname>-tls`
+> and the render fails closed naming the collision; pick one mechanism.
 
 Generates a self-signed CA and certificate into the Secret `<fullname>-tls`.
 On `helm install`/`helm upgrade` against a real cluster the chart **looks up the
 existing Secret and reuses its `tls.crt`/`tls.key`/`ca.crt`**, so the CA and key
-are stable across upgrades. Under `helm template` or client-side `--dry-run`
-Helm's `lookup` returns nothing, so a fresh throwaway certificate is generated
-on every render — fine for dev/CI, and another reason not to rely on this in
-production. To force rotation, delete the Secret and upgrade.
+are stable across upgrades — *unless* the cert is within `renewBeforeDays` of
+its recorded expiry, in which case a fresh cert is generated instead. Under
+`helm template` or client-side `--dry-run` Helm's `lookup` returns nothing, so
+a fresh throwaway certificate is generated on every render — fine for dev/CI,
+and another reason not to rely on this in production. To force rotation
+immediately regardless of expiry, delete the Secret and upgrade.
+
+Expiry is tracked with the annotation `platform/tls-not-after` (RFC3339),
+stamped on the Secret when the cert is (re)generated — Helm/sprig cannot parse
+the NotAfter field out of the generated x509 bytes, so the chart computes and
+records it separately (`validityDays` from generation time) instead. A Secret
+reused across an upgrade carries its `platform/tls-not-after` value forward
+unchanged. A **legacy Secret with no `platform/tls-not-after` annotation**
+(created before this rotation support existed) is treated as expired and
+regenerated once; after that it has the annotation and participates in the
+normal renewal check.
 
 ```yaml
 tlsSelfSigned:
@@ -649,7 +663,8 @@ tlsSelfSigned:
   dnsNames:
     - my-service.default.svc
     - my-service.default.svc.cluster.local
-  validityDays: 365   # only applies when the cert is (re)generated
+  validityDays: 365      # only applies when the cert is (re)generated
+  renewBeforeDays: 30    # regenerate instead of reusing once within this many days of expiry
 ```
 
 ### Network Policy
@@ -937,7 +952,7 @@ capabilities:
     - security.istio.io/v1beta1
 ```
 
-Equivalently, pass `helm template --api-versions <group/version>` (and `--kube-version <x.y>` to set `.Capabilities.KubeVersion`). See [`docs/specs/platform-library-v2-architecture.md`](docs/specs/platform-library-v2-architecture.md) for the full Kind→apiVersion registry and negotiation rules.
+The CLI flag works too, but **only in the full `group/version/Kind` form**: `helm template --api-versions monitoring.coreos.com/v1/ServiceMonitor` (and `--kube-version <x.y>` to set `.Capabilities.KubeVersion`). A bare `--api-versions group/version` flag does **not** satisfy the gate — the library checks `.Capabilities.APIVersions.Has` with the full group/version/Kind string, so the object is still skipped, silently. Only the `capabilities.apiVersions` values list above accepts the bare `group/version` form. See [`docs/specs/platform-library-v2-architecture.md`](docs/specs/platform-library-v2-architecture.md) for the full Kind→apiVersion registry and negotiation rules.
 
 ## Architecture
 

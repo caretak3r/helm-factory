@@ -61,10 +61,14 @@ expected_kinds() {
 }
 
 # Strip content that is nondeterministic under `helm template`: tlsSelfSigned
-# generates a fresh throwaway cert on every offline render (its Secret lookup
-# is empty without a cluster), so the tls Secret data lines are redacted.
+# generates a fresh throwaway cert (and a freshly computed not-after
+# timestamp) on every offline render (its Secret lookup is empty without a
+# cluster), so the tls Secret data lines and the platform/tls-not-after
+# annotation are redacted.
 normalize_render() {
-  sed -E 's/^(  (tls\.crt|tls\.key|ca\.crt): ).*/\1REDACTED/'
+  sed -E \
+    -e 's/^(  (tls\.crt|tls\.key|ca\.crt): ).*/\1REDACTED/' \
+    -e 's#^(    platform/tls-not-after: ).*#\1REDACTED#'
 }
 
 echo "==> helm lint $LIB"
@@ -132,6 +136,22 @@ for fx in "${FIXTURES[@]}"; do
         echo "  k8s $kv: FAIL — rendered $got objects, expected $want (update expected_kinds if intentional)"
         fail=1
       fi
+
+      if [[ "$have_kubeconform" == "1" ]]; then
+        # Validate THIS version's own render (not the canonical golden render):
+        # version-specific apiVersion negotiation must be schema-checked at the
+        # version that produced it.
+        if kc_out=$(kubeconform -strict -summary \
+               -kubernetes-version "$kv.0" \
+               -schema-location "$NATIVE_SCHEMA_LOCATION" \
+               -schema-location "$CRD_SCHEMA_LOCATION" \
+               <<<"$out" 2>&1); then
+          printf '%s\n' "$kc_out"
+        else
+          printf '%s\n' "$kc_out"
+          echo "  k8s $kv: FAIL — kubeconform"; fail=1
+        fi
+      fi
     else
       echo "  k8s $kv: FAIL"; echo "$out" | tail -5; fail=1
     fi
@@ -156,22 +176,6 @@ for fx in "${FIXTURES[@]}"; do
   else
     echo "  FAIL: rendered output drifted from golden (run: UPDATE_GOLDEN=1 scripts/lint-library.sh to accept)"
     fail=1
-  fi
-
-  if [[ "$have_kubeconform" == "1" ]]; then
-    echo "==> kubeconform: $fx"
-    for kv in "${KUBE_VERSIONS[@]}"; do
-      if kc_out=$(kubeconform -strict -summary \
-             -kubernetes-version "$kv.0" \
-             -schema-location "$NATIVE_SCHEMA_LOCATION" \
-             -schema-location "$CRD_SCHEMA_LOCATION" \
-             <<<"$raw" 2>&1); then
-        printf '%s\n' "$kc_out"
-      else
-        printf '%s\n' "$kc_out"
-        echo "  FAIL: kubeconform against k8s $kv.0"; fail=1
-      fi
-    done
   fi
 done
 
@@ -377,6 +381,17 @@ if out=$("$RENDER" stateful 2>&1); then
   fi
 else
   echo "  FAIL: helm template failed for stateful fixture"; echo "$out" | tail -5; fail=1
+fi
+
+echo "==> TLS mechanism collision"
+# certificate + tlsSelfSigned both target the <fullname>-tls Secret and collide.
+# (full fixture already has certificate.enabled=true.)
+if out=$("$RENDER" full --set tlsSelfSigned.enabled=true 2>&1); then
+  echo "  FAIL: render succeeded with certificate.enabled and tlsSelfSigned.enabled both true"; fail=1
+elif grep -q "certificate.enabled and tlsSelfSigned.enabled are both true" <<<"$out"; then
+  echo "  OK: certificate + tlsSelfSigned collision rejected"
+else
+  echo "  FAIL: certificate/tlsSelfSigned collision failed without the expected message"; echo "$out" | tail -3; fail=1
 fi
 
 if [[ $fail -eq 0 ]]; then echo "==> PASS"; else echo "==> FAIL"; fi
