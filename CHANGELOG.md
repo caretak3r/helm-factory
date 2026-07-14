@@ -83,7 +83,11 @@ removals, confirming the code was genuinely unreachable.
   the schema never documented, so consumers could not discover them:
   root-level `topologySpreadConstraints` (takes precedence over
   `highAvailability.topologySpreadConstraints`), `daemonSet.tolerations`, and
-  `podDisruptionBudget.maxUnavailable`.
+  `podDisruptionBudget.maxUnavailable`. All three are now typed in
+  `values.schema.reference.json` (and therefore in the `values.schema.json`
+  copied into consumers), so a malformed value is rejected at render time
+  instead of being silently ignored. `podDisruptionBudget.minAvailable` is
+  typed alongside its mutually exclusive sibling.
 
 ### Changed (breaking)
 
