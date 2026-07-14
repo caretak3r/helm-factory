@@ -110,24 +110,6 @@ automountServiceAccountToken: false
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: t-full-preinstall-script
-  namespace: default
-  labels:
-    helm.sh/chart: full-0.1.0
-    app.kubernetes.io/name: full
-    app.kubernetes.io/instance: t
-    app.kubernetes.io/component: job-preinstall-script
-    app.kubernetes.io/version: "0.1.0"
-    app.kubernetes.io/managed-by: Helm
-data:
-  script.sh: |
-    #!/bin/sh
-    echo "pre-install hook"
----
-# Source: full/templates/app.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
   name: extra-config
   namespace: default
   labels:
@@ -577,6 +559,47 @@ spec:
       path: "/metrics"
 ---
 # Source: full/templates/app.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: t-full-preinstall
+  namespace: default
+  labels:
+    helm.sh/chart: full-0.1.0
+    app.kubernetes.io/name: full
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/component: preinstall
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-6"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+automountServiceAccountToken: false
+---
+# Source: full/templates/app.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: t-full-preinstall-script
+  namespace: default
+  labels:
+    helm.sh/chart: full-0.1.0
+    app.kubernetes.io/name: full
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/component: job-preinstall-script
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-6"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+data:
+  script.sh: |
+    #!/bin/sh
+    echo "pre-install hook"
+---
+# Source: full/templates/app.yaml
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -606,7 +629,7 @@ spec:
         app.kubernetes.io/component: preinstall
     spec:
       restartPolicy: Never
-      serviceAccountName: t-full
+      serviceAccountName: t-full-preinstall
       automountServiceAccountToken: false
       enableServiceLinks: false
       securityContext:

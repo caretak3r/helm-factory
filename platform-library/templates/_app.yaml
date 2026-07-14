@@ -4,7 +4,7 @@
 {{- end }}
 
 {{- if and .Values.jobs.preInstall.enabled (or .Values.jobs.preInstall.script .Values.jobs.preInstall.scriptFile) }}
-  {{- $job := dict "type" "preinstall" "script" .Values.jobs.preInstall.script "scriptFile" .Values.jobs.preInstall.scriptFile -}}
+  {{- $job := dict "type" "preinstall" "script" .Values.jobs.preInstall.script "scriptFile" .Values.jobs.preInstall.scriptFile "hookWeight" .Values.jobs.preInstall.hookWeight -}}
   {{- include "platform.emit" (include "platform.configmap.script" (dict "root" . "job" $job)) }}
 {{- end }}
 
@@ -69,6 +69,10 @@
 
 {{- if .Values.serviceAccount.create }}
 {{- include "platform.emit" (include "platform.serviceAccount" .) }}
+{{- end }}
+
+{{- if and .Values.serviceAccount.create .Values.jobs.preInstall.enabled }}
+{{- include "platform.emit" (include "platform.serviceAccount.hook" .) }}
 {{- end }}
 
 {{- if and .Values.serviceMonitor.enabled (include "platform.capabilities.apiVersionFor" (list . "ServiceMonitor")) }}

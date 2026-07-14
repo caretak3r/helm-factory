@@ -109,6 +109,29 @@ removals, confirming the code was genuinely unreachable.
   the four kinds cannot render unhardened, that an explicit override survives the
   merge, and that `containerSecurityContext.enabled: false` still injects nothing.
 
+- A pre-install hook Job no longer deadlocks a fresh `helm install`. The Job is a
+  `pre-install` hook, but the script ConfigMap it mounts and the ServiceAccount it
+  referenced were plain resources — and Helm creates a release's normal resources
+  only *after* the pre-install hooks have run. On a fresh install the hook pod had
+  no ConfigMap to mount, and the ServiceAccount admission controller rejected it
+  for a missing ServiceAccount (which it does regardless of
+  `automountServiceAccountToken`), so the install hung until the hook timed out and
+  then failed. The script ConfigMap now joins the same hook phase one weight ahead
+  of the Job, and when the library creates the ServiceAccount, the pre-install Job
+  gets a hook-scoped copy of it (`<fullname>-preinstall`, carrying
+  `serviceAccount.annotations` so IRSA/Workload Identity still work). Both are
+  reaped by `hook-delete-policy: before-hook-creation,hook-succeeded`. The hook copy
+  is deliberately *not* named after the release ServiceAccount: a same-named copy
+  would make `before-hook-creation` delete the live ServiceAccount on every
+  `helm upgrade`, invalidating the bound tokens of the pods still running.
+  `post-install` hooks were never affected (they run after the normal resources) and
+  their script ConfigMap stays a release-tracked normal resource.
+
+  `helm template` executes no hooks, so no golden or render test could ever have
+  caught this; `scripts/lint-library.sh` gained a `hook Job dependency ordering`
+  gate asserting the hook annotations and the weight ordering directly, including
+  when a consumer overrides `jobs.preInstall.hookWeight`.
+
 ### Added
 
 - Declared three values keys that templates already read but `values.yaml` and

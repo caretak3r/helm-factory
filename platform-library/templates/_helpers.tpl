@@ -441,6 +441,75 @@ automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountT
 {{- end }}
 
 {{/*
+Effective helm.sh/hook-weight of a hook Job. Shared so that anything a hook Job
+depends on (the script ConfigMap, the hook ServiceAccount) can order itself
+strictly ahead of the Job without hard-coding a weight that could drift from it.
+Usage: include "platform.job.hookWeight" (dict "job" $job "type" "preinstall")
+*/}}
+{{- define "platform.job.hookWeight" -}}
+{{- $job := .job -}}
+{{- int (default (ternary -5 5 (eq .type "preinstall")) $job.hookWeight) -}}
+{{- end }}
+
+{{/*
+ServiceAccount name for a hook Job.
+
+Helm runs pre-install hooks BEFORE it creates the release's normal resources, so
+a release-managed ServiceAccount does not exist yet when the hook pod is
+admitted — and the ServiceAccount admission controller rejects a pod whose
+ServiceAccount is missing, regardless of automountServiceAccountToken. When the
+library creates the ServiceAccount, pre-install hooks therefore reference their
+own hook-scoped copy (platform.serviceAccount.hook), which is created in the
+same hook phase at a lower weight. A user-supplied ServiceAccount (or the
+namespace default) already exists, so it is referenced as-is.
+Usage: include "platform.hookServiceAccountName" (list $ctx "preinstall")
+*/}}
+{{- define "platform.hookServiceAccountName" -}}
+{{- $ctx := index . 0 -}}
+{{- $type := index . 1 -}}
+{{- if and (eq $type "preinstall") $ctx.Values.serviceAccount.create -}}
+{{- printf "%s-preinstall" (include "platform.fullname" $ctx) | trunc 63 | trimSuffix "-" -}}
+{{- else -}}
+{{- include "platform.serviceAccountName" $ctx -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Hook-scoped copy of the release ServiceAccount for the pre-install hook Job.
+
+It carries a distinct name rather than shadowing the release ServiceAccount:
+a same-named hook copy would make helm.sh/hook-delete-policy delete the LIVE
+ServiceAccount on every helm upgrade, invalidating the bound tokens of the pods
+still running. hook-succeeded reaps it once the hook phase is done; a failed
+hook leaves it behind for debugging and before-hook-creation clears it on the
+next attempt. serviceAccount.annotations (IRSA / Workload Identity) are copied
+so the hook keeps the same cloud identity as the workload.
+*/}}
+{{- define "platform.serviceAccount.hook" -}}
+{{- if and .Values.serviceAccount.create .Values.jobs.preInstall.enabled }}
+{{- $weight := include "platform.job.hookWeight" (dict "job" .Values.jobs.preInstall "type" "preinstall") -}}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "platform.hookServiceAccountName" (list . "preinstall") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "platform.labelsFor" (dict "ctx" . "component" "preinstall") | nindent 4 }}
+    {{- range $k, $v := .Values.commonLabels }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "{{ sub $weight 1 }}"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+    {{- with .Values.serviceAccount.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken | default false }}
+{{- end }}
+{{- end }}
+
+{{/*
 Create HorizontalPodAutoscaler
 */}}
 {{- define "platform.autoscaling" -}}
@@ -648,8 +717,7 @@ inherits the main tag only.
 {{- range $sidecars }}
   {{- $jobContainers = append $jobContainers . -}}
 {{- end }}
-{{- $defaultWeight := ternary -5 5 (eq $type "preinstall") -}}
-{{- $hookWeight := default $defaultWeight $job.hookWeight -}}
+{{- $hookWeight := include "platform.job.hookWeight" (dict "job" $job "type" $type) -}}
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -675,7 +743,7 @@ spec:
         {{- include "platform.selectorLabelsFor" (dict "ctx" $ctx "component" $type) | nindent 8 }}
     spec:
       restartPolicy: {{ $restartPolicy }}
-      serviceAccountName: {{ include "platform.serviceAccountName" $ctx }}
+      serviceAccountName: {{ include "platform.hookServiceAccountName" (list $ctx $type) }}
       automountServiceAccountToken: {{ $ctx.Values.serviceAccount.automountServiceAccountToken | default false }}
       enableServiceLinks: {{ $ctx.Values.enableServiceLinks | default false }}
       {{- if $ctx.Values.podSecurityContext.enabled }}

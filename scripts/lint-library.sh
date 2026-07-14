@@ -53,7 +53,7 @@ fail=0
 expected_kinds() {
   case "$1" in
     minimal)  echo 3 ;;
-    full)     echo 24 ;;
+    full)     echo 25 ;;
     stateful) echo 6 ;;
     daemon)   echo 3 ;;
     *)        echo "unknown fixture: $1" >&2; return 1 ;;
@@ -413,6 +413,79 @@ if out=$("$RENDER" daemon 2>&1); then
   fi
 else
   echo "  FAIL: render failed for securityContext merge-direction check"; echo "$out" | tail -3; fail=1
+fi
+
+echo "==> hook Job dependency ordering (fresh install)"
+# Helm creates a release's normal resources only AFTER the pre-install hooks have
+# run. Anything the pre-install hook Job mounts or references must therefore be a
+# hook itself, at a strictly lower weight — otherwise a fresh `helm install` hangs
+# with the hook pod unable to mount its script volume, or rejected by the
+# ServiceAccount admission controller. `helm template` executes no hooks, so the
+# goldens can never catch this: assert the annotations directly.
+#
+# Prints "<kind>/<metadata.name> <hook-events|nohook> <hook-weight|noweight>" per
+# document (the hook ServiceAccount and the hook Job share a name, so the kind is
+# part of the key).
+hook_table() {
+  awk '
+    function flush() {
+      if (nm != "") print kd "/" nm, (hk == "" ? "nohook" : hk), (wt == "" ? "noweight" : wt)
+      kd = ""; nm = ""; hk = ""; wt = ""
+    }
+    /^---[[:space:]]*$/ { flush(); next }
+    /^kind: / { kd = $2 }
+    /^  name: / && nm == "" { nm = $2 }
+    /^    helm\.sh\/hook:/ { hk = $2 }
+    /^    helm\.sh\/hook-weight:/ { wt = $2; gsub(/"/, "", wt) }
+    END { flush() }
+  '
+}
+hook_weight_of() {
+  awk -v key="$1" '$1 == key && $2 == "pre-install,pre-upgrade" { print $3 }'
+}
+check_hook_ordering() {
+  local label="$1"; shift
+  local out table job_w cm_w sa_w job_sa
+  if ! out=$("$RENDER" full "$@" 2>&1); then
+    echo "  FAIL: render failed for $label"; echo "$out" | tail -3; fail=1; return
+  fi
+  table=$(hook_table <<<"$out")
+  job_w=$(hook_weight_of "Job/t-full-preinstall" <<<"$table")
+  cm_w=$(hook_weight_of "ConfigMap/t-full-preinstall-script" <<<"$table")
+  sa_w=$(hook_weight_of "ServiceAccount/t-full-preinstall" <<<"$table")
+  if [[ -z "$job_w" || "$job_w" == "noweight" ]]; then
+    echo "  FAIL: $label — the pre-install Job lost its hook annotations"; fail=1
+  elif [[ -z "$cm_w" || "$cm_w" == "noweight" ]]; then
+    echo "  FAIL: $label — the pre-install script ConfigMap is not a pre-install hook; the hook pod cannot mount it on a fresh install"; fail=1
+  elif [[ "$cm_w" -ge "$job_w" ]]; then
+    echo "  FAIL: $label — script ConfigMap weight $cm_w is not lower than the Job's $job_w; Helm may create it after the hook pod"; fail=1
+  elif [[ -z "$sa_w" || "$sa_w" -ge "$job_w" ]]; then
+    echo "  FAIL: $label — the hook ServiceAccount is missing or not ordered ahead of the Job (weight $sa_w vs $job_w)"; fail=1
+  else
+    job_sa=$(awk '/^      serviceAccountName: t-full-preinstall$/ { n++ } END { print n + 0 }' <<<"$out")
+    if [[ "$job_sa" -ne 1 ]]; then
+      echo "  FAIL: $label — the pre-install Job does not reference the hook ServiceAccount"; fail=1
+    else
+      echo "  OK: $label — script ConfigMap ($cm_w) and hook ServiceAccount ($sa_w) both precede the Job ($job_w)"
+    fi
+  fi
+}
+check_hook_ordering "default hook weights"
+# A consumer-tuned hookWeight must carry its dependencies with it, not strand them.
+check_hook_ordering "jobs.preInstall.hookWeight=-20" --set jobs.preInstall.hookWeight=-20
+
+# The post-install script ConfigMap must stay a NORMAL resource: post-install hooks
+# run after the normal resources exist, and hook-annotating it would orphan it from
+# the release (Helm does not track hook resources).
+if out=$("$RENDER" full --set jobs.postInstall.enabled=true --set jobs.postInstall.script='echo hi' 2>&1); then
+  post_hk=$(hook_table <<<"$out" | awk '$1 == "ConfigMap/t-full-postinstall-script" { print $2 }')
+  if [[ "$post_hk" == "nohook" ]]; then
+    echo "  OK: post-install script ConfigMap stays a release-tracked normal resource"
+  else
+    echo "  FAIL: post-install script ConfigMap carries hook annotations ($post_hk) — it would be orphaned from the release"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for post-install script ConfigMap check"; echo "$out" | tail -3; fail=1
 fi
 
 echo "==> NOTES warnings (SEC-3): discouraged secret/ingress paths"
