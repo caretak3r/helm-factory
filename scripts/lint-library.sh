@@ -141,34 +141,16 @@ for fx in "${FIXTURES[@]}"; do
         # Validate THIS version's own render (not the canonical golden render):
         # version-specific apiVersion negotiation must be schema-checked at the
         # version that produced it.
-        #
-        # The jsdelivr CDN occasionally answers a schema fetch with a transient
-        # HTTP 403 (rate-limiting shared CI runner IPs) even though the schema
-        # exists and neighboring fetches in the same run succeed. Retry a few
-        # times with backoff before treating it as a real validation failure,
-        # so a genuine schema violation still fails fast on the first attempt.
-        attempt=1
-        max_attempts=4
-        while :; do
-          if kc_out=$(kubeconform -strict -summary \
-                 -kubernetes-version "$kv.0" \
-                 -schema-location "$NATIVE_SCHEMA_LOCATION" \
-                 -schema-location "$CRD_SCHEMA_LOCATION" \
-                 -cache "$KUBECONFORM_CACHE" \
-                 <<<"$out" 2>&1); then
-            printf '%s\n' "$kc_out"
-            break
-          fi
-          if [[ "$attempt" -lt "$max_attempts" ]] && grep -q 'error while downloading schema' <<<"$kc_out"; then
-            echo "  WARN: transient schema fetch error on attempt $attempt/$max_attempts for k8s $kv.0, retrying..."
-            sleep $(( attempt * 3 ))
-            attempt=$(( attempt + 1 ))
-            continue
-          fi
+        if kc_out=$(kubeconform -strict -summary \
+               -kubernetes-version "$kv.0" \
+               -schema-location "$NATIVE_SCHEMA_LOCATION" \
+               -schema-location "$CRD_SCHEMA_LOCATION" \
+               <<<"$out" 2>&1); then
+          printf '%s\n' "$kc_out"
+        else
           printf '%s\n' "$kc_out"
           echo "  k8s $kv: FAIL — kubeconform"; fail=1
-          break
-        done
+        fi
       fi
     else
       echo "  k8s $kv: FAIL"; echo "$out" | tail -5; fail=1

@@ -109,9 +109,6 @@ The v2 rewrite. Everything below ships together as **2.0.0**.
   `ImplementationSpecific`).
 - `full` fixture `mtls.mode` → `mtls.policy` typo.
 - `tests/render.sh` no longer swallows `helm dependency update` errors.
-- `scripts/lint-library.sh` pins the datreeio CRDs-catalog schema location to a
-  commit SHA (`CRD_CATALOG_REF`), so upstream catalog changes cannot break or
-  alter the gate silently.
 - `scripts/lint-library.sh` kubeconform legs validate each matrix version's own
   render (previously the canonical 1.31 render was re-validated against every
   version's schemas, under-validating version-specific negotiation).
