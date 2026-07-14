@@ -69,6 +69,24 @@ chart itself — it documents `platform-library`, not part of the chart's render
   generation/write-up work (values-doc pipeline, capability-registry table,
   security-model consolidation, worked examples).
   
+## Schema validation is hermetic
+
+`scripts/lint-library.sh`'s kubeconform step validates against JSON schemas
+vendored into `tests/schemas/` (core Kubernetes 1.34–1.36 + CRD schemas for
+every Kind the render matrix and fixtures actually exercise) — it makes zero
+network requests. This replaced fetching schemas from the jsdelivr CDN mirror
+at test time, which intermittently returned hard HTTP 403s that survived
+retries and flaked CI.
+
+- `scripts/lib/schema-manifest.sh` is the single source of truth for
+  `KUBE_VERSIONS` and the exact schema stems/paths to vendor — both
+  `lint-library.sh` and `vendor-schemas.sh` source it.
+- To bump the supported Kubernetes window or add a schema for a new
+  fixture-rendered Kind: edit `scripts/lib/schema-manifest.sh`, then run
+  `scripts/vendor-schemas.sh` (the only script allowed to touch the network
+  for schema data) and commit the resulting `tests/schemas/` diff.
+- Provenance (source URLs, retrieval date) lives in `tests/schemas/README.md`.
+
 ## Productionization plan
 
 `docs/productionization-plan.md` is the current master plan for hardening and modernizing
@@ -118,7 +136,7 @@ This document provides context, commands, and templating conventions for AI agen
 - **crds/**: Custom Resource Definitions. Plain YAML only. No templating allowed here in Helm 3/4.
 - **charts/**: Managed by helm dependency. Do not manually modify unless vendoring.
 - **platform-library/values.schema.reference.json**: `additionalProperties: true` on nearly every nested object (`certificate`, `serviceMonitor`, `podMonitor`, etc.), and several workload blocks (`statefulSet`, `daemonSet`) have no schema entry at all. Additive, optional values knobs under those keys don't require a schema edit — only add schema constraints when a field needs type/enum validation.
-- **scripts/lint-library.sh kubeconform checks**: pull CRD schemas over the network (datreeio CRDs-catalog, yannh kubernetes-json-schema) on every run. Transient `giving up after 3 attempt(s)` failures for `PeerAuthentication`/`Certificate`/`HTTPRoute`/`AuthorizationPolicy` at specific k8s versions are network flakes, not regressions — rerun before treating them as a real failure. Golden-snapshot and values-schema checks in the same script are network-independent and authoritative.
+- **scripts/lint-library.sh kubeconform checks**: validate against schemas vendored into `tests/schemas/` (see "Schema validation is hermetic" below) — no network access, no flakes. If kubeconform ever fails here, treat it as a real regression, not a transient CDN issue.
 
 ### Templating & Built-in Objects
 
@@ -389,6 +407,6 @@ bd prime                # Refresh Beads context
 ## Kubernetes support window (project policy)
 
 - Policy is **n-2**: the latest supported Kubernetes minor plus two behind it (currently **1.34–1.36**, adopted 2026-07-09).
-- The window is encoded in: `platform-library/Chart.yaml` `kubeVersion` (the floor), `scripts/lint-library.sh` `KUBE_VERSIONS` + `GOLDEN_KUBE_VERSION` (goldens render at the floor version; CI runs the matrix via this script, not a workflow matrix), the README/`site/docs/getting-started` policy line, and `docs/specs`/`docs/prd`.
-- When bumping the window: update all of the above, run `UPDATE_GOLDEN=1 scripts/lint-library.sh` and commit goldens only if output differs, and prune `_capabilities.tpl` registry fallbacks that are dead below the new floor (verify removal versions against the k8s deprecated-API migration guide — e.g. `flowcontrol/v1beta3` was removed in 1.32).
+- The window is encoded in: `platform-library/Chart.yaml` `kubeVersion` (the floor), `scripts/lib/schema-manifest.sh` `KUBE_VERSIONS` (sourced by `scripts/lint-library.sh`; also drives `scripts/vendor-schemas.sh`) + `GOLDEN_KUBE_VERSION` in `scripts/lint-library.sh` (goldens render at the floor version; CI runs the matrix via this script, not a workflow matrix), the README/`site/docs/getting-started` policy line, and `docs/specs`/`docs/prd`.
+- When bumping the window: update all of the above, run `scripts/vendor-schemas.sh` to fetch schemas for the new versions and commit the `tests/schemas/` diff, run `UPDATE_GOLDEN=1 scripts/lint-library.sh` and commit goldens only if output differs, and prune `_capabilities.tpl` registry fallbacks that are dead below the new floor (verify removal versions against the k8s deprecated-API migration guide — e.g. `flowcontrol/v1beta3` was removed in 1.32).
 - `helm template` output does not vary with `--kube-version` here (no template reads `Capabilities.KubeVersion`; negotiation uses `--api-versions`/forced lists), so a floor bump alone usually leaves goldens byte-identical.

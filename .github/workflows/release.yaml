@@ -55,7 +55,7 @@ jobs:
 
       # Full CI gate (mirrors ci.yaml) — a tag never ships unvalidated code.
       - name: shellcheck
-        run: shellcheck scripts/*.sh tests/render.sh
+        run: shellcheck -x scripts/*.sh tests/render.sh
 
       - name: helm lint
         run: helm lint platform-library/

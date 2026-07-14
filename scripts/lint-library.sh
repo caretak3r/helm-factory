@@ -6,9 +6,12 @@
 # consumer fixtures: helm lint the library, render each fixture across the
 # supported Kubernetes version range with expected-object-count assertions,
 # diff each fixture's canonical render against its committed golden snapshot,
-# validate every rendered object with kubeconform (native + CRD schemas,
-# across the version matrix), run a negative render proving CRD objects drop
-# when their API is absent, enforce image pinning, and validate the values
+# validate every rendered object with kubeconform against the vendored,
+# hermetic schema copies in tests/schemas/ (native + CRD schemas, across the
+# version matrix — see tests/schemas/README.md for provenance and
+# scripts/vendor-schemas.sh to refresh them), run a negative render proving
+# CRD objects drop when their API is absent, enforce image pinning, and
+# validate the values
 # contract: the reference JSON Schema against its metaschema, every fixture's
 # values against it (check-jsonschema), and helm-side rejection of
 # schema-violating values (the schema is copied into each fixture as
@@ -27,20 +30,22 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIB="$REPO_ROOT/platform-library"
 RENDER="$REPO_ROOT/tests/render.sh"
 GOLDEN_DIR="$REPO_ROOT/tests/golden"
+SCHEMA_DIR="$REPO_ROOT/tests/schemas"
 FIXTURES=(minimal full stateful daemon)
-KUBE_VERSIONS=(1.34 1.35 1.36)
 GOLDEN_KUBE_VERSION=1.34   # canonical version for golden snapshots
-KUBECONFORM_CACHE="${TMPDIR:-/tmp}/kubeconform-schema-cache"
-# Both schema locations are served through the jsdelivr CDN mirror rather than
-# raw.githubusercontent.com directly: raw.githubusercontent.com applies a low
-# per-IP rate limit that CI runners (shared IP pools, ~150 schema fetches per
-# run across kinds x k8s versions) exhaust mid-run, turning every subsequent
-# fetch into a 429. jsdelivr mirrors the same GitHub repos/content with a much
-# higher, CDN-backed limit.
-NATIVE_SCHEMA_LOCATION='https://cdn.jsdelivr.net/gh/yannh/kubernetes-json-schema@master/{{ .NormalizedKubernetesVersion }}-standalone{{ .StrictSuffix }}/{{ .ResourceKind }}{{ .KindSuffix }}.json'
-# CRD schemas: the datreeio CRDs-catalog covers cert-manager, Gateway API,
-# Prometheus Operator, and Istio — every CRD-backed Kind the library emits.
-CRD_SCHEMA_LOCATION='https://cdn.jsdelivr.net/gh/datreeio/CRDs-catalog@main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
+
+# shellcheck source=scripts/lib/schema-manifest.sh
+source "$REPO_ROOT/scripts/lib/schema-manifest.sh"   # sets KUBE_VERSIONS
+
+# Schema validation is fully hermetic: both locations point at schemas
+# vendored into tests/schemas/ (see tests/schemas/README.md for provenance),
+# refreshed by scripts/vendor-schemas.sh. No network access happens here —
+# this used to hit the jsdelivr CDN mirror at test time, which intermittently
+# returned hard 403s that survived retries and flaked CI.
+NATIVE_SCHEMA_LOCATION="$SCHEMA_DIR/native/{{ .NormalizedKubernetesVersion }}-standalone{{ .StrictSuffix }}/{{ .ResourceKind }}{{ .KindSuffix }}.json"
+# CRD schemas: covers cert-manager, Gateway API, Prometheus Operator, and
+# Istio — every CRD-backed Kind the library emits.
+CRD_SCHEMA_LOCATION="$SCHEMA_DIR/crd/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json"
 fail=0
 
 # Expected number of rendered objects (top-level `kind:` lines) per fixture.
@@ -75,7 +80,6 @@ fi
 have_kubeconform=0
 if command -v kubeconform >/dev/null 2>&1; then
   have_kubeconform=1
-  mkdir -p "$KUBECONFORM_CACHE"
 elif [[ "${REQUIRE_KUBECONFORM:-0}" == "1" ]]; then
   echo "FAIL: kubeconform is required (REQUIRE_KUBECONFORM=1) but not installed"
   fail=1
@@ -157,33 +161,16 @@ for fx in "${FIXTURES[@]}"; do
   if [[ "$have_kubeconform" == "1" ]]; then
     echo "==> kubeconform: $fx"
     for kv in "${KUBE_VERSIONS[@]}"; do
-      # The jsdelivr CDN occasionally answers a schema fetch with a transient
-      # HTTP 403 (rate-limiting shared CI runner IPs) even though the schema
-      # exists and neighboring fetches in the same run succeed. Retry a few
-      # times with backoff before treating it as a real validation failure,
-      # so a genuine schema violation still fails fast on the first attempt.
-      attempt=1
-      max_attempts=4
-      while :; do
-        if kc_out=$(kubeconform -strict -summary \
-               -kubernetes-version "$kv.0" \
-               -schema-location "$NATIVE_SCHEMA_LOCATION" \
-               -schema-location "$CRD_SCHEMA_LOCATION" \
-               -cache "$KUBECONFORM_CACHE" \
-               <<<"$raw" 2>&1); then
-          printf '%s\n' "$kc_out"
-          break
-        fi
-        if [[ "$attempt" -lt "$max_attempts" ]] && grep -q 'error while downloading schema' <<<"$kc_out"; then
-          echo "  WARN: transient schema fetch error on attempt $attempt/$max_attempts for k8s $kv.0, retrying..."
-          sleep $(( attempt * 3 ))
-          attempt=$(( attempt + 1 ))
-          continue
-        fi
+      if kc_out=$(kubeconform -strict -summary \
+             -kubernetes-version "$kv.0" \
+             -schema-location "$NATIVE_SCHEMA_LOCATION" \
+             -schema-location "$CRD_SCHEMA_LOCATION" \
+             <<<"$raw" 2>&1); then
+        printf '%s\n' "$kc_out"
+      else
         printf '%s\n' "$kc_out"
         echo "  FAIL: kubeconform against k8s $kv.0"; fail=1
-        break
-      done
+      fi
     done
   fi
 done
