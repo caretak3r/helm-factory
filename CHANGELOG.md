@@ -87,6 +87,28 @@ removals, confirming the code was genuinely unreachable.
   no longer have to null it out themselves. `scripts/lint-library.sh` gained an
   `updateStrategy compatibility` gate covering all three workload kinds.
 
+- User-supplied containers are now hardened by default. `sidecars.containers`,
+  `initContainers.containers`, `cronJob.containers`/`cronJob.initContainers`, and
+  hook-Job sidecars/initContainers were passed straight through with `toYaml` and
+  received no `containerSecurityContext`, so they ran as root with
+  `allowPrivilegeEscalation` unset while the library's own container was
+  hardened. Pod Security Standards are evaluated *per container*, so a single
+  bare sidecar sank the whole pod's `restricted` posture — the library's
+  headline "PSS-restricted by default" claim was false for every container a
+  consumer supplied. The library's `containerSecurityContext` is now merged into
+  each of them as a **default**, with the container's own `securityContext` keys
+  winning on conflict, so an intentional relaxation (say a sidecar that needs its
+  own `runAsUser`) still works and the escape hatch
+  (`containerSecurityContext.enabled: false`) is unchanged.
+
+  **Upgrade impact:** a sidecar/initContainer that silently relied on running as
+  root, or on a writable root filesystem, will now start with the restricted
+  context and may fail. The fix is a per-container `securityContext` override in
+  that container's spec — not disabling the library default. `scripts/lint-library.sh`
+  gained a `container hardening posture` gate proving a bare container of each of
+  the four kinds cannot render unhardened, that an explicit override survives the
+  merge, and that `containerSecurityContext.enabled: false` still injects nothing.
+
 ### Added
 
 - Declared three values keys that templates already read but `values.yaml` and

@@ -358,6 +358,63 @@ else
   echo "  FAIL: render failed while checking secret.existingSecret suppression"; echo "$out" | tail -3; fail=1
 fi
 
+echo "==> container hardening posture: user-supplied containers cannot render unhardened"
+# Pod Security Standards are evaluated PER CONTAINER, so a sidecar/initContainer/
+# CronJob container passed through verbatim without a securityContext defeats the
+# library's restricted posture for the whole pod. Every user container must inherit
+# containerSecurityContext as a default, with its own keys winning on conflict.
+#
+# `allowPrivilegeEscalation: false` comes only from containerSecurityContext
+# (podSecurityContext has no such field), so its occurrence count is exactly the
+# number of hardened containers in a render.
+sidecar_json='[{"name":"probe","image":"docker.io/library/busybox:1.36.1","command":["sh","-c","sleep infinity"]}]'
+check_hardened_containers() {
+  local fixture="$1" label="$2" want="$3"; shift 3
+  local out got
+  if out=$("$RENDER" "$fixture" "$@" 2>&1); then
+    got=$(grep -c 'allowPrivilegeEscalation: false' <<<"$out" || true)
+    if [[ "$got" -eq "$want" ]]; then
+      echo "  OK: $label — $got/$want containers hardened"
+    else
+      echo "  FAIL: $label — $got of $want containers carry containerSecurityContext; a user container renders unhardened"; fail=1
+    fi
+  else
+    echo "  FAIL: render failed for $label"; echo "$out" | tail -3; fail=1
+  fi
+}
+# main app container + the bare passthrough container = 2 hardened containers.
+check_hardened_containers minimal "bare sidecar" 2 \
+  --set sidecars.enabled=true --set-json "sidecars.containers=$sidecar_json"
+check_hardened_containers minimal "bare initContainer" 2 \
+  --set initContainers.enabled=true --set-json "initContainers.containers=$sidecar_json"
+check_hardened_containers minimal "bare cronJob.containers" 2 \
+  --set cronJob.enabled=true --set-json "cronJob.containers=$sidecar_json"
+# ...plus the hook Job's own main container = 3.
+check_hardened_containers minimal "bare hook-Job sidecar" 3 \
+  --set jobs.preInstall.enabled=true --set jobs.preInstall.script='echo hi' \
+  --set jobs.preInstall.sidecars.enabled=true \
+  --set-json "jobs.preInstall.sidecars.containers=$sidecar_json"
+# The escape hatch survives: disabling containerSecurityContext injects nothing.
+check_hardened_containers minimal "containerSecurityContext.enabled=false" 0 \
+  --set containerSecurityContext.enabled=false \
+  --set sidecars.enabled=true --set-json "sidecars.containers=$sidecar_json"
+
+# Merge direction (sprig trap): a container's OWN securityContext key must beat the
+# library default, and the default must not be mutated for containers behind it.
+# The daemon fixture renders metrics-proxy (runAsUser 65532) ahead of a bare
+# log-shipper, plus init-wait and the main container on the default 1001.
+if out=$("$RENDER" daemon 2>&1); then
+  overridden=$(grep -c 'runAsUser: 65532' <<<"$out" || true)
+  defaulted=$(grep -c 'runAsUser: 1001' <<<"$out" || true)
+  if [[ "$overridden" -eq 1 && "$defaulted" -eq 3 ]]; then
+    echo "  OK: container securityContext override wins, library default unmutated"
+  else
+    echo "  FAIL: expected 1 overridden runAsUser and 3 defaulted, got $overridden/$defaulted — merge direction or default-map mutation is wrong"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for securityContext merge-direction check"; echo "$out" | tail -3; fail=1
+fi
+
 echo "==> NOTES warnings (SEC-3): discouraged secret/ingress paths"
 # platform.notes only renders via `helm install`/`helm upgrade` (including
 # --dry-run), never `helm template` — see _notes.tpl:5-8. --dry-run=client

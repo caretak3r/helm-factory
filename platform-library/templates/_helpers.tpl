@@ -109,6 +109,31 @@ Resolve pull policy with global override support
 {{- end }}
 
 {{/*
+Render a list of containers with the library's containerSecurityContext merged in
+as a DEFAULT. PSS is evaluated per container, so a user-supplied sidecar,
+initContainer or CronJob container carrying no securityContext would run
+unhardened and sink the whole pod's restricted posture. The container's own
+securityContext keys win on conflict: mergeOverwrite lets the LAST map override,
+whereas sprig's `merge` prefers the destination and would silently discard the
+user's override.
+Usage: include "platform.hardenContainers" (list $ctx $containers)
+*/}}
+{{- define "platform.hardenContainers" -}}
+{{- $ctx := index . 0 -}}
+{{- $containers := index . 1 -}}
+{{- $hardened := list -}}
+{{- range $containers }}
+  {{- $container := deepCopy . -}}
+  {{- if $ctx.Values.containerSecurityContext.enabled }}
+    {{- $default := deepCopy (omit $ctx.Values.containerSecurityContext "enabled") -}}
+    {{- $_ := set $container "securityContext" (mergeOverwrite $default (default (dict) $container.securityContext)) -}}
+  {{- end }}
+  {{- $hardened = append $hardened $container -}}
+{{- end }}
+{{- toYaml $hardened -}}
+{{- end }}
+
+{{/*
 Render environment variables from map or slice inputs
 */}}
 {{- define "platform.envVars" -}}
@@ -236,7 +261,7 @@ spec:
   securityContext: {{- omit $ctx.Values.podSecurityContext "enabled" | toYaml | nindent 4 }}
   {{- end }}
   {{- if and $ctx.Values.initContainers.enabled $ctx.Values.initContainers.containers }}
-  initContainers: {{- toYaml $ctx.Values.initContainers.containers | nindent 4 }}
+  initContainers: {{- include "platform.hardenContainers" (list $ctx $ctx.Values.initContainers.containers) | nindent 4 }}
   {{- end }}
   containers:
     - name: {{ $ctx.Chart.Name }}
@@ -308,7 +333,7 @@ spec:
       volumeMounts: {{- toYaml $mounts | nindent 8 }}
       {{- end }}
     {{- if and $ctx.Values.sidecars.enabled $ctx.Values.sidecars.containers }}
-    {{- toYaml $ctx.Values.sidecars.containers | nindent 4 }}
+    {{- include "platform.hardenContainers" (list $ctx $ctx.Values.sidecars.containers) | nindent 4 }}
     {{- end }}
   {{- $volumes := list -}}
   {{- if $ctx.Values.configMap.enabled }}
@@ -602,10 +627,8 @@ inherits the main tag only.
     {{- $sidecars = append $sidecars . -}}
   {{- end }}
 {{- end }}
+{{/* securityContext is injected for every container below by platform.hardenContainers. */}}
 {{- $mainJobContainer := dict "name" (printf "%s-%s" (include "platform.name" $ctx) $type) "image" $image "imagePullPolicy" $pullPolicy -}}
-{{- if $ctx.Values.containerSecurityContext.enabled }}
-  {{- $_ := set $mainJobContainer "securityContext" (omit $ctx.Values.containerSecurityContext "enabled") -}}
-{{- end }}
 {{- if gt (len $command) 0 }}
   {{- $_ := set $mainJobContainer "command" $command -}}
 {{- end }}
@@ -672,9 +695,9 @@ spec:
         {{- end }}
       {{- end }}
       {{- if gt (len $initContainers) 0 }}
-      initContainers: {{- toYaml $initContainers | nindent 8 }}
+      initContainers: {{- include "platform.hardenContainers" (list $ctx $initContainers) | nindent 8 }}
       {{- end }}
-      containers: {{- toYaml $jobContainers | nindent 8 }}
+      containers: {{- include "platform.hardenContainers" (list $ctx $jobContainers) | nindent 8 }}
       {{- if $volumes }}
       volumes: {{- toYaml $volumes | nindent 8 }}
       {{- end }}

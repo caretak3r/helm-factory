@@ -26,9 +26,20 @@ initContainers:
       image: docker.io/library/busybox:1.36.1
       command: ["sh", "-c", "echo init"]
 
+# metrics-proxy overrides one securityContext key: its own value must survive the
+# merge with the library default. log-shipper carries no securityContext at all and
+# must still render fully hardened (PSS is evaluated per container). The override
+# is listed FIRST on purpose: if the merge ever mutated the library's default map
+# in place, the bare sidecar behind it would inherit runAsUser 65532 and the golden
+# would show it.
 sidecars:
   enabled: true
   containers:
+    - name: metrics-proxy
+      image: docker.io/library/busybox:1.36.1
+      command: ["sh", "-c", "sleep infinity"]
+      securityContext:
+        runAsUser: 65532
     - name: log-shipper
       image: docker.io/library/busybox:1.36.1
       command: ["sh", "-c", "sleep infinity"]
