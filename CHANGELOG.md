@@ -134,6 +134,19 @@ removals, confirming the code was genuinely unreachable.
 
 ### Added
 
+- `NOTES.txt` now warns when a Kind is enabled in values but was **not rendered**
+  because the target cluster does not serve its API. Capability gating skips
+  `Certificate`, `PeerAuthentication`, `HTTPRoute`, `ServiceMonitor` and
+  `PodMonitor` when their CRDs are absent, and until now it did so in complete
+  silence: an operator could set `certificate.enabled=true`, see a successful
+  install, and believe cert-manager was issuing a certificate that does not exist.
+  The warning names each skipped Kind, the apiVersions that were tried, and the
+  `capabilities.apiVersions` / `--api-versions` escape hatch. The gate conditions
+  in `platform.app` and the warning now read one shared table
+  (`platform.capabilities.gatedKinds`), so a future gated feature cannot be wired
+  into the emitter and forgotten in the warning — `scripts/lint-library.sh`
+  asserts the two stay in sync. Manifest output is unchanged.
+
 - Declared three values keys that templates already read but `values.yaml` and
   the schema never documented, so consumers could not discover them:
   root-level `topologySpreadConstraints` (takes precedence over
