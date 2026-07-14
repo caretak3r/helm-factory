@@ -2,6 +2,18 @@
 {{- $root := .root -}}
 {{- $job := .job -}}
 {{- if or $job.script $job.scriptFile }}
+{{- /*
+The pre-install hook Job mounts this ConfigMap, and Helm creates a release's
+normal resources only AFTER the pre-install hooks have run — as a normal
+resource this ConfigMap would not exist when the hook pod tries to mount it, and
+the fresh install would hang until the hook timed out. So it joins the same hook
+phase, one weight ahead of the Job that consumes it. The post-install script
+ConfigMap needs none of this: post-install hooks run after the normal resources.
+*/ -}}
+{{- $hookWeight := "" -}}
+{{- if eq $job.type "preinstall" -}}
+  {{- $hookWeight = include "platform.job.hookWeight" (dict "job" $job "type" $job.type) -}}
+{{- end -}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -15,6 +27,12 @@ metadata:
     {{- with $root.Values.labels }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
+  {{- if $hookWeight }}
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "{{ sub $hookWeight 1 }}"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+  {{- end }}
 data:
   {{- if $job.script }}
   script.sh: |

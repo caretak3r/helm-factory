@@ -53,7 +53,7 @@ fail=0
 expected_kinds() {
   case "$1" in
     minimal)  echo 3 ;;
-    full)     echo 24 ;;
+    full)     echo 25 ;;
     stateful) echo 6 ;;
     daemon)   echo 3 ;;
     *)        echo "unknown fixture: $1" >&2; return 1 ;;
@@ -192,6 +192,40 @@ else
   echo "  OK: no empty documents"
 fi
 
+echo "==> updateStrategy compatibility"
+# rollingUpdate is only valid when type is RollingUpdate. The library ships
+# rollingUpdate defaults, so a consumer flipping only .type would otherwise get an
+# object the API server rejects ("may not be specified when strategy type is ...").
+# Each of these fixtures renders exactly one workload, so a bare grep for
+# rollingUpdate over the whole render is a sound check.
+check_no_rolling_update() {
+  local fixture="$1" label="$2"; shift 2
+  local out
+  if out=$("$RENDER" "$fixture" "$@" 2>&1); then
+    if grep -q 'rollingUpdate' <<<"$out"; then
+      echo "  FAIL: $label still emits rollingUpdate — the API server would reject this object"; fail=1
+    else
+      echo "  OK: $label emits no rollingUpdate"
+    fi
+  else
+    echo "  FAIL: render failed for $label"; echo "$out" | tail -3; fail=1
+  fi
+}
+check_no_rolling_update minimal "Deployment strategy.type=Recreate" --set updateStrategy.type=Recreate
+check_no_rolling_update stateful "StatefulSet updateStrategy.type=OnDelete" --set statefulSet.updateStrategy.type=OnDelete
+check_no_rolling_update daemon "DaemonSet updateStrategy.type=OnDelete" --set daemonSet.updateStrategy.type=OnDelete
+
+# ...and the stripping must not over-reach: the RollingUpdate default keeps its tuning.
+if out=$("$RENDER" minimal 2>&1); then
+  if grep -q 'maxSurge' <<<"$out"; then
+    echo "  OK: default RollingUpdate strategy keeps its rollingUpdate block"
+  else
+    echo "  FAIL: default RollingUpdate strategy lost its rollingUpdate block"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for default updateStrategy check"; echo "$out" | tail -3; fail=1
+fi
+
 echo "==> image pin enforcement"
 if out=$("$RENDER" minimal --set image.tag= 2>&1); then
   echo "  FAIL: render succeeded with no image.tag and no image.digest"; fail=1
@@ -324,6 +358,136 @@ else
   echo "  FAIL: render failed while checking secret.existingSecret suppression"; echo "$out" | tail -3; fail=1
 fi
 
+echo "==> container hardening posture: user-supplied containers cannot render unhardened"
+# Pod Security Standards are evaluated PER CONTAINER, so a sidecar/initContainer/
+# CronJob container passed through verbatim without a securityContext defeats the
+# library's restricted posture for the whole pod. Every user container must inherit
+# containerSecurityContext as a default, with its own keys winning on conflict.
+#
+# `allowPrivilegeEscalation: false` comes only from containerSecurityContext
+# (podSecurityContext has no such field), so its occurrence count is exactly the
+# number of hardened containers in a render.
+sidecar_json='[{"name":"probe","image":"docker.io/library/busybox:1.36.1","command":["sh","-c","sleep infinity"]}]'
+check_hardened_containers() {
+  local fixture="$1" label="$2" want="$3"; shift 3
+  local out got
+  if out=$("$RENDER" "$fixture" "$@" 2>&1); then
+    got=$(grep -c 'allowPrivilegeEscalation: false' <<<"$out" || true)
+    if [[ "$got" -eq "$want" ]]; then
+      echo "  OK: $label — $got/$want containers hardened"
+    else
+      echo "  FAIL: $label — $got of $want containers carry containerSecurityContext; a user container renders unhardened"; fail=1
+    fi
+  else
+    echo "  FAIL: render failed for $label"; echo "$out" | tail -3; fail=1
+  fi
+}
+# main app container + the bare passthrough container = 2 hardened containers.
+check_hardened_containers minimal "bare sidecar" 2 \
+  --set sidecars.enabled=true --set-json "sidecars.containers=$sidecar_json"
+check_hardened_containers minimal "bare initContainer" 2 \
+  --set initContainers.enabled=true --set-json "initContainers.containers=$sidecar_json"
+check_hardened_containers minimal "bare cronJob.containers" 2 \
+  --set cronJob.enabled=true --set-json "cronJob.containers=$sidecar_json"
+# ...plus the hook Job's own main container = 3.
+check_hardened_containers minimal "bare hook-Job sidecar" 3 \
+  --set jobs.preInstall.enabled=true --set jobs.preInstall.script='echo hi' \
+  --set jobs.preInstall.sidecars.enabled=true \
+  --set-json "jobs.preInstall.sidecars.containers=$sidecar_json"
+# The escape hatch survives: disabling containerSecurityContext injects nothing.
+check_hardened_containers minimal "containerSecurityContext.enabled=false" 0 \
+  --set containerSecurityContext.enabled=false \
+  --set sidecars.enabled=true --set-json "sidecars.containers=$sidecar_json"
+
+# Merge direction (sprig trap): a container's OWN securityContext key must beat the
+# library default, and the default must not be mutated for containers behind it.
+# The daemon fixture renders metrics-proxy (runAsUser 65532) ahead of a bare
+# log-shipper, plus init-wait and the main container on the default 1001.
+if out=$("$RENDER" daemon 2>&1); then
+  overridden=$(grep -c 'runAsUser: 65532' <<<"$out" || true)
+  defaulted=$(grep -c 'runAsUser: 1001' <<<"$out" || true)
+  if [[ "$overridden" -eq 1 && "$defaulted" -eq 3 ]]; then
+    echo "  OK: container securityContext override wins, library default unmutated"
+  else
+    echo "  FAIL: expected 1 overridden runAsUser and 3 defaulted, got $overridden/$defaulted — merge direction or default-map mutation is wrong"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for securityContext merge-direction check"; echo "$out" | tail -3; fail=1
+fi
+
+echo "==> hook Job dependency ordering (fresh install)"
+# Helm creates a release's normal resources only AFTER the pre-install hooks have
+# run. Anything the pre-install hook Job mounts or references must therefore be a
+# hook itself, at a strictly lower weight — otherwise a fresh `helm install` hangs
+# with the hook pod unable to mount its script volume, or rejected by the
+# ServiceAccount admission controller. `helm template` executes no hooks, so the
+# goldens can never catch this: assert the annotations directly.
+#
+# Prints "<kind>/<metadata.name> <hook-events|nohook> <hook-weight|noweight>" per
+# document (the hook ServiceAccount and the hook Job share a name, so the kind is
+# part of the key).
+hook_table() {
+  awk '
+    function flush() {
+      if (nm != "") print kd "/" nm, (hk == "" ? "nohook" : hk), (wt == "" ? "noweight" : wt)
+      kd = ""; nm = ""; hk = ""; wt = ""
+    }
+    /^---[[:space:]]*$/ { flush(); next }
+    /^kind: / { kd = $2 }
+    /^  name: / && nm == "" { nm = $2 }
+    /^    helm\.sh\/hook:/ { hk = $2 }
+    /^    helm\.sh\/hook-weight:/ { wt = $2; gsub(/"/, "", wt) }
+    END { flush() }
+  '
+}
+hook_weight_of() {
+  awk -v key="$1" '$1 == key && $2 == "pre-install,pre-upgrade" { print $3 }'
+}
+check_hook_ordering() {
+  local label="$1"; shift
+  local out table job_w cm_w sa_w job_sa
+  if ! out=$("$RENDER" full "$@" 2>&1); then
+    echo "  FAIL: render failed for $label"; echo "$out" | tail -3; fail=1; return
+  fi
+  table=$(hook_table <<<"$out")
+  job_w=$(hook_weight_of "Job/t-full-preinstall" <<<"$table")
+  cm_w=$(hook_weight_of "ConfigMap/t-full-preinstall-script" <<<"$table")
+  sa_w=$(hook_weight_of "ServiceAccount/t-full-preinstall" <<<"$table")
+  if [[ -z "$job_w" || "$job_w" == "noweight" ]]; then
+    echo "  FAIL: $label — the pre-install Job lost its hook annotations"; fail=1
+  elif [[ -z "$cm_w" || "$cm_w" == "noweight" ]]; then
+    echo "  FAIL: $label — the pre-install script ConfigMap is not a pre-install hook; the hook pod cannot mount it on a fresh install"; fail=1
+  elif [[ "$cm_w" -ge "$job_w" ]]; then
+    echo "  FAIL: $label — script ConfigMap weight $cm_w is not lower than the Job's $job_w; Helm may create it after the hook pod"; fail=1
+  elif [[ -z "$sa_w" || "$sa_w" -ge "$job_w" ]]; then
+    echo "  FAIL: $label — the hook ServiceAccount is missing or not ordered ahead of the Job (weight $sa_w vs $job_w)"; fail=1
+  else
+    job_sa=$(awk '/^      serviceAccountName: t-full-preinstall$/ { n++ } END { print n + 0 }' <<<"$out")
+    if [[ "$job_sa" -ne 1 ]]; then
+      echo "  FAIL: $label — the pre-install Job does not reference the hook ServiceAccount"; fail=1
+    else
+      echo "  OK: $label — script ConfigMap ($cm_w) and hook ServiceAccount ($sa_w) both precede the Job ($job_w)"
+    fi
+  fi
+}
+check_hook_ordering "default hook weights"
+# A consumer-tuned hookWeight must carry its dependencies with it, not strand them.
+check_hook_ordering "jobs.preInstall.hookWeight=-20" --set jobs.preInstall.hookWeight=-20
+
+# The post-install script ConfigMap must stay a NORMAL resource: post-install hooks
+# run after the normal resources exist, and hook-annotating it would orphan it from
+# the release (Helm does not track hook resources).
+if out=$("$RENDER" full --set jobs.postInstall.enabled=true --set jobs.postInstall.script='echo hi' 2>&1); then
+  post_hk=$(hook_table <<<"$out" | awk '$1 == "ConfigMap/t-full-postinstall-script" { print $2 }')
+  if [[ "$post_hk" == "nohook" ]]; then
+    echo "  OK: post-install script ConfigMap stays a release-tracked normal resource"
+  else
+    echo "  FAIL: post-install script ConfigMap carries hook annotations ($post_hk) — it would be orphaned from the release"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for post-install script ConfigMap check"; echo "$out" | tail -3; fail=1
+fi
+
 echo "==> NOTES warnings (SEC-3): discouraged secret/ingress paths"
 # platform.notes only renders via `helm install`/`helm upgrade` (including
 # --dry-run), never `helm template` — see _notes.tpl:5-8. --dry-run=client
@@ -381,6 +545,65 @@ if out=$("$RENDER" stateful 2>&1); then
   fi
 else
   echo "  FAIL: helm template failed for stateful fixture"; echo "$out" | tail -5; fail=1
+fi
+
+echo "==> NOTES: Kinds enabled in values but skipped by capability gating"
+# A CRD-backed Kind whose API is neither served nor force-assumed renders NOTHING.
+# Without a warning the operator believes cert-manager Certificates or ServiceMonitors
+# deployed when they did not — a silent security/observability gap.
+if out=$(notes_of minimal \
+  --set certificate.enabled=true --set certificate.issuer=letsencrypt \
+  --set serviceMonitor.enabled=true 2>&1); then
+  if grep -q "SKIPPED KINDS" <<<"$out" &&
+     grep -q "Certificate (tried cert-manager.io/v1)" <<<"$out" &&
+     grep -q "ServiceMonitor (tried monitoring.coreos.com/v1)" <<<"$out"; then
+    echo "  OK: enabled-but-skipped Kinds are named in a NOTES warning with the apiVersions tried"
+  else
+    echo "  FAIL: enabled-but-skipped Certificate/ServiceMonitor produced no naming NOTES warning"; echo "$out" | tail -5; fail=1
+  fi
+else
+  echo "  FAIL: helm install --dry-run=client failed for minimal fixture with gated Kinds enabled"; echo "$out" | tail -5; fail=1
+fi
+
+# Force-assuming the APIs closes the gap: the objects render, so there is nothing to warn about.
+if out=$(notes_of minimal \
+  --set certificate.enabled=true --set certificate.issuer=letsencrypt \
+  --set serviceMonitor.enabled=true \
+  --set 'capabilities.apiVersions[0]=cert-manager.io/v1' \
+  --set 'capabilities.apiVersions[1]=monitoring.coreos.com/v1' 2>&1); then
+  if grep -q "SKIPPED KINDS" <<<"$out"; then
+    echo "  FAIL: force-assumed APIs still reported as skipped"; echo "$out" | tail -5; fail=1
+  else
+    echo "  OK: force-assumed apiVersions suppress the skipped-Kind warning"
+  fi
+else
+  echo "  FAIL: helm install --dry-run=client failed for minimal fixture with force-assumed apiVersions"; echo "$out" | tail -5; fail=1
+fi
+
+# No false positives: the full fixture enables all five gated features AND force-assumes
+# every one of their APIs, so it must stay silent.
+if out=$(notes_of full 2>&1); then
+  if grep -q "SKIPPED KINDS" <<<"$out"; then
+    echo "  FAIL: full fixture warns about skipped Kinds it actually renders"; echo "$out" | tail -5; fail=1
+  else
+    echo "  OK: full fixture (all gated APIs force-assumed) emits no skipped-Kind warning"
+  fi
+else
+  echo "  FAIL: helm install --dry-run=client failed for full fixture"; echo "$out" | tail -5; fail=1
+fi
+
+# Anti-drift: the emitter gates and the warning must read the SAME table. Every
+# capability gate in _app.yaml goes through platform.capabilities.gateOpen, and the
+# gatedKinds table has exactly one row per gate. A new gated feature added to one
+# side only would fail here instead of silently losing its warning.
+gate_sites=$(grep -c 'platform.capabilities.gateOpen' "$LIB/templates/_app.yaml" || true)
+gated_rows=$(sed -n '/define "platform.capabilities.gatedKinds"/,/^{{- end -}}/p' "$LIB/templates/_capabilities.tpl" |
+  grep -cE '^[A-Za-z]+: [A-Za-z]+$' || true)
+raw_gates=$(grep -c 'platform.capabilities.apiVersionFor' "$LIB/templates/_app.yaml" || true)
+if [[ "$gate_sites" -gt 0 && "$gate_sites" -eq "$gated_rows" && "$raw_gates" -eq 0 ]]; then
+  echo "  OK: all $gate_sites capability gates in _app.yaml are driven by the shared gatedKinds table"
+else
+  echo "  FAIL: capability gates ($gate_sites) and gatedKinds rows ($gated_rows) disagree, or _app.yaml still gates on a raw apiVersionFor ($raw_gates) — notes and emitters can drift"; fail=1
 fi
 
 echo "==> selector stability"

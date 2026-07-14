@@ -4,7 +4,7 @@
 {{- end }}
 
 {{- if and .Values.jobs.preInstall.enabled (or .Values.jobs.preInstall.script .Values.jobs.preInstall.scriptFile) }}
-  {{- $job := dict "type" "preinstall" "script" .Values.jobs.preInstall.script "scriptFile" .Values.jobs.preInstall.scriptFile -}}
+  {{- $job := dict "type" "preinstall" "script" .Values.jobs.preInstall.script "scriptFile" .Values.jobs.preInstall.scriptFile "hookWeight" .Values.jobs.preInstall.hookWeight -}}
   {{- include "platform.emit" (include "platform.configmap.script" (dict "root" . "job" $job)) }}
 {{- end }}
 
@@ -21,7 +21,7 @@
 {{- fail (printf "certificate.enabled and tlsSelfSigned.enabled are both true: both target the Secret %q (certificate.secretName defaults to it), so enabling both collides. Set only one to true — certificate.enabled for cert-manager-issued certificates in production, tlsSelfSigned.enabled for local dev/CI self-signed convenience." (printf "%s-tls" (include "platform.fullname" .))) -}}
 {{- end }}
 
-{{- if and .Values.certificate.enabled (include "platform.capabilities.apiVersionFor" (list . "Certificate")) }}
+{{- if include "platform.capabilities.gateOpen" (list . "Certificate") }}
 {{- include "platform.emit" (include "platform.certificate" .) }}
 {{- end }}
 
@@ -33,7 +33,7 @@
 {{- include "platform.emit" (include "platform.tls.selfsigned" .) }}
 {{- end }}
 
-{{- if and .Values.mtls.enabled (include "platform.capabilities.apiVersionFor" (list . "PeerAuthentication")) }}
+{{- if include "platform.capabilities.gateOpen" (list . "PeerAuthentication") }}
 {{- include "platform.emit" (include "platform.mtls" .) }}
 {{- end }}
 
@@ -55,7 +55,7 @@
 {{- include "platform.emit" (include "platform.ingress" .) }}
 {{- end }}
 
-{{- if and .Values.gatewayApi.enabled (include "platform.capabilities.apiVersionFor" (list . "HTTPRoute")) }}
+{{- if include "platform.capabilities.gateOpen" (list . "HTTPRoute") }}
 {{- include "platform.emit" (include "platform.gatewayApi" .) }}
 {{- end }}
 
@@ -71,11 +71,15 @@
 {{- include "platform.emit" (include "platform.serviceAccount" .) }}
 {{- end }}
 
-{{- if and .Values.serviceMonitor.enabled (include "platform.capabilities.apiVersionFor" (list . "ServiceMonitor")) }}
+{{- if and .Values.serviceAccount.create .Values.jobs.preInstall.enabled }}
+{{- include "platform.emit" (include "platform.serviceAccount.hook" .) }}
+{{- end }}
+
+{{- if include "platform.capabilities.gateOpen" (list . "ServiceMonitor") }}
 {{- include "platform.emit" (include "platform.servicemonitor" .) }}
 {{- end }}
 
-{{- if and .Values.podMonitor.enabled (include "platform.capabilities.apiVersionFor" (list . "PodMonitor")) }}
+{{- if include "platform.capabilities.gateOpen" (list . "PodMonitor") }}
 {{- include "platform.emit" (include "platform.podmonitor" .) }}
 {{- end }}
 

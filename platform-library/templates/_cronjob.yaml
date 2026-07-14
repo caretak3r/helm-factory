@@ -69,10 +69,10 @@ spec:
             {{- end }}
           {{- end }}
           {{- if .Values.cronJob.initContainers }}
-          initContainers: {{- toYaml .Values.cronJob.initContainers | nindent 10 }}
+          initContainers: {{- include "platform.hardenContainers" (list . .Values.cronJob.initContainers) | nindent 10 }}
           {{- end }}
           {{- if .Values.cronJob.containers }}
-          containers: {{- toYaml .Values.cronJob.containers | nindent 10 }}
+          containers: {{- include "platform.hardenContainers" (list . .Values.cronJob.containers) | nindent 10 }}
           {{- else }}
           containers:
             - name: {{ include "platform.name" . }}-cron

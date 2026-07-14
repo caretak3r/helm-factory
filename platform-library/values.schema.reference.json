@@ -70,7 +70,19 @@
     "podDisruptionBudget": {
       "type": "object",
       "additionalProperties": true,
-      "properties": { "enabled": { "type": "boolean" } }
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "minAvailable": { "type": ["integer", "string"], "description": "Absolute count or percentage (e.g. 1 or \"50%\"). Mutually exclusive with maxUnavailable; empty string means unset. When neither is set the chart applies minAvailable: 1." },
+        "maxUnavailable": { "type": ["integer", "string"], "description": "Absolute count or percentage (e.g. 1 or \"25%\"). Mutually exclusive with minAvailable; empty string means unset." }
+      }
+    },
+    "topologySpreadConstraints": { "type": "array", "items": { "type": "object" }, "description": "Pod topology spread constraints applied to the workload pod spec. Takes precedence over highAvailability.topologySpreadConstraints when non-empty." },
+    "daemonSet": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "tolerations": { "type": "array", "items": { "type": "object" }, "description": "Tolerations appended to the root-level tolerations. Applied only when workload.type is DaemonSet." }
+      }
     },
     "certificate": {
       "type": "object",

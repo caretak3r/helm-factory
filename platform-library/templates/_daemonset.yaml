@@ -29,7 +29,7 @@ spec:
   minReadySeconds: {{ .Values.minReadySeconds }}
   {{- end }}
   {{- if .Values.daemonSet.updateStrategy }}
-  updateStrategy: {{- toYaml .Values.daemonSet.updateStrategy | nindent 4 }}
+  updateStrategy: {{- include "platform.updateStrategy" .Values.daemonSet.updateStrategy | nindent 4 }}
   {{- end }}
   template:
     {{- include "platform.podTemplateSpec" . | nindent 4 }}

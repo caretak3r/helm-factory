@@ -233,6 +233,71 @@ Usage: include "platform.capabilities.isStable" (list $top "Role")
 {{- end -}}
 
 {{/*
+platform.capabilities.apiVersionsFor — the "group/version"s that would be tried
+for a Kind, in preference order, as a comma-separated string. Used by the NOTES
+warning to tell an operator exactly which APIs the cluster did not serve.
+Usage: include "platform.capabilities.apiVersionsFor" (list $top "Certificate")
+*/}}
+{{- define "platform.capabilities.apiVersionsFor" -}}
+{{- $top := index . 0 -}}
+{{- $kind := index . 1 -}}
+{{- $registry := fromYaml (include "platform.capabilities.registry" $top) -}}
+{{- $gvs := list -}}
+{{- range $pref := (index $registry $kind | default list) -}}
+  {{- $gvs = append $gvs ($pref | splitList "/" | initial | join "/") -}}
+{{- end -}}
+{{- join ", " $gvs -}}
+{{- end -}}
+
+{{/*
+platform.capabilities.gatedKinds — the CRD-backed Kinds platform.app skips when
+their API is not served, mapped to the values block that enables each one. Single
+source of truth: the emitter gates (platform.capabilities.gateOpen) and the NOTES
+warning (platform.capabilities.skippedKinds) both read this table, so a gated
+feature cannot be wired into one and forgotten in the other.
+*/}}
+{{- define "platform.capabilities.gatedKinds" -}}
+Certificate: certificate
+PeerAuthentication: mtls
+HTTPRoute: gatewayApi
+ServiceMonitor: serviceMonitor
+PodMonitor: podMonitor
+{{- end -}}
+
+{{/*
+platform.capabilities.gateOpen — "true" (else "") when a gated feature is enabled
+in values AND its API is available (served or force-assumed). This is the emitter
+gate used by platform.app.
+Usage: {{- if include "platform.capabilities.gateOpen" (list . "Certificate") }}
+*/}}
+{{- define "platform.capabilities.gateOpen" -}}
+{{- $top := index . 0 -}}
+{{- $kind := index . 1 -}}
+{{- $gated := fromYaml (include "platform.capabilities.gatedKinds" $top) -}}
+{{- $block := (index $top.Values (index $gated $kind)) | default dict -}}
+{{- if and $block.enabled (include "platform.capabilities.apiVersionFor" (list $top $kind)) -}}true{{- end -}}
+{{- end -}}
+
+{{/*
+platform.capabilities.skippedKinds — the complement of gateOpen: a space-delimited
+list of Kinds that are enabled in values but whose API is neither served nor
+force-assumed, so platform.app rendered NOTHING for them. platform.notes turns
+this into an operator-visible WARNING; silence here is what makes the gap silent.
+Usage: include "platform.capabilities.skippedKinds" $top
+*/}}
+{{- define "platform.capabilities.skippedKinds" -}}
+{{- $top := . -}}
+{{- $skipped := list -}}
+{{- range $kind, $valuesKey := fromYaml (include "platform.capabilities.gatedKinds" $top) -}}
+  {{- $block := (index $top.Values $valuesKey) | default dict -}}
+  {{- if and $block.enabled (not (include "platform.capabilities.apiVersionFor" (list $top $kind))) -}}
+    {{- $skipped = append $skipped $kind -}}
+  {{- end -}}
+{{- end -}}
+{{- join " " $skipped -}}
+{{- end -}}
+
+{{/*
 platform.capabilities.clusterScoped — space-delimited set of cluster-scoped
 Kinds, used by the generic renderer to decide whether to stamp a namespace.
 */}}

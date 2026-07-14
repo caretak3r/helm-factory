@@ -1,6 +1,8 @@
 {{/*
 =============================================================================
-platform.notes — post-install security warnings for the consumer's NOTES.txt
+platform.notes — post-install warnings for the consumer's NOTES.txt: security
+footguns, plus Kinds that were enabled in values and silently skipped because
+the cluster does not serve their API (platform.capabilities.skippedKinds).
 =============================================================================
 Renders nothing when there is nothing to warn about. NOTES.txt content never
 appears in `helm template` manifest output (verified with Helm 4.2.0), so
@@ -10,7 +12,16 @@ Usage (consumer chart templates/NOTES.txt):
   {{ include "platform.notes" . }}
 */}}
 {{- define "platform.notes" -}}
+{{- $top := . -}}
 {{- $warnings := list -}}
+{{- $skipped := include "platform.capabilities.skippedKinds" $top | trim -}}
+{{- if $skipped -}}
+{{- $details := list -}}
+{{- range $kind := splitList " " $skipped -}}
+{{- $details = append $details (printf "%s (tried %s)" $kind (include "platform.capabilities.apiVersionsFor" (list $top $kind))) -}}
+{{- end -}}
+{{- $warnings = append $warnings (printf "SKIPPED KINDS: enabled in values but NOT rendered, because the target cluster does not serve their API: %s. NOTHING was deployed for them. Install the CRDs, or — if the CRDs exist but are invisible at render time (e.g. `helm template` without a cluster) — force-assume the API via capabilities.apiVersions or `--api-versions`." (join "; " $details)) -}}
+{{- end -}}
 {{- if and .Values.ingress.enabled .Values.ingress.hostname (not .Values.ingress.tls) -}}
 {{- $warnings = append $warnings (printf "Ingress host %q is served over PLAIN HTTP (ingress.tls=false). Set ingress.tls=true with ingress.existingSecret, or use cert-manager via the certificate block / an ingress annotation." .Values.ingress.hostname) -}}
 {{- end -}}

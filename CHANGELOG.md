@@ -77,13 +77,85 @@ removals, confirming the code was genuinely unreachable.
   and fall back to `minAvailable: 1` when neither is — preserving the previous
   default output.
 
+- `updateStrategy.type: Recreate` (Deployment) and `OnDelete`
+  (StatefulSet/DaemonSet) no longer emit a `rollingUpdate` block. The templates
+  passed the whole values map through `toYaml`, and the library ships
+  `rollingUpdate` defaults, so flipping only `.type` produced an object the API
+  server rejects with "may not be specified when strategy type is ..." —
+  `helm template` passed, `helm install` failed. The `rollingUpdate` sub-key is
+  now dropped whenever `.type` is anything other than `RollingUpdate`; consumers
+  no longer have to null it out themselves. `scripts/lint-library.sh` gained an
+  `updateStrategy compatibility` gate covering all three workload kinds.
+
+- User-supplied containers are now hardened by default. `sidecars.containers`,
+  `initContainers.containers`, `cronJob.containers`/`cronJob.initContainers`, and
+  hook-Job sidecars/initContainers were passed straight through with `toYaml` and
+  received no `containerSecurityContext`, so they ran as root with
+  `allowPrivilegeEscalation` unset while the library's own container was
+  hardened. Pod Security Standards are evaluated *per container*, so a single
+  bare sidecar sank the whole pod's `restricted` posture — the library's
+  headline "PSS-restricted by default" claim was false for every container a
+  consumer supplied. The library's `containerSecurityContext` is now merged into
+  each of them as a **default**, with the container's own `securityContext` keys
+  winning on conflict, so an intentional relaxation (say a sidecar that needs its
+  own `runAsUser`) still works and the escape hatch
+  (`containerSecurityContext.enabled: false`) is unchanged.
+
+  **Upgrade impact:** a sidecar/initContainer that silently relied on running as
+  root, or on a writable root filesystem, will now start with the restricted
+  context and may fail. The fix is a per-container `securityContext` override in
+  that container's spec — not disabling the library default. `scripts/lint-library.sh`
+  gained a `container hardening posture` gate proving a bare container of each of
+  the four kinds cannot render unhardened, that an explicit override survives the
+  merge, and that `containerSecurityContext.enabled: false` still injects nothing.
+
+- A pre-install hook Job no longer deadlocks a fresh `helm install`. The Job is a
+  `pre-install` hook, but the script ConfigMap it mounts and the ServiceAccount it
+  referenced were plain resources — and Helm creates a release's normal resources
+  only *after* the pre-install hooks have run. On a fresh install the hook pod had
+  no ConfigMap to mount, and the ServiceAccount admission controller rejected it
+  for a missing ServiceAccount (which it does regardless of
+  `automountServiceAccountToken`), so the install hung until the hook timed out and
+  then failed. The script ConfigMap now joins the same hook phase one weight ahead
+  of the Job, and when the library creates the ServiceAccount, the pre-install Job
+  gets a hook-scoped copy of it (`<fullname>-preinstall`, carrying
+  `serviceAccount.annotations` so IRSA/Workload Identity still work). Both are
+  reaped by `hook-delete-policy: before-hook-creation,hook-succeeded`. The hook copy
+  is deliberately *not* named after the release ServiceAccount: a same-named copy
+  would make `before-hook-creation` delete the live ServiceAccount on every
+  `helm upgrade`, invalidating the bound tokens of the pods still running.
+  `post-install` hooks were never affected (they run after the normal resources) and
+  their script ConfigMap stays a release-tracked normal resource.
+
+  `helm template` executes no hooks, so no golden or render test could ever have
+  caught this; `scripts/lint-library.sh` gained a `hook Job dependency ordering`
+  gate asserting the hook annotations and the weight ordering directly, including
+  when a consumer overrides `jobs.preInstall.hookWeight`.
+
 ### Added
+
+- `NOTES.txt` now warns when a Kind is enabled in values but was **not rendered**
+  because the target cluster does not serve its API. Capability gating skips
+  `Certificate`, `PeerAuthentication`, `HTTPRoute`, `ServiceMonitor` and
+  `PodMonitor` when their CRDs are absent, and until now it did so in complete
+  silence: an operator could set `certificate.enabled=true`, see a successful
+  install, and believe cert-manager was issuing a certificate that does not exist.
+  The warning names each skipped Kind, the apiVersions that were tried, and the
+  `capabilities.apiVersions` / `--api-versions` escape hatch. The gate conditions
+  in `platform.app` and the warning now read one shared table
+  (`platform.capabilities.gatedKinds`), so a future gated feature cannot be wired
+  into the emitter and forgotten in the warning — `scripts/lint-library.sh`
+  asserts the two stay in sync. Manifest output is unchanged.
 
 - Declared three values keys that templates already read but `values.yaml` and
   the schema never documented, so consumers could not discover them:
   root-level `topologySpreadConstraints` (takes precedence over
   `highAvailability.topologySpreadConstraints`), `daemonSet.tolerations`, and
-  `podDisruptionBudget.maxUnavailable`.
+  `podDisruptionBudget.maxUnavailable`. All three are now typed in
+  `values.schema.reference.json` (and therefore in the `values.schema.json`
+  copied into consumers), so a malformed value is rejected at render time
+  instead of being silently ignored. `podDisruptionBudget.minAvailable` is
+  typed alongside its mutually exclusive sibling.
 
 ### Changed (breaking)
 
