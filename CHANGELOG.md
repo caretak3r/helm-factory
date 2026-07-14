@@ -11,6 +11,80 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
 
 The v2 rewrite. Everything below ships together as **2.0.0**.
 
+### Changed (breaking) — pod selectors
+
+- Every pod selector now carries `app.kubernetes.io/component`, and
+  `commonLabels` no longer appear in any selector. This fixes two defects that
+  were live on the library's default values:
+  - **The Service routed traffic to the wrong pods.** `platform.selectorLabels`
+    emitted only `name` + `instance`, and the same pair was stamped on CronJob
+    pods and pre/post-install hook-Job pods. With `commonLabels` unset (the
+    default) the Service selector matched them, so a scheduled job or an
+    install hook could receive live traffic. The PodDisruptionBudget counted
+    them too, skewing node-drain math. CronJob pods are now
+    `component: cronjob`, hook-Job pods `component: preinstall`/`postinstall`,
+    and the main workload `component: app`.
+  - **Changing a `commonLabel` orphaned the Service.** The Service selector
+    included `commonLabels` (the workload selectors correctly did not), so
+    editing one instantly de-selected every running pod and dropped the Service
+    to zero endpoints until the rollout completed. Selectors are now built only
+    from stable, chart-derived labels. `commonLabels` still apply to object and
+    pod *metadata*, which is what they are for.
+
+  **Upgrade impact:** `spec.selector.matchLabels` is immutable on Deployment,
+  StatefulSet, and DaemonSet, so this cannot be applied by `helm upgrade` to a
+  release created before this change — the API server rejects it. Any such
+  release must be uninstalled and reinstalled. This is why the change lands in
+  2.0.0, before the chart has ever been published: there are no existing
+  installs to migrate.
+
+  `scripts/lint-library.sh` gained a `selector stability` gate asserting that no
+  user-settable label can reach a selector and that job pods stay distinguishable
+  from workload pods.
+
+### Removed (breaking)
+
+- Removed the `serviceEndpoints` feature (`serviceEndpoints.enabled`, the
+  `<fullname>-service-endpoints` ConfigMap, and `platform.serviceEndpoints.configmap`).
+  It inferred "subcharts" by ranging over every map-valued key in `.Values`, a
+  heuristic that was coherent under v1's nested-subchart model but is meaningless
+  under v2's flattened `import-values: [defaults]` contract — every defaults block
+  looks like a subchart. Enabling it emitted entries like
+  `podSecurityContext-endpoint: podSecurityContext.default.svc.cluster.local:80`.
+  It had zero test coverage. Repairing it would require a real subchart registry
+  that v2 does not have, so it was removed rather than patched.
+- Removed the umbrella helpers it depended on, all of which had zero call sites:
+  `global.enabledSubcharts`, `global.allEndpointsDynamic`, `global.allEndpoints`,
+  `global.subchartEndpoint`, `platform.service.endpoint`.
+- Removed `platform.util.merge` (`_util.tpl`), a bitnami-common style overlay
+  helper documented as public API for advanced consumers. It had no call sites
+  anywhere in the library. The "gate outside `fromYaml`" invariant it was
+  documented alongside still holds and is unchanged.
+- Removed dead values keys that no template ever read: `global.storageClass`,
+  `serviceAccount.labels`, `cronJob.sidecars`. (`persistence.storageClass` is
+  unaffected and still works.)
+
+Golden snapshots were byte-identical across all four fixtures after these
+removals, confirming the code was genuinely unreachable.
+
+### Fixed
+
+- `podDisruptionBudget.maxUnavailable` is now selectable. It was previously
+  unreachable: `minAvailable` defaulted to `1`, and the template's
+  `if minAvailable / else if maxUnavailable` chain meant the `maxUnavailable`
+  branch could never be taken. `minAvailable` and `maxUnavailable` now both
+  default to empty, are declared in `values.yaml`, fail closed if both are set,
+  and fall back to `minAvailable: 1` when neither is — preserving the previous
+  default output.
+
+### Added
+
+- Declared three values keys that templates already read but `values.yaml` and
+  the schema never documented, so consumers could not discover them:
+  root-level `topologySpreadConstraints` (takes precedence over
+  `highAvailability.topologySpreadConstraints`), `daemonSet.tolerations`, and
+  `podDisruptionBudget.maxUnavailable`.
+
 ### Changed (breaking)
 
 - Tightened the supported Kubernetes window to an n-2 policy — the latest

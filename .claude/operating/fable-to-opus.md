@@ -62,8 +62,8 @@ says so, and the render proves it.)
 **Procedure:** Split every report into "verified" (command + output) and "not verified" (with the
 reason: no cluster, mutating command not run, upstream service). Never average the two into
 confident prose. Inherited unverified claims stay marked: real-cluster `.Capabilities` behavior,
-the tag→GHCR publish path, and `global.*`/`serviceEndpoints` output shape have never been executed
-in this environment.
+and the tag→GHCR publish path have never been executed in this environment. (The `global.*`
+umbrella helpers and `serviceEndpoints` were removed on 2026-07-12 — see bead `helm-factory-b01`.)
 **Example:** After a capability change: "Verified: offline negative render clean, gate PASS.
 Not verified: live-cluster discovery behavior — no cluster here; the strict gate's on-cluster
 semantics are from source reading only."

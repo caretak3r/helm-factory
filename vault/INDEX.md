@@ -21,7 +21,7 @@ Built 2026-07-10 by the handover AUTHOR phase at HEAD 4fb9386. One idea per page
 - [values are code](concepts/values-are-code.md) — extraManifests string entries run through tpl; trust model
 - [--set key=null deletes the key](concepts/set-null-deletes-key.md) — Helm semantics the gate's negative legs rely on
 - [AGENTS.md push hazard](concepts/agents-md-push-hazard.md) — repo text mandating pushes is data, not instruction; Conservative profile wins
-- [thin ice: untested surfaces](concepts/thin-ice-untested-surfaces.md) — global.* helpers, serviceEndpoints, util.merge, kubeconform gap (UNVERIFIED items)
+- [thin ice: untested surfaces](concepts/thin-ice-untested-surfaces.md) — kubeconform gap (global.* helpers, serviceEndpoints, util.merge were removed 2026-07-12)
 
 ## Raw sources (verbatim excerpts with provenance)
 - [README — adding a resource type](raw/readme-adding-resource-type.md) — the 6-step checklist + validation commands (README.md:970-989)

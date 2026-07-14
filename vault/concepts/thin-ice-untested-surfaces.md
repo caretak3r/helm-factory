@@ -2,8 +2,7 @@
 
 Features present in the library that the regression oracle ([[golden-count-oracle]]) does not exercise. All items below are **UNVERIFIED** — render-verify before building on any of them:
 
-- **`global.*` umbrella helpers** (`_helpers.tpl:483+`: `global.subchartEndpoint`, `global.enabledSubcharts`, `global.allEndpointsDynamic`, `global.allEndpoints`) and **`serviceEndpoints`** (`platform.serviceEndpoints.configmap`, `_helpers.tpl:567`; wired at `_app.yaml:90-92`): zero fixture coverage; output shape untested by the gate.
-- **`platform.util.merge`** (`_util.tpl:31-36`): defined, documented, but has no call sites in the library — public API for advanced consumers per the spec. Dead-ish code; do not remove without a deprecation pass.
+- ~~**`global.*` umbrella helpers**, **`serviceEndpoints`**, **`platform.util.merge`**~~ — REMOVED 2026-07-12 (bead `helm-factory-b01`). `serviceEndpoints` was not merely untested but structurally broken: it ranged over every map-valued key in `.Values` and called each one a subchart, so under v2's flattened `import-values` contract it emitted `podSecurityContext-endpoint: podSecurityContext.default.svc.cluster.local:80`. The rest had zero call sites. Goldens unchanged after removal.
 - **kubeconform matrix gap — CLOSED 2026-07-11**: the gate now validates each matrix version's own render inside the render loop (beads helm-factory-uaw, fixed). Historical: it previously validated only the canonical render against each version's schemas.
 - **Real-cluster behavior** (live `.Capabilities`, tlsSelfSigned `lookup` reuse, `helm upgrade --dry-run=server`): never executed in this environment; source-and-spec claims only ([[template-vs-cluster-capabilities]]).
 - **Release publish path** to GHCR: read-only verified ([[ci-release-workflows]]).
