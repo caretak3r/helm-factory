@@ -9,7 +9,12 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
 
 ## [Unreleased]
 
-The v2 rewrite. Everything below ships together as **2.0.0**.
+Nothing yet.
+
+## [2.0.0] - 2026-07-14
+
+The v2 rewrite — the first published release of this chart. Everything below
+ships together.
 
 ### Changed (breaking) — pod selectors
 
