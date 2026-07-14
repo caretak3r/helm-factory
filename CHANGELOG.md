@@ -77,6 +77,16 @@ removals, confirming the code was genuinely unreachable.
   and fall back to `minAvailable: 1` when neither is — preserving the previous
   default output.
 
+- `updateStrategy.type: Recreate` (Deployment) and `OnDelete`
+  (StatefulSet/DaemonSet) no longer emit a `rollingUpdate` block. The templates
+  passed the whole values map through `toYaml`, and the library ships
+  `rollingUpdate` defaults, so flipping only `.type` produced an object the API
+  server rejects with "may not be specified when strategy type is ..." —
+  `helm template` passed, `helm install` failed. The `rollingUpdate` sub-key is
+  now dropped whenever `.type` is anything other than `RollingUpdate`; consumers
+  no longer have to null it out themselves. `scripts/lint-library.sh` gained an
+  `updateStrategy compatibility` gate covering all three workload kinds.
+
 ### Added
 
 - Declared three values keys that templates already read but `values.yaml` and

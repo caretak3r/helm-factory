@@ -28,7 +28,7 @@ spec:
   {{- end }}
   podManagementPolicy: {{ .Values.statefulSet.podManagementPolicy | default "OrderedReady" }}
   {{- if .Values.statefulSet.updateStrategy }}
-  updateStrategy: {{- toYaml .Values.statefulSet.updateStrategy | nindent 4 }}
+  updateStrategy: {{- include "platform.updateStrategy" .Values.statefulSet.updateStrategy | nindent 4 }}
   {{- end }}
   {{- if .Values.minReadySeconds }}
   minReadySeconds: {{ .Values.minReadySeconds }}

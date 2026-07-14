@@ -192,6 +192,40 @@ else
   echo "  OK: no empty documents"
 fi
 
+echo "==> updateStrategy compatibility"
+# rollingUpdate is only valid when type is RollingUpdate. The library ships
+# rollingUpdate defaults, so a consumer flipping only .type would otherwise get an
+# object the API server rejects ("may not be specified when strategy type is ...").
+# Each of these fixtures renders exactly one workload, so a bare grep for
+# rollingUpdate over the whole render is a sound check.
+check_no_rolling_update() {
+  local fixture="$1" label="$2"; shift 2
+  local out
+  if out=$("$RENDER" "$fixture" "$@" 2>&1); then
+    if grep -q 'rollingUpdate' <<<"$out"; then
+      echo "  FAIL: $label still emits rollingUpdate — the API server would reject this object"; fail=1
+    else
+      echo "  OK: $label emits no rollingUpdate"
+    fi
+  else
+    echo "  FAIL: render failed for $label"; echo "$out" | tail -3; fail=1
+  fi
+}
+check_no_rolling_update minimal "Deployment strategy.type=Recreate" --set updateStrategy.type=Recreate
+check_no_rolling_update stateful "StatefulSet updateStrategy.type=OnDelete" --set statefulSet.updateStrategy.type=OnDelete
+check_no_rolling_update daemon "DaemonSet updateStrategy.type=OnDelete" --set daemonSet.updateStrategy.type=OnDelete
+
+# ...and the stripping must not over-reach: the RollingUpdate default keeps its tuning.
+if out=$("$RENDER" minimal 2>&1); then
+  if grep -q 'maxSurge' <<<"$out"; then
+    echo "  OK: default RollingUpdate strategy keeps its rollingUpdate block"
+  else
+    echo "  FAIL: default RollingUpdate strategy lost its rollingUpdate block"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for default updateStrategy check"; echo "$out" | tail -3; fail=1
+fi
+
 echo "==> image pin enforcement"
 if out=$("$RENDER" minimal --set image.tag= 2>&1); then
   echo "  FAIL: render succeeded with no image.tag and no image.digest"; fail=1

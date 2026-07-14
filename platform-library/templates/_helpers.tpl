@@ -476,6 +476,20 @@ Workload template selector
 {{- end }}
 
 {{/*
+Render a workload update strategy. The API server rejects rollingUpdate on any
+type other than RollingUpdate (Deployment Recreate, StatefulSet/DaemonSet
+OnDelete), so drop the sub-key rather than pass the values map through verbatim.
+An unset type means the Kubernetes default, RollingUpdate, so rollingUpdate stays.
+*/}}
+{{- define "platform.updateStrategy" -}}
+{{- if and .type (ne (toString .type) "RollingUpdate") -}}
+{{- toYaml (omit . "rollingUpdate") -}}
+{{- else -}}
+{{- toYaml . -}}
+{{- end -}}
+{{- end }}
+
+{{/*
 Build deterministic checksum annotations to trigger Deployment rollouts when
 ConfigMaps or Secrets change.
 */}}
