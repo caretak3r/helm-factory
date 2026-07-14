@@ -20,22 +20,6 @@ Usage: include "platform.emit" (include "platform.service" .)
 {{- end -}}
 
 {{/*
-platform.util.merge — merge a consumer-supplied override template over a base
-template (bitnami/common style) and emit the result. Takes a list:
-  0: the top context ($)
-  1: template name of the overrides (destination)
-  2: template name of the base (source)
-IMPORTANT: capability/enable gating must happen in the *wrapper* before calling
-this, never here — fromYaml "" yields {} which would emit a bogus empty doc.
-*/}}
-{{- define "platform.util.merge" -}}
-{{- $top := first . -}}
-{{- $overrides := fromYaml (include (index . 1) $top) | default (dict) -}}
-{{- $tpl := fromYaml (include (index . 2) $top) | default (dict) -}}
-{{- toYaml (mergeOverwrite $tpl $overrides) -}}
-{{- end -}}
-
-{{/*
 platform.genericResource — render an arbitrary Kubernetes object with the
 negotiated apiVersion, standard labels, and namespace handling. Any top-level
 key on the spec other than the reserved metadata keys is passed through, so

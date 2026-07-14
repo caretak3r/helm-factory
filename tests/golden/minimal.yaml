@@ -9,6 +9,7 @@ metadata:
     helm.sh/chart: minimal-0.1.0
     app.kubernetes.io/name: minimal
     app.kubernetes.io/instance: t
+    app.kubernetes.io/component: app
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/managed-by: Helm
 automountServiceAccountToken: false
@@ -24,6 +25,7 @@ metadata:
     helm.sh/chart: minimal-0.1.0
     app.kubernetes.io/name: minimal
     app.kubernetes.io/instance: t
+    app.kubernetes.io/component: app
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/managed-by: Helm
 spec:
@@ -37,6 +39,7 @@ spec:
   selector:
     app.kubernetes.io/name: minimal
     app.kubernetes.io/instance: t
+    app.kubernetes.io/component: app
 ---
 # Source: minimal/templates/app.yaml
 apiVersion: apps/v1
@@ -48,6 +51,7 @@ metadata:
     helm.sh/chart: minimal-0.1.0
     app.kubernetes.io/name: minimal
     app.kubernetes.io/instance: t
+    app.kubernetes.io/component: app
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/managed-by: Helm
 spec:
@@ -57,6 +61,7 @@ spec:
     matchLabels:
       app.kubernetes.io/name: minimal
       app.kubernetes.io/instance: t
+      app.kubernetes.io/component: app
   strategy:
     rollingUpdate:
       maxSurge: 25%
@@ -67,6 +72,7 @@ spec:
       labels:
         app.kubernetes.io/name: minimal
         app.kubernetes.io/instance: t
+        app.kubernetes.io/component: app
     spec:
       serviceAccountName: t-minimal
       automountServiceAccountToken: false

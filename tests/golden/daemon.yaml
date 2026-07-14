@@ -9,6 +9,7 @@ metadata:
     helm.sh/chart: daemon-0.1.0
     app.kubernetes.io/name: daemon
     app.kubernetes.io/instance: t
+    app.kubernetes.io/component: app
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/managed-by: Helm
 automountServiceAccountToken: false
@@ -24,6 +25,7 @@ metadata:
     helm.sh/chart: daemon-0.1.0
     app.kubernetes.io/name: daemon
     app.kubernetes.io/instance: t
+    app.kubernetes.io/component: app
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/managed-by: Helm
   annotations:
@@ -44,6 +46,7 @@ metadata:
     helm.sh/chart: daemon-0.1.0
     app.kubernetes.io/name: daemon
     app.kubernetes.io/instance: t
+    app.kubernetes.io/component: app
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/managed-by: Helm
 spec:
@@ -51,6 +54,7 @@ spec:
     matchLabels:
       app.kubernetes.io/name: daemon
       app.kubernetes.io/instance: t
+      app.kubernetes.io/component: app
   updateStrategy:
     rollingUpdate:
       maxUnavailable: 1
@@ -60,6 +64,7 @@ spec:
       labels:
         app.kubernetes.io/name: daemon
         app.kubernetes.io/instance: t
+        app.kubernetes.io/component: app
     spec:
       serviceAccountName: t-daemon
       automountServiceAccountToken: false

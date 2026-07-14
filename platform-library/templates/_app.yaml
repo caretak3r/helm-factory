@@ -67,7 +67,7 @@
 {{- include "platform.emit" (include "platform.pdb" .) }}
 {{- end }}
 
-{{- if or .Values.serviceAccount.create .Values.serviceAccount.name }}
+{{- if .Values.serviceAccount.create }}
 {{- include "platform.emit" (include "platform.serviceAccount" .) }}
 {{- end }}
 
@@ -89,10 +89,6 @@
 
 {{- if .Values.jobs.postInstall.enabled }}
 {{- include "platform.emit" (include "platform.job.postinstall" .) }}
-{{- end }}
-
-{{- if .Values.serviceEndpoints.enabled }}
-{{- include "platform.emit" (include "platform.serviceEndpoints.configmap" .) }}
 {{- end }}
 {{- end }}
 

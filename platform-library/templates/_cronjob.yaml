@@ -6,7 +6,7 @@ metadata:
   name: {{ include "platform.fullname" . }}-cron
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "platform.labels" . | nindent 4 }}
+    {{- include "platform.labelsFor" (dict "ctx" . "component" "cronjob") | nindent 4 }}
     {{- range $k, $v := .Values.commonLabels }}
     {{ $k }}: {{ $v | quote }}
     {{- end }}
@@ -34,7 +34,7 @@ spec:
       template:
         metadata:
           labels:
-            {{- include "platform.selectorLabels" . | nindent 12 }}
+            {{- include "platform.selectorLabelsFor" (dict "ctx" . "component" "cronjob") | nindent 12 }}
             {{- range $k, $v := .Values.commonLabels }}
             {{ $k }}: {{ $v | quote }}
             {{- end }}

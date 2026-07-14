@@ -21,7 +21,6 @@ exports:
       imageRegistry: ""
       imagePullPolicy: ""
       imagePullSecrets: []
-      storageClass: ""
 
     # -----------------------------------------------------------------------------
     # Workload Type
@@ -116,9 +115,12 @@ exports:
     # -----------------------------------------------------------------------------
     # Pod Disruption Budget
     # -----------------------------------------------------------------------------
+    # minAvailable and maxUnavailable are mutually exclusive; set exactly one.
+    # When neither is set the chart applies minAvailable: 1.
     podDisruptionBudget:
       enabled: false
-      minAvailable: 1
+      minAvailable: ""
+      maxUnavailable: ""
 
     # -----------------------------------------------------------------------------
     # Resources
@@ -403,7 +405,6 @@ exports:
       suspend: false
       containers: []
       initContainers: []
-      sidecars: []
       volumes: []
       annotations: {}
       podAnnotations: {}
@@ -455,6 +456,7 @@ exports:
         rollingUpdate:
           maxUnavailable: 1
       nodeSelector: {}
+      tolerations: []
 
     # -----------------------------------------------------------------------------
     # Service Account
@@ -468,7 +470,6 @@ exports:
       name: ""
       automountServiceAccountToken: false
       annotations: {}
-      labels: {}
 
     # -----------------------------------------------------------------------------
     # Security Context
@@ -506,6 +507,8 @@ exports:
     nodeSelector: {}
     tolerations: []
     affinity: {}
+    # Takes precedence over highAvailability.topologySpreadConstraints when set.
+    topologySpreadConstraints: []
     priorityClassName: ""
     schedulerName: ""
     terminationGracePeriodSeconds: 30
@@ -594,12 +597,6 @@ exports:
       podSelector: {}
       ingress: []
       egress: []
-
-    # -----------------------------------------------------------------------------
-    # Service Endpoints ConfigMap
-    # -----------------------------------------------------------------------------
-    serviceEndpoints:
-      enabled: false
 
     # -----------------------------------------------------------------------------
     # Labels and Annotations

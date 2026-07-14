@@ -383,6 +383,45 @@ else
   echo "  FAIL: helm template failed for stateful fixture"; echo "$out" | tail -5; fail=1
 fi
 
+echo "==> selector stability"
+# Selectors land in immutable fields (workload spec.selector) and in the Service/PDB
+# selectors. They must contain ONLY name/instance/component. A user-settable value
+# such as commonLabels leaking in here means changing that label orphans the running
+# pods — and on workloads it makes helm upgrade fail outright.
+if out=$("$RENDER" minimal --set service.enabled=true --set commonLabels.canary=leak 2>&1); then
+  # Every selector/matchLabels block must be free of the canary label. Extract each
+  # selector block (selector: or matchLabels: through the next dedent) and grep it.
+  leaked=$(awk '
+    /^[[:space:]]*(selector|matchLabels):[[:space:]]*$/ { depth = match($0, /[^ ]/); inblk = 1; next }
+    inblk {
+      d = match($0, /[^ ]/)
+      if (d <= depth || $0 ~ /^[[:space:]]*$/) { inblk = 0; next }
+      print
+    }' <<<"$out" | grep -c 'canary' || true)
+  if [ "$leaked" -eq 0 ]; then
+    echo "  OK: commonLabels do not leak into any selector"
+  else
+    echo "  FAIL: commonLabels leaked into $leaked selector line(s) — changing them would orphan pods"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for selector-stability check"; echo "$out" | tail -3; fail=1
+fi
+
+# The Service and PDB select the main workload only. CronJob and hook-Job pods carry
+# an identical name+instance pair, so without a distinct component they would be
+# matched too — routing live traffic to batch pods and skewing the disruption budget.
+if out=$("$RENDER" full 2>&1); then
+  cron_component=$(grep -c 'app.kubernetes.io/component: cronjob' <<<"$out" || true)
+  hook_component=$(grep -c 'app.kubernetes.io/component: preinstall' <<<"$out" || true)
+  if [ "$cron_component" -gt 0 ] && [ "$hook_component" -gt 0 ]; then
+    echo "  OK: CronJob and hook-Job pods carry a distinct component label"
+  else
+    echo "  FAIL: CronJob/hook-Job pods are not distinguished from the main workload"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for component-separation check"; echo "$out" | tail -3; fail=1
+fi
+
 echo "==> TLS mechanism collision"
 # certificate + tlsSelfSigned both target the <fullname>-tls Secret and collide.
 # (full fixture already has certificate.enabled=true.)

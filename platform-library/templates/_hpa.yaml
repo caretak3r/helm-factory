@@ -1,8 +1,7 @@
+{{/* HPA applies only to Deployment and StatefulSet; DaemonSets are node-scaled. */}}
 {{- define "platform.hpa" -}}
 {{- if or (eq .Values.workload.type "Deployment") (eq .Values.workload.type "StatefulSet") }}
 {{ include "platform.autoscaling" . }}
-{{- else }}
-{{- /* HPA only supported for Deployments and StatefulSets */ -}}
 {{- end }}
 {{- end }}
 
