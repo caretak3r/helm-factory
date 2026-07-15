@@ -180,16 +180,22 @@ for fx in "${FIXTURES[@]}"; do
 done
 
 echo "==> negative render: CRDs must drop without force-assume (full fixture)"
-neg=$("$RENDER" full --set capabilities.apiVersions=null 2>/dev/null)
-if grep -qE '^kind: (Certificate|HTTPRoute|GRPCRoute|PeerAuthentication|AuthorizationPolicy|ServiceMonitor|PodMonitor)$' <<<"$neg"; then
-  echo "  FAIL: a CRD-backed object rendered without a present API"; fail=1
+# Guarded so a render failure here reports and lets the remaining gate run,
+# instead of set -e aborting the whole script (and the guardrail suite below)
+# with stderr discarded. Keep stderr for a diagnosable message.
+if ! neg=$("$RENDER" full --set capabilities.apiVersions=null 2>&1); then
+  echo "  FAIL: negative render itself failed"; echo "$neg" | tail -5; fail=1
 else
-  echo "  OK: CRD-backed objects skipped"
-fi
-if grep -qE '^\{\}\s*$' <<<"$neg"; then
-  echo "  FAIL: empty {} document emitted"; fail=1
-else
-  echo "  OK: no empty documents"
+  if grep -qE '^kind: (Certificate|HTTPRoute|GRPCRoute|PeerAuthentication|AuthorizationPolicy|ServiceMonitor|PodMonitor)$' <<<"$neg"; then
+    echo "  FAIL: a CRD-backed object rendered without a present API"; fail=1
+  else
+    echo "  OK: CRD-backed objects skipped"
+  fi
+  if grep -qE '^\{\}\s*$' <<<"$neg"; then
+    echo "  FAIL: empty {} document emitted"; fail=1
+  else
+    echo "  OK: no empty documents"
+  fi
 fi
 
 echo "==> updateStrategy compatibility"

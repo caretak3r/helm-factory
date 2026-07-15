@@ -9,7 +9,15 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed — CI/tooling
+
+- `scripts/lint-library.sh`: the negative-render check was a bare
+  command-substitution assignment under `set -euo pipefail`, so a render failure
+  there aborted the whole script at that line — silently skipping every later
+  check (image-pin enforcement, schema enforcement, posture/hardening guardrails,
+  hook ordering) with stderr discarded. Wrapped it in the script's guarded
+  `if ! neg=$(...)` idiom and kept stderr, so a broken negative render now reports
+  `FAIL`, the rest of the gate still runs, and the script exits 1 (hf-tgh).
 
 ## [2.0.0] - 2026-07-14
 
