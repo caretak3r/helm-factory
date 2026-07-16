@@ -224,15 +224,17 @@ exports:
       path: /
       pathType: ImplementationSpecific
       annotations: {}
-      # TLS is opt-in (an enabled default would reference a `<hostname>-tls`
-      # Secret that nothing provisions). When enabled with a hostname, the
-      # secretName is ingress.existingSecret, else "<hostname>-tls" — provide
-      # it via cert-manager (certificate block / issuer annotation),
-      # ingress.existingSecret, or ingress.secrets. Serving a hostname without
-      # TLS prints an install-time WARNING via NOTES.txt.
+      # TLS is opt-in (an enabled default would reference a Secret that nothing
+      # provisions). When enabled with a hostname, the secretName is resolved
+      # in order: ingress.existingSecret; else the release-managed TLS Secret
+      # "<fullname>-tls" when tlsSelfSigned.enabled or certificate.enabled
+      # (certificate.secretName, if set, wins); else the conventional
+      # "<hostname>-tls", which you must provision yourself (cert-manager
+      # issuer annotation, ingress.existingSecret, or ingress.secrets).
+      # Serving a hostname without TLS prints an install-time WARNING via
+      # NOTES.txt.
       tls: false
       existingSecret: ""
-      selfSigned: false
       extraHosts: []
       extraPaths: []
       extraTls: []

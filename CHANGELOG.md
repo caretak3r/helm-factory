@@ -49,6 +49,24 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
   `passthrough container image resolution` gate (dict resolution, string
   passthrough, and two negative pins) (helm-factory-4lc).
 
+### Fixed — networking and TLS
+
+- The Ingress `spec.tls` secretName now converges with the release-managed TLS
+  Secret: with `ingress.tls` enabled and no `ingress.existingSecret`, the
+  Ingress references the Secret `tlsSelfSigned` actually writes (or the
+  `certificate` block's `spec.secretName`) instead of the conventional
+  `<hostname>-tls` that nothing creates unless the hostname happens to equal
+  the fullname. The name comes from a new shared helper
+  `platform.tlsSecretName` (`<fullname>-tls`) used by `_tls-selfsigned.yaml`,
+  `_certificate.yaml`, and `_ingress.yaml` so writer and reader can never
+  disagree. `ingress.existingSecret` still wins, and without any managed cert
+  source the `<hostname>-tls` fallback is preserved. `scripts/lint-library.sh`
+  gained a four-leg `TLS secret name convergence` gate (hf-bly).
+- Removed the dead value `ingress.selfSigned` from `platform-library/values.yaml`
+  — it was read by no template (the real knob is `tlsSelfSigned.enabled`) and
+  misled consumers. It was never in the reference schema. (`global.storageClass`,
+  the other dead knob named by hf-bly, was already removed in #25.) (hf-bly)
+
 ### Fixed — annotation precedence (Ingress, Gateway API)
 
 - Resource-specific annotations now override `commonAnnotations` on Ingress,
