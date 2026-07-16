@@ -33,6 +33,21 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
   Unset/empty `workload.type` still defaults to Deployment.
   `scripts/lint-library.sh` gained a schema-less negative render asserting the
   in-template failure (hf-klw).
+- Passthrough containers (`sidecars`, `initContainers`, `cronJob.containers`/
+  `initContainers`, hook-Job sidecars) now get image resolution and a pull
+  policy default via `platform.hardenContainers`. A container `image` written
+  as a dict (`registry`/`repository`/`tag`/`digest`, optional `pullPolicy`)
+  resolves exactly like the main `image` block — `global.imageRegistry`
+  applies and rendering fails without a `tag` or `digest` pin — so mirrored/
+  air-gapped installs no longer silently pull sidecars from docker.io.
+  Plain-string images still render verbatim (never registry-prefixed, so
+  fully-qualified references can't be double-prefixed). Containers without an
+  explicit `imagePullPolicy` now render the resolved library default
+  (`global.imagePullPolicy`, else the dict's `pullPolicy`, else
+  `image.pullPolicy`, else `IfNotPresent`) — previously sidecars ignored
+  `global.imagePullPolicy` entirely. `scripts/lint-library.sh` gained a
+  `passthrough container image resolution` gate (dict resolution, string
+  passthrough, and two negative pins) (helm-factory-4lc).
 
 ### Fixed — annotation precedence (Ingress, Gateway API)
 

@@ -260,7 +260,7 @@ Not workload types (separate features):
 
 | Setting | Global | Local | Precedence |
 |---------|--------|-------|------------|
-| imageRegistry | `global.imageRegistry` | `image.registry` | Global overrides if set |
+| imageRegistry | `global.imageRegistry` | `image.registry` | Global overrides if set; also applies to dict-form user-container images (plain-string images render verbatim) |
 | imagePullPolicy | `global.imagePullPolicy` | `image.pullPolicy` | Global overrides if set |
 | imagePullSecrets | `global.imagePullSecrets` | `image.pullSecrets` | Merged, global first, deduped by name |
 | storageClass | `global.storageClass` | `persistence.storageClass` | Global overrides if set |

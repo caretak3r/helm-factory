@@ -77,24 +77,38 @@ app.kubernetes.io/component: {{ .component }}
 {{- end }}
 
 {{/*
-Resolve the full image reference, honoring global overrides.
-Requires image.digest (preferred) or image.tag; there is no `latest` fallback.
-digest wins when both are set. Used by the main workload pod template and the
-CronJob default container.
+Resolve an image dict (registry/repository/tag/digest) to a full reference,
+honoring global.imageRegistry. Requires digest (preferred) or tag; there is no
+`latest` fallback. digest wins when both are set.
+Takes (dict "ctx" $ "image" <dict> "path" "<values path, for fail messages>").
 */}}
-{{- define "platform.image" -}}
-{{- $repository := trimPrefix "/" (.Values.image.repository | default "") -}}
-{{- $registry := ternary .Values.global.imageRegistry .Values.image.registry (ne .Values.global.imageRegistry "") -}}
+{{- define "platform.imageRef" -}}
+{{- $img := .image -}}
+{{- $path := .path -}}
+{{- $repository := trimPrefix "/" ($img.repository | default "") -}}
+{{- if not $repository }}
+{{- fail (printf "platform-library: %s.repository is empty. Set it to the image repository (e.g. \"org/app\")." $path) }}
+{{- end }}
+{{- $global := .ctx.Values.global.imageRegistry | default "" -}}
+{{- $registry := ternary $global ($img.registry | default "") (ne $global "") -}}
 {{- if $registry }}
   {{- $repository = printf "%s/%s" $registry $repository -}}
 {{- end }}
-{{- if .Values.image.digest }}
-{{- printf "%s@%s" $repository .Values.image.digest }}
-{{- else if .Values.image.tag }}
-{{- printf "%s:%v" $repository .Values.image.tag }}
+{{- if $img.digest }}
+{{- printf "%s@%s" $repository $img.digest }}
+{{- else if $img.tag }}
+{{- printf "%s:%v" $repository $img.tag }}
 {{- else }}
-{{- fail "platform-library: image.tag and image.digest are both empty. Pin the image with image.digest (preferred, immutable, e.g. \"sha256:<64-hex>\") or image.tag (e.g. \"1.2.3\"). Floating \"latest\" is no longer defaulted." }}
+{{- fail (printf "platform-library: %s.tag and %s.digest are both empty. Pin the image with %s.digest (preferred, immutable, e.g. \"sha256:<64-hex>\") or %s.tag (e.g. \"1.2.3\"). Floating \"latest\" is no longer defaulted." $path $path $path $path) }}
 {{- end }}
+{{- end }}
+
+{{/*
+Resolve the main container's full image reference, honoring global overrides.
+Used by the main workload pod template and the CronJob default container.
+*/}}
+{{- define "platform.image" -}}
+{{- include "platform.imageRef" (dict "ctx" . "image" .Values.image "path" "image") -}}
 {{- end }}
 
 {{/*
@@ -116,6 +130,15 @@ unhardened and sink the whole pod's restricted posture. The container's own
 securityContext keys win on conflict: mergeOverwrite lets the LAST map override,
 whereas sprig's `merge` prefers the destination and would silently discard the
 user's override.
+
+Image handling: an `image` given as a dict (registry/repository/tag/digest,
+optional pullPolicy) is resolved through platform.imageRef, so it honors
+global.imageRegistry and the no-latest pin rule exactly like the main
+container. A plain-string `image` is rendered verbatim — it bypasses
+global.imageRegistry by design (a consumer who wrote a fully-qualified
+reference must not get double-prefixed). Containers without an explicit
+imagePullPolicy get the resolved library default (global.imagePullPolicy,
+else the dict's pullPolicy, else image.pullPolicy, else IfNotPresent).
 Usage: include "platform.hardenContainers" (list $ctx $containers)
 */}}
 {{- define "platform.hardenContainers" -}}
@@ -127,6 +150,19 @@ Usage: include "platform.hardenContainers" (list $ctx $containers)
   {{- if $ctx.Values.containerSecurityContext.enabled }}
     {{- $default := deepCopy (omit $ctx.Values.containerSecurityContext "enabled") -}}
     {{- $_ := set $container "securityContext" (mergeOverwrite $default (default (dict) $container.securityContext)) -}}
+  {{- end }}
+  {{- if kindIs "map" $container.image }}
+    {{- $path := printf "container %q image" ($container.name | default "<unnamed>") -}}
+    {{- if not $container.imagePullPolicy }}
+      {{- $policy := include "platform.imagePullPolicy" $ctx -}}
+      {{- if and $container.image.pullPolicy (not $ctx.Values.global.imagePullPolicy) }}
+        {{- $policy = $container.image.pullPolicy -}}
+      {{- end }}
+      {{- $_ := set $container "imagePullPolicy" $policy -}}
+    {{- end }}
+    {{- $_ := set $container "image" (include "platform.imageRef" (dict "ctx" $ctx "image" $container.image "path" $path)) -}}
+  {{- else if not $container.imagePullPolicy }}
+    {{- $_ := set $container "imagePullPolicy" (include "platform.imagePullPolicy" $ctx) -}}
   {{- end }}
   {{- $hardened = append $hardened $container -}}
 {{- end }}

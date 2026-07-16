@@ -314,6 +314,49 @@ else
   echo "  FAIL: hook Job failed without the expected message"; echo "$out" | tail -3; fail=1
 fi
 
+echo "==> passthrough container image resolution"
+if out=$("$RENDER" minimal --set global.imageRegistry=mirror.example.internal \
+  --set sidecars.enabled=true \
+  --set 'sidecars.containers[0].name=resolver-probe' \
+  --set 'sidecars.containers[0].image.repository=org/sidecar' \
+  --set 'sidecars.containers[0].image.tag=9.9.9' \
+  --set 'sidecars.containers[1].name=plain' \
+  --set 'sidecars.containers[1].image=docker.io/library/busybox:1.36.1' 2>&1); then
+  if grep -A1 "image: mirror.example.internal/org/sidecar:9.9.9" <<<"$out" | \
+     grep -q "imagePullPolicy: IfNotPresent"; then
+    echo "  OK: dict sidecar image resolves through global.imageRegistry with the default pull policy"
+  else
+    echo "  FAIL: dict sidecar image did not resolve to mirror.example.internal/org/sidecar:9.9.9 with default imagePullPolicy"; fail=1
+  fi
+  if grep -q "image: docker.io/library/busybox:1.36.1" <<<"$out"; then
+    echo "  OK: plain-string sidecar image stays verbatim (no registry rewrite)"
+  else
+    echo "  FAIL: plain-string sidecar image was rewritten"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for passthrough container image check"; echo "$out" | tail -3; fail=1
+fi
+
+if out=$("$RENDER" minimal --set sidecars.enabled=true \
+  --set 'sidecars.containers[0].name=sc' \
+  --set 'sidecars.containers[0].image.repository=org/sidecar' 2>&1); then
+  echo "  FAIL: dict sidecar image rendered with neither tag nor digest"; fail=1
+elif grep -q 'container "sc" image.tag and' <<<"$out"; then
+  echo "  OK: unpinned dict sidecar image fails with actionable message"
+else
+  echo "  FAIL: unpinned dict sidecar image failed without the expected message"; echo "$out" | tail -3; fail=1
+fi
+
+if out=$("$RENDER" minimal --set sidecars.enabled=true \
+  --set 'sidecars.containers[0].name=sc' \
+  --set 'sidecars.containers[0].image.tag=9.9.9' 2>&1); then
+  echo "  FAIL: dict sidecar image rendered with an empty repository"; fail=1
+elif grep -q 'container "sc" image.repository is empty' <<<"$out"; then
+  echo "  OK: dict sidecar image without repository fails with actionable message"
+else
+  echo "  FAIL: repository-less dict sidecar image failed without the expected message"; echo "$out" | tail -3; fail=1
+fi
+
 echo "==> schema enforcement (helm-side): invalid values must fail"
 if out=$("$RENDER" minimal --set workload.type=deployment 2>&1); then
   echo "  FAIL: render succeeded with workload.type=deployment (schema not enforced)"; fail=1
