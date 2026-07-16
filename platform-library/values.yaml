@@ -246,7 +246,10 @@ exports:
     # -----------------------------------------------------------------------------
     gatewayApi:
       enabled: false
-      apiVersion: gateway.networking.k8s.io/v1
+      # Explicit apiVersion override for both routes. Leave empty (default) so
+      # the version is negotiated against the cluster per Kind: HTTPRoute
+      # gateway.networking.k8s.io/v1 -> v1beta1, GRPCRoute v1 -> v1alpha2.
+      apiVersion: ""
       hostnames: []
       parentRefs: []
       labels: {}

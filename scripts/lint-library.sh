@@ -795,6 +795,49 @@ else
   echo "  FAIL: render failed for annotation-precedence check"; echo "$out" | tail -3; fail=1
 fi
 
+echo "==> Gateway API apiVersion negotiation (no hardcoded default)"
+# gatewayApi.apiVersion ships empty so each route negotiates its own Kind
+# through the capability registry; a non-empty value is an explicit override.
+# Clear the fixture's capabilities.apiVersions force-assume list so the
+# --api-versions flags (full group/version/Kind form) are the only statement
+# of what the cluster serves, then check a pre-1.0 Gateway API install.
+if out=$("$RENDER" full --set capabilities.apiVersions=null \
+    --set gatewayApi.grpcRoute.enabled=true \
+    --api-versions gateway.networking.k8s.io/v1beta1/HTTPRoute \
+    --api-versions gateway.networking.k8s.io/v1alpha2/GRPCRoute 2>&1); then
+  http_api=$(grep -B1 '^kind: HTTPRoute$' <<<"$out" | grep '^apiVersion:' || true)
+  grpc_api=$(grep -B1 '^kind: GRPCRoute$' <<<"$out" | grep '^apiVersion:' || true)
+  if [[ "$http_api" == "apiVersion: gateway.networking.k8s.io/v1beta1" \
+     && "$grpc_api" == "apiVersion: gateway.networking.k8s.io/v1alpha2" ]]; then
+    echo "  OK: routes negotiate per Kind on a pre-1.0 Gateway API cluster (HTTPRoute v1beta1, GRPCRoute v1alpha2)"
+  else
+    echo "  FAIL: expected negotiated HTTPRoute v1beta1 / GRPCRoute v1alpha2, got '${http_api:-none}' / '${grpc_api:-none}' (a hardcoded gatewayApi.apiVersion default defeats negotiation and can emit an unserved apiVersion)"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for v1beta1/v1alpha2 negotiation check"; echo "$out" | tail -3; fail=1
+fi
+if out=$("$RENDER" full --set capabilities.apiVersions=null \
+    --api-versions gateway.networking.k8s.io/v1/HTTPRoute 2>&1); then
+  http_api=$(grep -B1 '^kind: HTTPRoute$' <<<"$out" | grep '^apiVersion:' || true)
+  if [[ "$http_api" == "apiVersion: gateway.networking.k8s.io/v1" ]]; then
+    echo "  OK: HTTPRoute still negotiates v1 when v1 is served"
+  else
+    echo "  FAIL: expected negotiated HTTPRoute apiVersion v1, got '${http_api:-none}'"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for v1 negotiation check"; echo "$out" | tail -3; fail=1
+fi
+if out=$("$RENDER" full --set gatewayApi.apiVersion=gateway.networking.k8s.io/v1beta1 2>&1); then
+  http_api=$(grep -B1 '^kind: HTTPRoute$' <<<"$out" | grep '^apiVersion:' || true)
+  if [[ "$http_api" == "apiVersion: gateway.networking.k8s.io/v1beta1" ]]; then
+    echo "  OK: explicit gatewayApi.apiVersion override still wins over negotiation"
+  else
+    echo "  FAIL: expected overridden HTTPRoute apiVersion v1beta1, got '${http_api:-none}'"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for explicit-override check"; echo "$out" | tail -3; fail=1
+fi
+
 echo "==> TLS mechanism collision"
 # certificate + tlsSelfSigned both target the <fullname>-tls Secret and collide.
 # (full fixture already has certificate.enabled=true.)

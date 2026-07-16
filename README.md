@@ -282,13 +282,17 @@ This generates an HTTPRoute that:
 - Uses `ingress.hostname` as the hostname (if `gatewayApi.hostnames` not set)
 - Routes `ingress.path` to this service's primary port
 - Auto-generates `backendRefs` targeting this service
+- Negotiates its `apiVersion` against the cluster per Kind (HTTPRoute:
+  `gateway.networking.k8s.io/v1` falling back to `v1beta1`; GRPCRoute: `v1`
+  falling back to `v1alpha2`) — set `gatewayApi.apiVersion` only to pin both
+  routes explicitly
 
 #### Explicit Configuration
 
 ```yaml
 gatewayApi:
   enabled: true
-  apiVersion: gateway.networking.k8s.io/v1
+  apiVersion: gateway.networking.k8s.io/v1   # optional pin; omit to negotiate
   hostnames:
     - api.example.com
   parentRefs:
