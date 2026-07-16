@@ -283,8 +283,12 @@ Not workload types (separate features):
 ### Render a test fixture (schema-enforced, like a real consumer)
 ```bash
 tests/render.sh full
-tests/render.sh full --kube-version 1.34 --api-versions cert-manager.io/v1
+tests/render.sh full --kube-version 1.34 --api-versions cert-manager.io/v1/Certificate
 ```
+The `--api-versions` flag needs the full `group/version/Kind` form — a bare
+`group/version` does not satisfy the capability gate and the object is skipped
+silently (exit 0). Only the `capabilities.apiVersions` values list accepts bare
+`group/version`.
 
 ### Run the full validation gate
 ```bash
@@ -319,7 +323,7 @@ Without it the library defaults never reach the root values scope and every gene
 Rendering fails when `image.tag` and `image.digest` are both empty, and the schema rejects `tag: latest`. Pin a tag or (preferred) a digest.
 
 ### 3. CRD-backed objects disappear under `helm template`
-Without a cluster, Helm's API discovery is minimal, so Certificates, HTTPRoutes, monitors, and mTLS objects are capability-skipped. Force-assume the groups via `capabilities.apiVersions` or `--api-versions`.
+Without a cluster, Helm's API discovery is minimal, so Certificates, HTTPRoutes, monitors, and mTLS objects are capability-skipped. Force-assume via `capabilities.apiVersions` in values (accepts `group/version` or `group/version/Kind`) or the `--api-versions` CLI flag (full `group/version/Kind` form ONLY — a bare `group/version` flag still skips the object, silently).
 
 ### 4. Invalid workload type
 `values.schema.json` rejects anything outside `Deployment`/`StatefulSet`/`DaemonSet` (case-sensitive). Consumers rendering without the schema fail in-template with the same allowed list — there is no silent Deployment fallback. Unset/empty `workload.type` still defaults to Deployment.
