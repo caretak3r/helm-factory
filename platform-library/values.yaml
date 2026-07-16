@@ -65,6 +65,10 @@ exports:
     service:
       enabled: false
       type: ClusterIP
+      # Required when type is ExternalName: the external DNS name the Service
+      # aliases (e.g. db.example.com). ExternalName Services render only
+      # type + externalName — ports and selector are omitted.
+      externalName: ""
       ports:
         - name: http
           port: 80

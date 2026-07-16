@@ -33,8 +33,11 @@
       "properties": {
         "enabled": { "type": "boolean" },
         "type": { "type": "string", "enum": ["ClusterIP", "NodePort", "LoadBalancer", "ExternalName"] },
+        "externalName": { "type": "string", "description": "Required when type is ExternalName: the external DNS name the Service aliases (e.g. db.example.com). ExternalName Services render only type + externalName; ports and selector are omitted." },
         "ports": { "type": "array", "items": { "type": "object" } }
-      }
+      },
+      "if": { "properties": { "type": { "const": "ExternalName" } }, "required": ["type"] },
+      "then": { "required": ["externalName"], "properties": { "externalName": { "minLength": 1 } } }
     },
     "secret": {
       "type": "object",
