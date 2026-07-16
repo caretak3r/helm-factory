@@ -37,6 +37,9 @@ bd sync               # Sync with git (see "Beads tracker notes" below — not y
 - NEVER stop before pushing - that leaves work stranded locally
 - NEVER say "ready to push when you are" - YOU must push
 - If push fails, resolve and retry until it succeeds
+- `git push` here means pushing your FEATURE BRANCH and opening a PR — never
+  push to `main` directly. All merges to `main` go through a PR with the `ci`
+  workflow green (see "Delivery rule: PR-only main" in CLAUDE.md).
 
 Use 'bd' for task tracking
 
