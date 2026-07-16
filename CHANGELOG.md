@@ -9,6 +9,46 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
 
 ## [Unreleased]
 
+### Fixed — workload templates
+
+- Config/Secret checksum rollout annotations (`checksum/config`,
+  `checksum/secret`) now apply to StatefulSet and DaemonSet pod templates, not
+  just Deployments — previously a `helm upgrade` changing `configMap.data` or
+  `secret.stringData` left StatefulSet/DaemonSet pods running stale config
+  until manually rolled. The helper is renamed
+  `platform.rolloutAnnotations`; `platform.deployment.rolloutAnnotations`
+  remains as a deprecated alias. The full fixture now enables `configMap` to
+  snapshot the Deployment path, and `scripts/lint-library.sh` gained a
+  `rollout checksum` gate asserting the annotations reach the full and
+  stateful pod templates (hf-bk0).
+- `imagePullSecrets` are now deduped by name across `global.imagePullSecrets`
+  and `image.pullSecrets` (global entries first) in all three pod specs that
+  aggregate them — workload pod template, CronJob, and hook Job. A secret
+  named in both values paths previously rendered twice.
+  `scripts/lint-library.sh` gained a dedupe/ordering gate covering all three
+  sites (hf-k9c).
+- An unknown `workload.type` now fails the render in-template with the allowed
+  values listed (`Deployment`, `StatefulSet`, `DaemonSet`), instead of silently
+  rendering a Deployment for consumers who don't copy `values.schema.json`.
+  Unset/empty `workload.type` still defaults to Deployment.
+  `scripts/lint-library.sh` gained a schema-less negative render asserting the
+  in-template failure (hf-klw).
+- Passthrough containers (`sidecars`, `initContainers`, `cronJob.containers`/
+  `initContainers`, hook-Job sidecars) now get image resolution and a pull
+  policy default via `platform.hardenContainers`. A container `image` written
+  as a dict (`registry`/`repository`/`tag`/`digest`, optional `pullPolicy`)
+  resolves exactly like the main `image` block — `global.imageRegistry`
+  applies and rendering fails without a `tag` or `digest` pin — so mirrored/
+  air-gapped installs no longer silently pull sidecars from docker.io.
+  Plain-string images still render verbatim (never registry-prefixed, so
+  fully-qualified references can't be double-prefixed). Containers without an
+  explicit `imagePullPolicy` now render the resolved library default
+  (`global.imagePullPolicy`, else the dict's `pullPolicy`, else
+  `image.pullPolicy`, else `IfNotPresent`) — previously sidecars ignored
+  `global.imagePullPolicy` entirely. `scripts/lint-library.sh` gained a
+  `passthrough container image resolution` gate (dict resolution, string
+  passthrough, and two negative pins) (helm-factory-4lc).
+
 ### Fixed — annotation precedence (Ingress, Gateway API)
 
 - Resource-specific annotations now override `commonAnnotations` on Ingress,

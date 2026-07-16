@@ -87,7 +87,7 @@
 - **HA presets:** `highAvailability` (must be `enabled: true`) builds affinity from presets; explicit `affinity` wins outright
 - **Holder-dict pattern:** computed values needing mutation use `dict` holders
 - **Probe omit pattern:** probes use `omit .Values.livenessProbe "enabled"` to strip the flag before rendering
-- **Pull secrets aggregation:** `global.imagePullSecrets` and `image.pullSecrets` are concatenated
+- **Pull secrets aggregation:** `global.imagePullSecrets` and `image.pullSecrets` are concatenated (global first) and deduped by name
 - **Fail-closed guardrails:** unpinned images, mTLS without principals, `existingSecret` + inline data, and cluster-scoped extras (without opt-in) all `fail` at render time with actionable messages
 
 ## Known Issues (Tracked)
@@ -99,8 +99,6 @@ re-verified still present at these locations:
 |-------|------|-----------|--------|
 | Probe render condition is subtle | `hf-d97` | `_helpers.tpl:244-251` | `omit ... "enabled"` yields an empty dict when the probe carries no other keys, and Go templates treat an empty dict as false — so `and enabled (omit ...)` is a real guard against emitting an empty probe, not a redundancy. Worth a comment or a clearer helper |
 | Service selector includes mutable labels | `hf-7a1` | `_service.yaml:51-55` | `commonLabels` are added to the Service selector; selectors are immutable, so changing `commonLabels` breaks the Service |
-| Unknown workload type silently falls back to Deployment | `hf-klw` | `_helpers.tpl:440-448` | Mitigated: `values.schema.json` (fixtures/scaffold) rejects anything outside the `Deployment`/`StatefulSet`/`DaemonSet` enum at render time; only consumers without the schema hit the silent fallback |
-| Duplicate imagePullSecrets possible | `hf-k9c` | `_helpers.tpl:194-206` | The same secret listed in both `global.imagePullSecrets` and `image.pullSecrets` appears twice |
 
 Fixed since the v1 review (no longer issues): DaemonSet+HPA (guarded in `_hpa.yaml:2`), silent hook-script skip (fails with a message in `_configmap-script.yaml:41`). Full history: [`CHANGELOG.md`](CHANGELOG.md) and `fable5-review.md`. For the current reconciliation of `fable5-review.md` against `main`, plus the outstanding productionization/Helm-v4-modernization backlog, see [`docs/productionization-plan.md`](docs/productionization-plan.md).
 
@@ -262,9 +260,9 @@ Not workload types (separate features):
 
 | Setting | Global | Local | Precedence |
 |---------|--------|-------|------------|
-| imageRegistry | `global.imageRegistry` | `image.registry` | Global overrides if set |
+| imageRegistry | `global.imageRegistry` | `image.registry` | Global overrides if set; also applies to dict-form user-container images (plain-string images render verbatim) |
 | imagePullPolicy | `global.imagePullPolicy` | `image.pullPolicy` | Global overrides if set |
-| imagePullSecrets | `global.imagePullSecrets` | `image.pullSecrets` | Merged (both applied) |
+| imagePullSecrets | `global.imagePullSecrets` | `image.pullSecrets` | Merged, global first, deduped by name |
 | storageClass | `global.storageClass` | `persistence.storageClass` | Global overrides if set |
 
 ## Feature Flag Checklist
@@ -316,7 +314,7 @@ Rendering fails when `image.tag` and `image.digest` are both empty, and the sche
 Without a cluster, Helm's API discovery is minimal, so Certificates, HTTPRoutes, monitors, and mTLS objects are capability-skipped. Force-assume the groups via `capabilities.apiVersions` or `--api-versions`.
 
 ### 4. Invalid workload type
-`values.schema.json` rejects anything outside `Deployment`/`StatefulSet`/`DaemonSet` (case-sensitive). Consumers rendering without the schema fall back silently to Deployment.
+`values.schema.json` rejects anything outside `Deployment`/`StatefulSet`/`DaemonSet` (case-sensitive). Consumers rendering without the schema fail in-template with the same allowed list — there is no silent Deployment fallback. Unset/empty `workload.type` still defaults to Deployment.
 
 ### 5. fullnameOverride length
 K8s names are limited to 63 characters; keep `fullnameOverride` ≤ 30 chars to leave room for suffixes.

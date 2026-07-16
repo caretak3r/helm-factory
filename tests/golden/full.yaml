@@ -110,6 +110,23 @@ automountServiceAccountToken: false
 apiVersion: v1
 kind: ConfigMap
 metadata:
+  name: t-full-config
+  namespace: default
+  labels:
+    helm.sh/chart: full-0.1.0
+    app.kubernetes.io/name: full
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/component: app
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+data:
+  app.properties: |
+    mode=full
+---
+# Source: full/templates/app.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
   name: extra-config
   namespace: default
   labels:
@@ -254,6 +271,8 @@ spec:
         app.kubernetes.io/name: full
         app.kubernetes.io/instance: t
         app.kubernetes.io/component: app
+      annotations:
+        checksum/config: "a93d5de51b81e9e0612bae7ead1aac1203d88d85d23f4d0f101b27a01195650e"
     spec:
       serviceAccountName: t-full
       automountServiceAccountToken: false
@@ -281,6 +300,13 @@ spec:
             - containerPort: 8080
               name: http
               protocol: TCP
+          volumeMounts:
+            - mountPath: /app/config
+              name: config
+      volumes:
+        - configMap:
+            name: t-full-config
+          name: config
       terminationGracePeriodSeconds: 30
       restartPolicy: Always
 ---

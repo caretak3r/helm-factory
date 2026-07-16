@@ -80,6 +80,7 @@ spec:
           - -c
           - echo init
           image: docker.io/library/busybox:1.36.1
+          imagePullPolicy: IfNotPresent
           name: init-wait
           securityContext:
             allowPrivilegeEscalation: false
@@ -114,6 +115,7 @@ spec:
           - -c
           - sleep infinity
           image: docker.io/library/busybox:1.36.1
+          imagePullPolicy: IfNotPresent
           name: metrics-proxy
           securityContext:
             allowPrivilegeEscalation: false
@@ -130,6 +132,7 @@ spec:
           - -c
           - sleep infinity
           image: docker.io/library/busybox:1.36.1
+          imagePullPolicy: IfNotPresent
           name: log-shipper
           securityContext:
             allowPrivilegeEscalation: false

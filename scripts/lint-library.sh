@@ -53,7 +53,7 @@ fail=0
 expected_kinds() {
   case "$1" in
     minimal)  echo 3 ;;
-    full)     echo 25 ;;
+    full)     echo 26 ;;
     stateful) echo 6 ;;
     daemon)   echo 3 ;;
     *)        echo "unknown fixture: $1" >&2; return 1 ;;
@@ -198,6 +198,63 @@ else
   fi
 fi
 
+echo "==> rollout checksum annotations reach every workload type"
+# Config/Secret changes must roll pods on ALL workload types (hf-bk0): the
+# checksum annotations were once gated on workload.type == Deployment, leaving
+# StatefulSet/DaemonSet pods running stale config after helm upgrade. full is
+# the Deployment path (configMap enabled), stateful the StatefulSet path
+# (configMap + secret enabled).
+check_rollout_checksum() {
+  local fixture="$1" annotation="$2"
+  local out
+  if out=$("$RENDER" "$fixture" 2>&1); then
+    if grep -q "$annotation:" <<<"$out"; then
+      echo "  OK: $fixture pod template carries $annotation"
+    else
+      echo "  FAIL: $fixture pod template missing $annotation — config/secret changes will not roll pods"; fail=1
+    fi
+  else
+    echo "  FAIL: render failed for $fixture $annotation check"; echo "$out" | tail -3; fail=1
+  fi
+}
+check_rollout_checksum full checksum/config
+check_rollout_checksum stateful checksum/config
+check_rollout_checksum stateful checksum/secret
+
+echo "==> imagePullSecrets: dedupe across global and image paths, global first"
+# A secret named in both global.imagePullSecrets and image.pullSecrets must
+# render once (hf-k9c), and global entries must stay ahead of image ones.
+if out=$("$RENDER" minimal \
+    --set 'global.imagePullSecrets[0]=shared-pull' \
+    --set 'global.imagePullSecrets[1]=global-only' \
+    --set 'image.pullSecrets[0]=shared-pull' \
+    --set 'image.pullSecrets[1]=image-only' 2>&1); then
+  got=$(awk '/^ *imagePullSecrets:$/ { inblk = 1; next }
+             inblk { if ($1 == "-") print $3; else exit }' <<<"$out" | paste -sd, -)
+  if [[ "$got" == "shared-pull,global-only,image-only" ]]; then
+    echo "  OK: merged list is deduped and ordered global-first"
+  else
+    echo "  FAIL: expected imagePullSecrets [shared-pull,global-only,image-only], got [$got]"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for imagePullSecrets dedupe check"; echo "$out" | tail -3; fail=1
+fi
+# All three aggregation sites (workload pod spec, CronJob, hook Job) dedupe:
+# the full fixture renders exactly one pod spec of each, so the shared name
+# must appear exactly 3 times.
+if out=$("$RENDER" full \
+    --set 'global.imagePullSecrets[0]=shared-pull' \
+    --set 'image.pullSecrets[0]=shared-pull' 2>&1); then
+  got=$(grep -c 'name: shared-pull' <<<"$out" || true)
+  if [[ "$got" -eq 3 ]]; then
+    echo "  OK: workload, CronJob, and hook Job pod specs each list the shared secret once"
+  else
+    echo "  FAIL: expected 3 occurrences of the shared pull secret (one per pod spec), got $got"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for imagePullSecrets per-site dedupe check"; echo "$out" | tail -3; fail=1
+fi
+
 echo "==> updateStrategy compatibility"
 # rollingUpdate is only valid when type is RollingUpdate. The library ships
 # rollingUpdate defaults, so a consumer flipping only .type would otherwise get an
@@ -257,6 +314,49 @@ else
   echo "  FAIL: hook Job failed without the expected message"; echo "$out" | tail -3; fail=1
 fi
 
+echo "==> passthrough container image resolution"
+if out=$("$RENDER" minimal --set global.imageRegistry=mirror.example.internal \
+  --set sidecars.enabled=true \
+  --set 'sidecars.containers[0].name=resolver-probe' \
+  --set 'sidecars.containers[0].image.repository=org/sidecar' \
+  --set 'sidecars.containers[0].image.tag=9.9.9' \
+  --set 'sidecars.containers[1].name=plain' \
+  --set 'sidecars.containers[1].image=docker.io/library/busybox:1.36.1' 2>&1); then
+  if grep -A1 "image: mirror.example.internal/org/sidecar:9.9.9" <<<"$out" | \
+     grep -q "imagePullPolicy: IfNotPresent"; then
+    echo "  OK: dict sidecar image resolves through global.imageRegistry with the default pull policy"
+  else
+    echo "  FAIL: dict sidecar image did not resolve to mirror.example.internal/org/sidecar:9.9.9 with default imagePullPolicy"; fail=1
+  fi
+  if grep -q "image: docker.io/library/busybox:1.36.1" <<<"$out"; then
+    echo "  OK: plain-string sidecar image stays verbatim (no registry rewrite)"
+  else
+    echo "  FAIL: plain-string sidecar image was rewritten"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for passthrough container image check"; echo "$out" | tail -3; fail=1
+fi
+
+if out=$("$RENDER" minimal --set sidecars.enabled=true \
+  --set 'sidecars.containers[0].name=sc' \
+  --set 'sidecars.containers[0].image.repository=org/sidecar' 2>&1); then
+  echo "  FAIL: dict sidecar image rendered with neither tag nor digest"; fail=1
+elif grep -q 'container "sc" image.tag and' <<<"$out"; then
+  echo "  OK: unpinned dict sidecar image fails with actionable message"
+else
+  echo "  FAIL: unpinned dict sidecar image failed without the expected message"; echo "$out" | tail -3; fail=1
+fi
+
+if out=$("$RENDER" minimal --set sidecars.enabled=true \
+  --set 'sidecars.containers[0].name=sc' \
+  --set 'sidecars.containers[0].image.tag=9.9.9' 2>&1); then
+  echo "  FAIL: dict sidecar image rendered with an empty repository"; fail=1
+elif grep -q 'container "sc" image.repository is empty' <<<"$out"; then
+  echo "  OK: dict sidecar image without repository fails with actionable message"
+else
+  echo "  FAIL: repository-less dict sidecar image failed without the expected message"; echo "$out" | tail -3; fail=1
+fi
+
 echo "==> schema enforcement (helm-side): invalid values must fail"
 if out=$("$RENDER" minimal --set workload.type=deployment 2>&1); then
   echo "  FAIL: render succeeded with workload.type=deployment (schema not enforced)"; fail=1
@@ -264,6 +364,17 @@ elif grep -q "workload/type" <<<"$out"; then
   echo "  OK: lowercase workload.type rejected by values.schema.json"
 else
   echo "  FAIL: render failed without a schema error"; echo "$out" | tail -3; fail=1
+fi
+
+# Even without the schema (library consumers may not copy it), the template
+# itself must refuse an unknown workload.type instead of silently rendering
+# a Deployment.
+if out=$("$RENDER" minimal --skip-schema-validation --set workload.type=Bogus 2>&1); then
+  echo "  FAIL: render succeeded with workload.type=Bogus and no schema (silent Deployment fallback)"; fail=1
+elif grep -q 'unknown workload.type "Bogus"' <<<"$out"; then
+  echo "  OK: unknown workload.type fails in-template without the schema"
+else
+  echo "  FAIL: schema-less workload.type=Bogus failed without the expected message"; echo "$out" | tail -3; fail=1
 fi
 
 if out=$("$RENDER" minimal --set image.tag=latest 2>&1); then

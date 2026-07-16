@@ -134,7 +134,9 @@ Shared settings that apply across all resources and subcharts.
 
 ```yaml
 global:
-  imageRegistry: ""         # Override registry for ALL images
+  imageRegistry: ""         # Override registry for all library-resolved images
+                            # (main image, jobs.image, dict-form container images;
+                            # plain-string sidecar/initContainer images are exempt)
   imagePullPolicy: ""       # Override pull policy for ALL images
   imagePullSecrets: []      # Pull secrets applied to ALL pods
   storageClass: ""          # Default storage class for ALL PVCs
@@ -421,8 +423,11 @@ containerSecurityContext:
 
 Every key except `enabled` is rendered verbatim, so individual fields can be
 overridden without disabling the whole block. User-supplied `sidecars`,
-`initContainers`, and `cronJob.containers` are rendered verbatim and must bring
-their own `securityContext`.
+`initContainers`, and `cronJob.containers` get the library's
+`containerSecurityContext` merged in as a default (their own keys win), and
+containers without an explicit `imagePullPolicy` get the resolved library
+default (`global.imagePullPolicy`, else `image.pullPolicy`, else
+`IfNotPresent`).
 
 ### Environment Variables
 
@@ -537,11 +542,23 @@ sidecars:
   enabled: true
   containers:
     - name: log-collector
-      image: fluent/fluent-bit:2.0
+      # Dict form: resolved like the main image — honors global.imageRegistry,
+      # requires tag or digest (no `latest` fallback), digest wins.
+      image:
+        repository: fluent/fluent-bit
+        tag: "2.0.0"
       volumeMounts:
         - name: varlog
           mountPath: /var/log
 ```
+
+A container `image` given as a dict (`registry`/`repository`/`tag`/`digest`,
+optional `pullPolicy`) goes through the same resolution as the main `image`
+block: `global.imageRegistry` overrides the registry and rendering fails
+unless `tag` or `digest` is set. A plain-string `image` is rendered verbatim
+and deliberately bypasses `global.imageRegistry` — a fully-qualified string
+must never be double-prefixed. In air-gapped/mirrored installs, prefer the
+dict form so sidecars follow the global registry override.
 
 ### Jobs (Pre/Post Install Hooks)
 
