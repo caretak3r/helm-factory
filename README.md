@@ -9,7 +9,13 @@
 1. **Capability gates.** Every generator negotiates the best `apiVersion` the target cluster actually serves (e.g. `autoscaling/v2` → `autoscaling/v1`) and **silently skips** CRD-backed objects whose API is absent — so a rendered chart never conflicts on deploy. Built-in Kinds always render with their best version; CRD/optional Kinds skip when missing. See [`docs/specs/platform-library-v2-architecture.md`](docs/specs/platform-library-v2-architecture.md).
 2. **Comprehensive coverage.** Beyond the opinionated primary-app objects below, `extraObjects` renders *any* Kubernetes Kind (RBAC, StorageClass, PriorityClass, admission webhooks, CRDs, …) through one capability-gated generic renderer, and `extraManifests` is a raw escape hatch.
 
-Targets **Kubernetes 1.34–1.36** and **Helm 4.0+**. The support policy is n-2: the latest supported Kubernetes minor plus two behind it, currently 1.34–1.36. Migrating from v1? See [`docs/migration/v1-to-v2.md`](docs/migration/v1-to-v2.md).
+Targets **Kubernetes 1.34–1.36** and **Helm 4.0–4.2** (developed and verified against Helm v4.2.0). The support policy is n-2: the latest supported Kubernetes minor plus two behind it, currently 1.34–1.36. Migrating from v1? See [`docs/migration/v1-to-v2.md`](docs/migration/v1-to-v2.md).
+
+| Chart version | Kubernetes | Helm |
+|---|---|---|
+| 2.x | 1.34 – 1.36 (`kubeVersion: ">=1.34.0-0 <1.37.0-0"`) | 4.0 – 4.2 (verified on v4.2.0) |
+
+Pulling the chart from an OCI registry tells you nothing about its support window — check the row above against your cluster and Helm client before depending on a `2.x` release.
 
 **Full docs:** https://caretak3r.github.io/helm-factory/ (values reference, capability catalog, security model, examples).
 
@@ -158,6 +164,36 @@ workload:
 | `Deployment` | Stateless services | HPA, replicas | Shared PVC |
 | `StatefulSet` | Databases, stateful apps | Replicas | Per-pod PVCs |
 | `DaemonSet` | Node agents, log collectors | One per node | Node-local |
+
+#### Update strategy
+
+Each workload type has its own update-strategy key, passed through to the
+rendered object (`strategy` on Deployments, `updateStrategy` on
+StatefulSets/DaemonSets):
+
+```yaml
+updateStrategy:                 # Deployment
+  type: RollingUpdate           # RollingUpdate | Recreate
+  rollingUpdate:
+    maxSurge: 25%
+    maxUnavailable: 25%
+
+statefulSet:
+  updateStrategy:               # StatefulSet
+    type: RollingUpdate         # RollingUpdate | OnDelete
+    rollingUpdate:
+      partition: 0
+
+daemonSet:
+  updateStrategy:               # DaemonSet
+    type: RollingUpdate         # RollingUpdate | OnDelete
+    rollingUpdate:
+      maxUnavailable: 1
+```
+
+When `type` is anything other than `RollingUpdate`, the `rollingUpdate` sub-key
+is dropped automatically — the API server rejects it on `Recreate`/`OnDelete` —
+so switching the type does not require clearing the defaults.
 
 #### StatefulSet governing Service
 
@@ -873,7 +909,10 @@ tolerations:
 affinity: {}              # Overrides HA presets when set
 
 priorityClassName: high-priority
+schedulerName: ""         # Non-default scheduler; omitted when empty
 terminationGracePeriodSeconds: 60
+podRestartPolicy: Always  # Workload pod restartPolicy (CronJob pods are always OnFailure; hook Jobs use hooks.*.restartPolicy)
+hostAliases: []           # Extra /etc/hosts entries, e.g. [{ip: "10.0.0.1", hostnames: [foo.local]}]
 ```
 
 ### Labels & Annotations

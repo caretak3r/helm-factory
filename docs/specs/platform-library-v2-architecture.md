@@ -360,8 +360,12 @@ It produces a consumer chart wired with:
    `podSecurityContext.fsGroup`, a lowercase
    `containerSecurityContext.capabilities.drop` entry, and a non-RFC1123
    `serviceAccount.name`/`ingress.hostname` are all rejected).
-3. The render matrix — `tests/render.sh <fixture> --kube-version <kv>` for both
-   `minimal` and `full` across `--kube-version 1.34 … 1.36`.
+3. The render matrix — `tests/render.sh <fixture> --kube-version <kv>` for all
+   four fixtures (`minimal`, `full`, `stateful`, `daemon`) across
+   `--kube-version 1.34 … 1.36`, with expected-object-count assertions per
+   fixture and a golden-snapshot diff for each (`tests/golden/<fixture>.yaml`,
+   rendered at the canonical kube-version; regenerate all four with
+   `UPDATE_GOLDEN=1 scripts/lint-library.sh` when a render change is intended).
 4. `kubeconform -strict -ignore-missing-schemas` on each fixture render (when
    `kubeconform` is on `PATH`).
 5. A **negative render** — `tests/render.sh full --set capabilities.apiVersions=null`
@@ -383,6 +387,15 @@ use fixture consumer charts under `tests/fixtures/`:
 - **`full`** — exercises every tier-1 generator, all four CRD families
   (force-assumed via `capabilities.apiVersions`), a broad `extraObjects` map, and
   an `extraManifests` entry.
+- **`stateful`** — the StatefulSet path (`statefulSet.volumeClaimTemplates`,
+  persistence, mounted ConfigMap, Secret, all three probes, the managed
+  governing headless Service).
+- **`daemon`** — the DaemonSet path (passthrough init containers and sidecars,
+  `daemonSet` nodeSelector/tolerations merge, `tlsSelfSigned`).
+
+Each fixture has a committed golden snapshot under `tests/golden/` — a render
+change to any of the four requires regenerating and reviewing *that* fixture's
+golden, not just `minimal`/`full`.
 
 `tests/render.sh <fixture> [helm args…]` removes any cached `charts/`/`Chart.lock`,
 runs `helm dependency update`, then `helm template`. Verified checks:
@@ -395,6 +408,6 @@ runs `helm dependency update`, then `helm template`. Verified checks:
 - `kubeconform -ignore-missing-schemas` clean (CRD objects are skipped locally for
   lack of installed schemas).
 
-Both fixture `Chart.yaml` files declare the `platform` dependency at
+All four fixture `Chart.yaml` files declare the `platform` dependency at
 `version: ">=2.0.0-0"` with `repository: file://../../../platform-library` and
 `import-values: [defaults]`. `scripts/lint-library.sh` wraps all of the above.
