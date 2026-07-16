@@ -51,6 +51,10 @@
 {{- include "platform.emit" (include "platform.service" .) }}
 {{- end }}
 
+{{- if include "platform.statefulset.needsManagedHeadless" . }}
+{{- include "platform.emit" (include "platform.service.headless" .) }}
+{{- end }}
+
 {{- if .Values.ingress.enabled }}
 {{- include "platform.emit" (include "platform.ingress" .) }}
 {{- end }}

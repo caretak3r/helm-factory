@@ -66,6 +66,18 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
   — it was read by no template (the real knob is `tlsSelfSigned.enabled`) and
   misled consumers. It was never in the reference schema. (`global.storageClass`,
   the other dead knob named by hf-bly, was already removed in #25.) (hf-bly)
+- StatefulSets now get a resolvable governing headless Service by default.
+  `spec.serviceName` previously defaulted to `<fullname>` — a Service that
+  doesn't exist unless `service.enabled: true`, and is a ClusterIP VIP when it
+  does — so stable per-pod DNS (`<pod>.<svc>.<ns>`) never resolved. When
+  `workload.type: StatefulSet` and `statefulSet.serviceName` is unset, the
+  library now renders a headless Service `<fullname>-headless` (`clusterIP:
+  None`, same selector/ports as the primary Service) and points
+  `spec.serviceName` at it. An explicit `statefulSet.serviceName` is used
+  verbatim, and a primary Service that is already headless
+  (`service.clusterIP: None`) governs directly with no extra Service. The
+  stateful golden gained the new Service, and `scripts/lint-library.sh` gained
+  a four-leg `StatefulSet governing headless Service` gate (hf-dtq).
 
 ### Fixed — annotation precedence (Ingress, Gateway API)
 

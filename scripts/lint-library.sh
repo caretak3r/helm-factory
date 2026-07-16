@@ -54,7 +54,7 @@ expected_kinds() {
   case "$1" in
     minimal)  echo 3 ;;
     full)     echo 26 ;;
-    stateful) echo 6 ;;
+    stateful) echo 7 ;;
     daemon)   echo 3 ;;
     *)        echo "unknown fixture: $1" >&2; return 1 ;;
   esac
@@ -862,6 +862,70 @@ if out=$("$RENDER" minimal --set ingress.enabled=true --set ingress.tls=true 2>&
   fi
 else
   echo "  FAIL: render failed for minimal with ingress.tls"; echo "$out" | tail -3; fail=1
+fi
+
+echo "==> StatefulSet governing headless Service"
+# A StatefulSet's per-pod DNS (<pod>.<svc>.<ns>) only resolves when
+# spec.serviceName points at a headless Service that exists. Historically the
+# default pointed at "<fullname>" — a Service that may not exist and is a
+# ClusterIP VIP when it does. Unless the consumer wires it themselves, the
+# library now renders "<fullname>-headless" (clusterIP: None) and points at it.
+headless_service_of() {
+  # prints "yes" when the render contains a Service named $2 with clusterIP: None
+  awk -v want="$2" '
+    /^---/ {kind=""; name=""; cip=""}
+    /^kind: /{kind=$2}
+    kind=="Service" && name=="" && /^  name: / {name=$2}
+    kind=="Service" && /^  clusterIP: None$/ {cip="None"}
+    kind=="Service" && name==want && cip=="None" {print "yes"; exit}
+  ' <<<"$1"
+}
+if out=$("$RENDER" stateful 2>&1); then
+  svc_name=$(awk '/^  serviceName: /{print $2; exit}' <<<"$out")
+  if [[ "$svc_name" == *-headless && "$(headless_service_of "$out" "$svc_name")" == "yes" ]]; then
+    echo "  OK: default StatefulSet render governs via managed headless Service ($svc_name)"
+  else
+    echo "  FAIL: StatefulSet serviceName '$svc_name' is not a rendered managed headless Service"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for stateful fixture"; echo "$out" | tail -3; fail=1
+fi
+
+# Explicit statefulSet.serviceName is consumer-managed: used verbatim, no managed Service.
+if out=$("$RENDER" stateful --set statefulSet.serviceName=byo-headless 2>&1); then
+  svc_name=$(awk '/^  serviceName: /{print $2; exit}' <<<"$out")
+  extra=$(grep -c '^  name: .*-headless$' <<<"$out" || true)
+  if [[ "$svc_name" == "byo-headless" && "$extra" -eq 0 ]]; then
+    echo "  OK: explicit statefulSet.serviceName is used verbatim with no managed headless Service"
+  else
+    echo "  FAIL: statefulSet.serviceName=byo-headless rendered serviceName '$svc_name' with $extra managed headless object(s)"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for stateful with statefulSet.serviceName override"; echo "$out" | tail -3; fail=1
+fi
+
+# A primary Service that is already headless (clusterIP: None) governs directly.
+if out=$("$RENDER" stateful --set service.clusterIP=None 2>&1); then
+  svc_name=$(awk '/^  serviceName: /{print $2; exit}' <<<"$out")
+  extra=$(grep -c '^  name: .*-headless$' <<<"$out" || true)
+  if [[ "$svc_name" != *-headless && "$extra" -eq 0 && "$(headless_service_of "$out" "$svc_name")" == "yes" ]]; then
+    echo "  OK: headless primary Service (clusterIP: None) governs directly ($svc_name), no extra Service"
+  else
+    echo "  FAIL: with service.clusterIP=None expected primary Service '$svc_name' to govern; managed headless count=$extra"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for stateful with service.clusterIP=None"; echo "$out" | tail -3; fail=1
+fi
+
+# Non-StatefulSet workloads never get the managed headless Service.
+if out=$("$RENDER" minimal 2>&1); then
+  if grep -q '^  name: .*-headless$' <<<"$out"; then
+    echo "  FAIL: minimal (Deployment) fixture rendered a managed headless Service"; fail=1
+  else
+    echo "  OK: Deployment fixture renders no managed headless Service"
+  fi
+else
+  echo "  FAIL: render failed for minimal fixture"; echo "$out" | tail -3; fail=1
 fi
 
 if [[ $fail -eq 0 ]]; then echo "==> PASS"; else echo "==> FAIL"; fi

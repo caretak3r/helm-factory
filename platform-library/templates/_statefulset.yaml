@@ -22,7 +22,7 @@ metadata:
     {{- end }}
   {{- end }}
 spec:
-  serviceName: {{ default (include "platform.fullname" .) .Values.statefulSet.serviceName }}
+  serviceName: {{ include "platform.statefulset.serviceName" . }}
   {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
   {{- end }}
