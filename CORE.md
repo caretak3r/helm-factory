@@ -290,7 +290,13 @@ tests/render.sh full --kube-version 1.34 --api-versions cert-manager.io/v1
 ```bash
 scripts/lint-library.sh                 # matrix, goldens, kubeconform, guardrails
 UPDATE_GOLDEN=1 scripts/lint-library.sh # accept intentional render changes
+FIXTURES=minimal scripts/lint-library.sh                              # fast local loop: one fixture
+FIXTURES="full stateful" KUBE_VERSIONS=1.36 scripts/lint-library.sh   # subset of both axes
 ```
+`FIXTURES`/`KUBE_VERSIONS` take space-separated subsets for a fast local loop
+(seconds instead of minutes); a subset run covers only the per-fixture legs,
+skips the guardrail suite, and ends `==> PASS (subset)` — run the bare gate
+before push. Bare invocation (and CI) is unchanged.
 
 ### Render a consumer chart
 ```bash
