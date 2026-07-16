@@ -23,6 +23,22 @@
 #   UPDATE_GOLDEN=1 scripts/lint-library.sh        # regenerate tests/golden/*.yaml
 #   REQUIRE_KUBECONFORM=1 scripts/lint-library.sh  # fail if kubeconform missing (CI)
 #   REQUIRE_CHECK_JSONSCHEMA=1 scripts/lint-library.sh  # fail if check-jsonschema missing (CI)
+#   FIXTURES=minimal scripts/lint-library.sh       # fast local loop: subset of fixtures
+#   FIXTURES="full stateful" KUBE_VERSIONS=1.36 scripts/lint-library.sh  # subset of both
+#
+# FIXTURES and KUBE_VERSIONS accept space-separated subsets for a fast local
+# feedback loop; both default to the full CI matrix (all four fixtures × the
+# vendored k8s window from scripts/lib/schema-manifest.sh), so a bare
+# invocation — and CI — is unchanged. A subset run covers the per-fixture
+# legs only: values validation, render matrix, kubeconform, and golden diffs
+# (goldens always render at GOLDEN_KUBE_VERSION regardless of KUBE_VERSIONS,
+# and UPDATE_GOLDEN only rewrites the selected fixtures' goldens). The
+# guardrail and negative-render suite is SKIPPED in subset mode (it exercises
+# fixed fixture+version combinations outside any slice) and the run ends
+# "==> PASS (subset)" so it can never masquerade as full-gate evidence — run
+# the bare gate before push. KUBE_VERSIONS entries must be inside the vendored
+# schema window; anything else has no kubeconform schemas and fails fast here
+# rather than confusingly mid-run.
 # =============================================================================
 set -euo pipefail
 
@@ -31,11 +47,37 @@ LIB="$REPO_ROOT/platform-library"
 RENDER="$REPO_ROOT/tests/render.sh"
 GOLDEN_DIR="$REPO_ROOT/tests/golden"
 SCHEMA_DIR="$REPO_ROOT/tests/schemas"
+# Capture env overrides (see usage above) before the defaults below and the
+# manifest source clobber the variables.
+FIXTURES_ENV="${FIXTURES:-}"
+KUBE_VERSIONS_ENV="${KUBE_VERSIONS:-}"
+
 FIXTURES=(minimal full stateful daemon)
 GOLDEN_KUBE_VERSION=1.34   # canonical version for golden snapshots
 
 # shellcheck source=scripts/lib/schema-manifest.sh
-source "$REPO_ROOT/scripts/lib/schema-manifest.sh"   # sets KUBE_VERSIONS
+source "$REPO_ROOT/scripts/lib/schema-manifest.sh"   # sets KUBE_VERSIONS (full vendored window)
+
+if [[ -n "$FIXTURES_ENV" ]]; then
+  read -ra FIXTURES <<<"$FIXTURES_ENV"
+  for fx in "${FIXTURES[@]}"; do
+    if [[ ! -d "$REPO_ROOT/tests/fixtures/$fx" ]]; then
+      echo "FATAL: unknown fixture '$fx' in \$FIXTURES — valid: minimal full stateful daemon" >&2
+      exit 2
+    fi
+  done
+fi
+
+if [[ -n "$KUBE_VERSIONS_ENV" ]]; then
+  KUBE_VERSIONS_ALL=("${KUBE_VERSIONS[@]}")
+  read -ra KUBE_VERSIONS <<<"$KUBE_VERSIONS_ENV"
+  for kv in "${KUBE_VERSIONS[@]}"; do
+    if [[ " ${KUBE_VERSIONS_ALL[*]} " != *" $kv "* ]]; then
+      echo "FATAL: KUBE_VERSIONS entry '$kv' has no vendored schemas — supported: ${KUBE_VERSIONS_ALL[*]} (see scripts/lib/schema-manifest.sh)" >&2
+      exit 2
+    fi
+  done
+fi
 
 # Schema validation is fully hermetic: both locations point at schemas
 # vendored into tests/schemas/ (see tests/schemas/README.md for provenance),
@@ -199,6 +241,17 @@ for fx in "${FIXTURES[@]}"; do
     fail=1
   fi
 done
+
+# Fast local loop (hf-3p0): a FIXTURES/KUBE_VERSIONS subset covers only the
+# per-fixture legs above. The guardrail and negative-render suite below
+# exercises fixed fixture+version combinations regardless of the requested
+# slice, so it is skipped outright rather than silently half-run — and the
+# summary line says so. The bare invocation (and CI) always runs it in full.
+if [[ -n "$FIXTURES_ENV" || -n "$KUBE_VERSIONS_ENV" ]]; then
+  echo "==> guardrail + negative-render suite: SKIPPED (FIXTURES/KUBE_VERSIONS subset — run bare scripts/lint-library.sh for the full gate)"
+  if [[ $fail -eq 0 ]]; then echo "==> PASS (subset)"; else echo "==> FAIL"; fi
+  exit $fail
+fi
 
 echo "==> negative render: CRDs must drop without force-assume (full fixture)"
 # Guarded so a render failure here reports and lets the remaining gate run,

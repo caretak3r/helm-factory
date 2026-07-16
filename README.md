@@ -1097,4 +1097,12 @@ of [AGENTS.md](AGENTS.md) before running `bd sync`.
 helm lint platform-library/
 scripts/lint-library.sh              # render matrix, goldens, kubeconform, guardrails
 UPDATE_GOLDEN=1 scripts/lint-library.sh   # accept intentional render changes
+FIXTURES=minimal scripts/lint-library.sh  # fast local loop: subset of fixtures/versions
 ```
+
+`FIXTURES` and `KUBE_VERSIONS` accept space-separated subsets (e.g.
+`FIXTURES="full stateful" KUBE_VERSIONS=1.36`) for a fast local feedback loop:
+a subset run covers only the per-fixture legs (values validation, render
+matrix, kubeconform, golden diffs), skips the guardrail suite, and ends
+`==> PASS (subset)`. Run the bare gate before pushing — it (and CI) is
+unchanged by these overrides.
