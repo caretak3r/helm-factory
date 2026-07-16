@@ -27,6 +27,12 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
   named in both values paths previously rendered twice.
   `scripts/lint-library.sh` gained a dedupe/ordering gate covering all three
   sites (hf-k9c).
+- An unknown `workload.type` now fails the render in-template with the allowed
+  values listed (`Deployment`, `StatefulSet`, `DaemonSet`), instead of silently
+  rendering a Deployment for consumers who don't copy `values.schema.json`.
+  Unset/empty `workload.type` still defaults to Deployment.
+  `scripts/lint-library.sh` gained a schema-less negative render asserting the
+  in-template failure (hf-klw).
 
 ### Fixed — annotation precedence (Ingress, Gateway API)
 

@@ -323,6 +323,17 @@ else
   echo "  FAIL: render failed without a schema error"; echo "$out" | tail -3; fail=1
 fi
 
+# Even without the schema (library consumers may not copy it), the template
+# itself must refuse an unknown workload.type instead of silently rendering
+# a Deployment.
+if out=$("$RENDER" minimal --skip-schema-validation --set workload.type=Bogus 2>&1); then
+  echo "  FAIL: render succeeded with workload.type=Bogus and no schema (silent Deployment fallback)"; fail=1
+elif grep -q 'unknown workload.type "Bogus"' <<<"$out"; then
+  echo "  OK: unknown workload.type fails in-template without the schema"
+else
+  echo "  FAIL: schema-less workload.type=Bogus failed without the expected message"; echo "$out" | tail -3; fail=1
+fi
+
 if out=$("$RENDER" minimal --set image.tag=latest 2>&1); then
   echo "  FAIL: render succeeded with image.tag=latest"; fail=1
 elif grep -q "image/tag" <<<"$out"; then

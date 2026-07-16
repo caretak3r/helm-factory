@@ -560,12 +560,15 @@ spec:
 Workload template selector
 */}}
 {{- define "platform.workload" -}}
-{{- if eq .Values.workload.type "StatefulSet" }}
+{{- $type := .Values.workload.type | default "Deployment" }}
+{{- if eq $type "StatefulSet" }}
 {{- include "platform.statefulset" . }}
-{{- else if eq .Values.workload.type "DaemonSet" }}
+{{- else if eq $type "DaemonSet" }}
 {{- include "platform.daemonset" . }}
-{{- else }}
+{{- else if eq $type "Deployment" }}
 {{- include "platform.deployment" . }}
+{{- else }}
+{{- fail (printf "platform-library: unknown workload.type %q. Set workload.type to Deployment, StatefulSet or DaemonSet (case-sensitive); leaving it unset defaults to Deployment." $type) }}
 {{- end }}
 {{- end }}
 
