@@ -806,5 +806,63 @@ else
   echo "  FAIL: certificate/tlsSelfSigned collision failed without the expected message"; echo "$out" | tail -3; fail=1
 fi
 
+echo "==> TLS secret name convergence (ingress <-> managed cert sources)"
+# tlsSelfSigned writes the Secret named by platform.tlsSecretName; the Ingress
+# spec.tls default must reference the SAME Secret. (Historically it defaulted
+# to "<hostname>-tls", which nothing creates unless hostname == fullname.)
+# Ingress spec.tls renders via toYaml|nindent 4, so its secretName sits at
+# 6-space indent; Certificate's spec.secretName sits at 2-space indent.
+if out=$("$RENDER" daemon --set ingress.enabled=true --set ingress.tls=true 2>&1); then
+  tls_secret=$(awk '/^kind: Secret$/{s=1} s && /^  name: /{n=$2} s && $0 == "type: kubernetes.io/tls" {print n; exit}' <<<"$out")
+  ing_secret=$(awk '/^      secretName: /{print $2; exit}' <<<"$out")
+  if [[ -n "$tls_secret" && "$ing_secret" == "$tls_secret" ]]; then
+    echo "  OK: Ingress spec.tls references the tlsSelfSigned Secret ($tls_secret)"
+  else
+    echo "  FAIL: tlsSelfSigned writes Secret '$tls_secret' but Ingress spec.tls references '$ing_secret'"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for daemon with ingress + tlsSelfSigned TLS"; echo "$out" | tail -3; fail=1
+fi
+
+# Same convergence for cert-manager: the Ingress default must equal the
+# Certificate's spec.secretName (full fixture has certificate.enabled=true).
+if out=$("$RENDER" full --set ingress.tls=true 2>&1); then
+  cert_secret=$(awk '/^  secretName: /{print $2; exit}' <<<"$out")
+  ing_secret=$(awk '/^      secretName: /{print $2; exit}' <<<"$out")
+  if [[ -n "$cert_secret" && "$ing_secret" == "$cert_secret" ]]; then
+    echo "  OK: Ingress spec.tls references the Certificate's secretName ($cert_secret)"
+  else
+    echo "  FAIL: Certificate targets Secret '$cert_secret' but Ingress spec.tls references '$ing_secret'"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for full with ingress.tls + certificate"; echo "$out" | tail -3; fail=1
+fi
+
+# ingress.existingSecret still beats every managed default.
+if out=$("$RENDER" daemon --set ingress.enabled=true --set ingress.tls=true \
+  --set ingress.existingSecret=byo-tls 2>&1); then
+  ing_secret=$(awk '/^      secretName: /{print $2; exit}' <<<"$out")
+  if [[ "$ing_secret" == "byo-tls" ]]; then
+    echo "  OK: ingress.existingSecret overrides the managed TLS secret name"
+  else
+    echo "  FAIL: ingress.existingSecret=byo-tls but Ingress spec.tls references '$ing_secret'"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for daemon with ingress.existingSecret"; echo "$out" | tail -3; fail=1
+fi
+
+# No managed cert source: the conventional "<hostname>-tls" fallback is kept
+# (consumer provisions it; library default hostname is app.local).
+if out=$("$RENDER" minimal --set ingress.enabled=true --set ingress.tls=true 2>&1); then
+  ing_secret=$(awk '/^      secretName: /{print $2; exit}' <<<"$out")
+  if [[ "$ing_secret" == "app.local-tls" ]]; then
+    echo "  OK: without a managed cert source the <hostname>-tls fallback is preserved"
+  else
+    echo "  FAIL: expected fallback secretName 'app.local-tls', got '$ing_secret'"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for minimal with ingress.tls"; echo "$out" | tail -3; fail=1
+fi
+
 if [[ $fail -eq 0 ]]; then echo "==> PASS"; else echo "==> FAIL"; fi
 exit $fail

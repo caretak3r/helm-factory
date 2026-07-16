@@ -1,6 +1,6 @@
 {{- define "platform.tls.selfsigned" -}}
 {{- if and .Values.tlsSelfSigned.enabled .Values.ingress.hostname -}}
-{{- $secretName := printf "%s-tls" (include "platform.fullname" .) -}}
+{{- $secretName := include "platform.tlsSecretName" . -}}
 {{- /*
 DEV-ONLY convenience. Reuse the existing Secret's certificate material on
 upgrades so the CA and private key are NOT rotated on every `helm upgrade`,

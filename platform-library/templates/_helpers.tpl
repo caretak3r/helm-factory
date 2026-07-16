@@ -22,6 +22,15 @@ Create a default fully qualified app name.
 {{- end }}
 
 {{/*
+Name of the release-managed TLS Secret. Single source of truth shared by the
+writers (_tls-selfsigned.yaml, _certificate.yaml's secretName default) and the
+reader (_ingress.yaml's spec.tls default) so they can never disagree.
+*/}}
+{{- define "platform.tlsSecretName" -}}
+{{- printf "%s-tls" (include "platform.fullname" .) -}}
+{{- end }}
+
+{{/*
 Create chart name and version as used by the chart label.
 */}}
 {{- define "platform.chart" -}}

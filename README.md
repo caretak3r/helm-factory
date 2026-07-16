@@ -219,11 +219,13 @@ ingress:
     cert-manager.io/cluster-issuer: letsencrypt-prod
 ```
 
-`ingress.tls` defaults to `false` and is deliberately not flipped: when `true`, the Ingress
-references `ingress.existingSecret` or the conventional `<hostname>-tls` Secret, which **must be
-provisioned** — by cert-manager (the `certificate` block or a cert-manager ingress annotation),
-`ingress.existingSecret`, or `ingress.secrets`. Enabling an ingress hostname without TLS prints an
-install-time `WARNING:` in the release notes.
+`ingress.tls` defaults to `false` and is deliberately not flipped: when `true`, the TLS
+`secretName` is resolved in order — `ingress.existingSecret` if set; else the release-managed
+`<fullname>-tls` Secret when `tlsSelfSigned.enabled` or `certificate.enabled` is on
+(`certificate.secretName` wins if set), so the Ingress always points at the Secret the chart
+actually writes; else the conventional `<hostname>-tls` Secret, which **must be provisioned** —
+by cert-manager (an issuer annotation), `ingress.existingSecret`, or `ingress.secrets`. Enabling
+an ingress hostname without TLS prints an install-time `WARNING:` in the release notes.
 
 Additional hosts, paths, TLS configs, and custom rules:
 
@@ -653,7 +655,9 @@ certificate:
 > `tlsSelfSigned.enabled` cannot both be `true` — both target the Secret `<fullname>-tls`
 > and the render fails closed naming the collision; pick one mechanism.
 
-Generates a self-signed CA and certificate into the Secret `<fullname>-tls`.
+Generates a self-signed CA and certificate into the Secret `<fullname>-tls`. With
+`ingress.tls: true` the Ingress references this Secret automatically — no manual
+`ingress.existingSecret` needed.
 On `helm install`/`helm upgrade` against a real cluster the chart **looks up the
 existing Secret and reuses its `tls.crt`/`tls.key`/`ca.crt`**, so the CA and key
 are stable across upgrades — *unless* the cert is within `renewBeforeDays` of

@@ -69,7 +69,20 @@ spec:
   {{- end }}
   {{- $tls := list -}}
   {{- if and .Values.ingress.tls .Values.ingress.hostname }}
-    {{- $secretName := default (printf "%s-tls" .Values.ingress.hostname) .Values.ingress.existingSecret -}}
+    {{- /* Secret precedence: ingress.existingSecret wins; else a release-managed
+           cert source (tlsSelfSigned or certificate) supplies the Secret, so
+           reference ITS name; else fall back to the conventional
+           "<hostname>-tls" the consumer must provision. */ -}}
+    {{- $secretName := .Values.ingress.existingSecret -}}
+    {{- if not $secretName -}}
+      {{- if .Values.tlsSelfSigned.enabled -}}
+        {{- $secretName = include "platform.tlsSecretName" . -}}
+      {{- else if .Values.certificate.enabled -}}
+        {{- $secretName = default (include "platform.tlsSecretName" .) .Values.certificate.secretName -}}
+      {{- else -}}
+        {{- $secretName = printf "%s-tls" .Values.ingress.hostname -}}
+      {{- end -}}
+    {{- end -}}
     {{- $tls = append $tls (dict "hosts" (list .Values.ingress.hostname) "secretName" $secretName) -}}
   {{- end }}
   {{- if .Values.ingress.extraTls }}

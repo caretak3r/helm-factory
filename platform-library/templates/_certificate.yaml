@@ -28,7 +28,7 @@ metadata:
   labels:
     {{- include "platform.labels" . | nindent 4 }}
 spec:
-  secretName: {{ .Values.certificate.secretName | default (printf "%s-tls" (include "platform.fullname" .)) }}
+  secretName: {{ .Values.certificate.secretName | default (include "platform.tlsSecretName" .) }}
   issuerRef:
     name: {{ .Values.certificate.issuer }}
     kind: {{ .Values.certificate.issuerKind | default "ClusterIssuer" }}
