@@ -94,16 +94,22 @@ skipped when its API is absent.
 {{/*
 platform.extraManifests — ultimate escape hatch. A list of raw manifest maps
 rendered verbatim (consumer supplies full apiVersion/kind). Strings are passed
-through tpl so they may contain template expressions.
+through tpl so they may contain template expressions. Entries that render to
+nothing (a string whose template collapses to empty, or an empty map) are
+skipped so no separator-only or bare {} document is emitted.
 */}}
 {{- define "platform.extraManifests" -}}
 {{- $top := . -}}
 {{- range $manifest := (.Values.extraManifests | default list) }}
----
+{{- $rendered := "" -}}
 {{- if kindIs "string" $manifest }}
-{{ tpl $manifest $top }}
+{{- $rendered = tpl $manifest $top | trim }}
 {{- else }}
-{{ toYaml $manifest }}
+{{- $rendered = toYaml $manifest | trim }}
+{{- end }}
+{{- if and $rendered (ne $rendered "{}") }}
+---
+{{ $rendered }}
 {{- end }}
 {{- end }}
 {{- end -}}

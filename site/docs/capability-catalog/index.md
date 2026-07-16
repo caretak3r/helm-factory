@@ -36,8 +36,18 @@ capabilities:
     - security.istio.io/v1beta1
 ```
 
-Equivalently, pass `helm template --api-versions <group/version>` (and
-`--kube-version <x.y>` to set `.Capabilities.KubeVersion`).
+The CLI flag works too, but **only in the full `group/version/Kind` form** —
+`helm template --api-versions cert-manager.io/v1/Certificate` (and
+`--kube-version <x.y>` to set `.Capabilities.KubeVersion`). A bare
+`--api-versions group/version` flag does **not** satisfy the gate: the library
+checks `.Capabilities.APIVersions.Has` with the full `group/version/Kind`
+string, and Helm's `Has` is an exact-string membership test — a set containing
+only `cert-manager.io/v1` never answers `true` for
+`cert-manager.io/v1/Certificate`. The result is the worst failure mode: a
+clean exit 0 with the object silently missing. Only the
+`capabilities.apiVersions` values list above accepts the bare `group/version`
+form, because the library itself also matches each entry against the queried
+Kind's `group/version`.
 
 Until the generated table lands, the authoritative source is
 [`platform-library/templates/_capabilities.tpl`](https://github.com/caretak3r/helm-factory/blob/main/platform-library/templates/_capabilities.tpl)

@@ -2,7 +2,10 @@
 # Rebuild the platform-library dependency into a fixture and render it.
 # Usage: tests/render.sh <fixture> [helm template extra args...]
 #   tests/render.sh full
-#   tests/render.sh full --kube-version 1.34 --api-versions rbac.authorization.k8s.io/v1
+#   tests/render.sh full --kube-version 1.34 --api-versions cert-manager.io/v1/Certificate
+# NOTE: --api-versions needs the full group/version/Kind form; a bare
+# group/version does NOT satisfy the capability gate (silent skip, exit 0).
+# Only the capabilities.apiVersions values list accepts bare group/version.
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 fixture="${1:?usage: render.sh <fixture> [helm args...]}"; shift || true
