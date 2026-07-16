@@ -15,11 +15,11 @@
 {{- $apiVersion := default (include "platform.capabilities.apiVersionForOrDefault" (list . "HTTPRoute")) $gw.apiVersion -}}
 
 {{- $mergeAnnotations := dict -}}
-{{- if .Values.commonAnnotations }}
-  {{- $mergeAnnotations = merge $mergeAnnotations .Values.commonAnnotations -}}
+{{- range $k, $v := .Values.commonAnnotations }}
+  {{- $_ := set $mergeAnnotations $k $v -}}
 {{- end }}
-{{- if $gw.annotations }}
-  {{- $mergeAnnotations = merge $mergeAnnotations $gw.annotations -}}
+{{- range $k, $v := $gw.annotations }}
+  {{- $_ := set $mergeAnnotations $k $v -}}
 {{- end }}
 
 {{- /* HTTPRoute */ -}}
@@ -89,11 +89,11 @@ metadata:
     {{ $k }}: {{ $v | quote }}
     {{- end }}
   {{- $httpAnnotations := dict -}}
-  {{- if gt (len $mergeAnnotations) 0 }}
-    {{- $httpAnnotations = merge (dict) $mergeAnnotations -}}
+  {{- range $k, $v := $mergeAnnotations }}
+    {{- $_ := set $httpAnnotations $k $v -}}
   {{- end }}
-  {{- if $http.annotations }}
-    {{- $httpAnnotations = merge $httpAnnotations $http.annotations -}}
+  {{- range $k, $v := $http.annotations }}
+    {{- $_ := set $httpAnnotations $k $v -}}
   {{- end }}
   {{- if gt (len $httpAnnotations) 0 }}
   annotations:
@@ -159,11 +159,11 @@ metadata:
     {{ $k }}: {{ $v | quote }}
     {{- end }}
   {{- $grpcAnnotations := dict -}}
-  {{- if gt (len $mergeAnnotations) 0 }}
-    {{- $grpcAnnotations = merge (dict) $mergeAnnotations -}}
+  {{- range $k, $v := $mergeAnnotations }}
+    {{- $_ := set $grpcAnnotations $k $v -}}
   {{- end }}
-  {{- if $grpc.annotations }}
-    {{- $grpcAnnotations = merge $grpcAnnotations $grpc.annotations -}}
+  {{- range $k, $v := $grpc.annotations }}
+    {{- $_ := set $grpcAnnotations $k $v -}}
   {{- end }}
   {{- if gt (len $grpcAnnotations) 0 }}
   annotations:

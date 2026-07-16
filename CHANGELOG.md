@@ -9,6 +9,19 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
 
 ## [Unreleased]
 
+### Fixed — annotation precedence (Ingress, Gateway API)
+
+- Resource-specific annotations now override `commonAnnotations` on Ingress,
+  HTTPRoute, and GRPCRoute (and `gatewayApi.annotations` now overrides
+  `commonAnnotations` in the shared Gateway API map), matching every other
+  object in the library (Service, Secret, ConfigMap, PVC, ...). These four
+  sites used Sprig `merge`, which keeps existing keys, so `commonAnnotations`
+  silently won any collision. **Behavior change:** only consumers setting the
+  same annotation key in both `commonAnnotations` and the resource-specific
+  block are affected — previously the common value rendered (the bug), now the
+  specific value wins. `scripts/lint-library.sh` gained an
+  `annotation precedence` gate asserting the specific value renders (hf-tyw).
+
 ### Fixed — CI/tooling
 
 - `scripts/lint-library.sh`: the negative-render check was a bare

@@ -651,6 +651,39 @@ else
   echo "  FAIL: render failed for component-separation check"; echo "$out" | tail -3; fail=1
 fi
 
+echo "==> annotation precedence: resource-specific beats commonAnnotations"
+# Sprig `merge` keeps EXISTING keys (dest wins), so the old
+# `merge (dict) .Values.commonAnnotations <resource>.annotations` silently let
+# commonAnnotations override resource-specific annotations on the Ingress and
+# the Gateway API routes. Set the same keys in both maps and assert the
+# specific value renders (house pattern: range commonAnnotations first, then
+# the specific map — last write wins; see _service.yaml).
+# Key `precedence` guards the ingress/httpRoute/grpcRoute sites; key `shared`
+# (set only in commonAnnotations and gatewayApi.annotations) guards the shared
+# gatewayApi map, which route-specific overrides would otherwise mask.
+if out=$("$RENDER" full \
+    --set commonAnnotations.precedence=common \
+    --set commonAnnotations.shared=common \
+    --set ingress.annotations.precedence=ingress \
+    --set gatewayApi.annotations.precedence=gateway \
+    --set gatewayApi.annotations.shared=gateway \
+    --set gatewayApi.httpRoute.annotations.precedence=http \
+    --set gatewayApi.grpcRoute.enabled=true \
+    --set gatewayApi.grpcRoute.annotations.precedence=grpc 2>&1); then
+  ing=$(grep -c 'precedence: "ingress"' <<<"$out" || true)
+  http=$(grep -c 'precedence: "http"' <<<"$out" || true)
+  grpc=$(grep -c 'precedence: "grpc"' <<<"$out" || true)
+  gw_shared=$(grep -c 'shared: "gateway"' <<<"$out" || true)
+  gw_leak=$(grep -c 'precedence: "gateway"' <<<"$out" || true)
+  if [[ "$ing" -eq 1 && "$http" -eq 1 && "$grpc" -eq 1 && "$gw_shared" -eq 2 && "$gw_leak" -eq 0 ]]; then
+    echo "  OK: resource-specific annotations win over commonAnnotations (Ingress/HTTPRoute/GRPCRoute)"
+  else
+    echo "  FAIL: annotation precedence inverted — expected ingress/http/grpc counts 1/1/1, shared-gateway 2, leaked-gateway 0; got $ing/$http/$grpc, $gw_shared, $gw_leak (commonAnnotations must not override resource-specific annotations)"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for annotation-precedence check"; echo "$out" | tail -3; fail=1
+fi
+
 echo "==> TLS mechanism collision"
 # certificate + tlsSelfSigned both target the <fullname>-tls Secret and collide.
 # (full fixture already has certificate.enabled=true.)
