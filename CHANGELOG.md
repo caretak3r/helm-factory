@@ -21,6 +21,12 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
   snapshot the Deployment path, and `scripts/lint-library.sh` gained a
   `rollout checksum` gate asserting the annotations reach the full and
   stateful pod templates (hf-bk0).
+- `imagePullSecrets` are now deduped by name across `global.imagePullSecrets`
+  and `image.pullSecrets` (global entries first) in all three pod specs that
+  aggregate them — workload pod template, CronJob, and hook Job. A secret
+  named in both values paths previously rendered twice.
+  `scripts/lint-library.sh` gained a dedupe/ordering gate covering all three
+  sites (hf-k9c).
 
 ### Fixed — annotation precedence (Ingress, Gateway API)
 

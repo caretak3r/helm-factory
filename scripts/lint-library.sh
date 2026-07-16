@@ -221,6 +221,40 @@ check_rollout_checksum full checksum/config
 check_rollout_checksum stateful checksum/config
 check_rollout_checksum stateful checksum/secret
 
+echo "==> imagePullSecrets: dedupe across global and image paths, global first"
+# A secret named in both global.imagePullSecrets and image.pullSecrets must
+# render once (hf-k9c), and global entries must stay ahead of image ones.
+if out=$("$RENDER" minimal \
+    --set 'global.imagePullSecrets[0]=shared-pull' \
+    --set 'global.imagePullSecrets[1]=global-only' \
+    --set 'image.pullSecrets[0]=shared-pull' \
+    --set 'image.pullSecrets[1]=image-only' 2>&1); then
+  got=$(awk '/^ *imagePullSecrets:$/ { inblk = 1; next }
+             inblk { if ($1 == "-") print $3; else exit }' <<<"$out" | paste -sd, -)
+  if [[ "$got" == "shared-pull,global-only,image-only" ]]; then
+    echo "  OK: merged list is deduped and ordered global-first"
+  else
+    echo "  FAIL: expected imagePullSecrets [shared-pull,global-only,image-only], got [$got]"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for imagePullSecrets dedupe check"; echo "$out" | tail -3; fail=1
+fi
+# All three aggregation sites (workload pod spec, CronJob, hook Job) dedupe:
+# the full fixture renders exactly one pod spec of each, so the shared name
+# must appear exactly 3 times.
+if out=$("$RENDER" full \
+    --set 'global.imagePullSecrets[0]=shared-pull' \
+    --set 'image.pullSecrets[0]=shared-pull' 2>&1); then
+  got=$(grep -c 'name: shared-pull' <<<"$out" || true)
+  if [[ "$got" -eq 3 ]]; then
+    echo "  OK: workload, CronJob, and hook Job pod specs each list the shared secret once"
+  else
+    echo "  FAIL: expected 3 occurrences of the shared pull secret (one per pod spec), got $got"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for imagePullSecrets per-site dedupe check"; echo "$out" | tail -3; fail=1
+fi
+
 echo "==> updateStrategy compatibility"
 # rollingUpdate is only valid when type is RollingUpdate. The library ships
 # rollingUpdate defaults, so a consumer flipping only .type would otherwise get an

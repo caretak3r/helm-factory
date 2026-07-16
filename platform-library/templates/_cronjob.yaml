@@ -62,6 +62,8 @@ spec:
           {{- range .Values.image.pullSecrets }}
             {{- $pullSecrets = append $pullSecrets . -}}
           {{- end }}
+          {{- /* uniq keeps the first occurrence: global entries stay ahead of image ones */ -}}
+          {{- $pullSecrets = $pullSecrets | uniq -}}
           {{- if gt (len $pullSecrets) 0 }}
           imagePullSecrets:
             {{- range $pullSecrets }}

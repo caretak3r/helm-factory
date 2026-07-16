@@ -249,6 +249,8 @@ spec:
   {{- range $ctx.Values.image.pullSecrets }}
     {{- $pullSecrets = append $pullSecrets . -}}
   {{- end }}
+  {{- /* uniq keeps the first occurrence: global entries stay ahead of image ones */ -}}
+  {{- $pullSecrets = $pullSecrets | uniq -}}
   {{- if gt (len $pullSecrets) 0 }}
   imagePullSecrets:
     {{- range $name := $pullSecrets }}
@@ -763,6 +765,8 @@ spec:
       {{- range $ctx.Values.image.pullSecrets }}
         {{- $hookPullSecrets = append $hookPullSecrets . -}}
       {{- end }}
+      {{- /* uniq keeps the first occurrence: global entries stay ahead of image ones */ -}}
+      {{- $hookPullSecrets = $hookPullSecrets | uniq -}}
       {{- if gt (len $hookPullSecrets) 0 }}
       imagePullSecrets:
         {{- range $hookPullSecrets }}
