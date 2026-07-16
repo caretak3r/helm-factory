@@ -12,6 +12,9 @@
   {{- $baseHostnames = list .Values.ingress.hostname -}}
 {{- end }}
 {{- $baseParentRefs := $gw.parentRefs | default (list) -}}
+{{- /* gatewayApi.apiVersion is an explicit override only; when empty each route
+       negotiates its own Kind (OrDefault is safe here: the wrapper gate in
+       _app.yaml already proved HTTPRoute availability). */ -}}
 {{- $apiVersion := default (include "platform.capabilities.apiVersionForOrDefault" (list . "HTTPRoute")) $gw.apiVersion -}}
 
 {{- $mergeAnnotations := dict -}}
@@ -110,7 +113,7 @@ spec:
 {{- if $grpc.enabled -}}
 {{- $grpcName := default (printf "%s-grpc" $fullName) $grpc.name -}}
 {{- $grpcName = $grpcName | trunc 63 | trimSuffix "-" -}}
-{{- $grpcApiVersion := default $apiVersion $grpc.apiVersion -}}
+{{- $grpcApiVersion := coalesce $grpc.apiVersion $gw.apiVersion (include "platform.capabilities.apiVersionForOrDefault" (list . "GRPCRoute")) -}}
 {{- $parentRefs := $grpc.parentRefs | default (list) -}}
 {{- if not (gt (len $parentRefs) 0) }}
   {{- $parentRefs = $baseParentRefs -}}

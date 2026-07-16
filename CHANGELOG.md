@@ -78,6 +78,20 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
   (`service.clusterIP: None`) governs directly with no extra Service. The
   stateful golden gained the new Service, and `scripts/lint-library.sh` gained
   a four-leg `StatefulSet governing headless Service` gate (hf-dtq).
+- `gatewayApi.apiVersion` now defaults to `""` so capability negotiation
+  actually runs, matching every other CRD-backed generator. The shipped
+  literal `gateway.networking.k8s.io/v1` always won over the negotiated
+  value, so on a cluster serving only `v1beta1` the capability gate passed
+  (it negotiated `v1beta1`) and the HTTPRoute then rendered as `v1` — an
+  apiVersion the cluster does not serve. Each route now negotiates its own
+  Kind (HTTPRoute `v1` → `v1beta1`, GRPCRoute `v1` → `v1alpha2`, so GRPCRoute
+  no longer inherits HTTPRoute's negotiated version); a non-empty
+  `gatewayApi.apiVersion` or per-route `apiVersion` is still used verbatim.
+  **Behavior change:** consumers on pre-1.0 Gateway API installs go from a
+  hard apiVersion mismatch to a correct `v1beta1`/`v1alpha2` render; `v1`
+  clusters and offline `helm template` output are unchanged.
+  `scripts/lint-library.sh` gained a three-leg
+  `Gateway API apiVersion negotiation` gate (helm-factory-5ar).
 
 ### Fixed — annotation precedence (Ingress, Gateway API)
 

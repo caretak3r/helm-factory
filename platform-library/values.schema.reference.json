@@ -121,7 +121,7 @@
       "additionalProperties": true,
       "properties": {
         "enabled": { "type": "boolean" },
-        "apiVersion": { "type": "string" },
+        "apiVersion": { "type": "string", "description": "Explicit apiVersion override for both routes. Leave empty (the default) so each route negotiates its Kind's apiVersion against the cluster (HTTPRoute: v1 then v1beta1; GRPCRoute: v1 then v1alpha2)." },
         "hostnames": { "type": "array", "items": { "type": "string" } },
         "parentRefs": { "type": "array", "items": { "type": "object" } },
         "httpRoute": {
