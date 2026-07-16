@@ -92,6 +92,22 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
   clusters and offline `helm template` output are unchanged.
   `scripts/lint-library.sh` gained a three-leg
   `Gateway API apiVersion negotiation` gate (helm-factory-5ar).
+- Three cross-field combinations that silently rendered invalid or dangling
+  objects now fail at template time with prescriptive messages:
+  `service.type: ExternalName` is now supported properly — the Service renders
+  `spec.externalName` from the new `service.externalName` value (required;
+  rendering fails when empty) and omits ports/selector, where it previously
+  rendered ports+selector with no `externalName` and was rejected by the API
+  server; `certificate.enabled` with an empty `certificate.issuer` fails
+  instead of rendering a null `issuerRef.name` cert-manager can never issue;
+  and `ingress.enabled` without `service.enabled` fails instead of rendering
+  an Ingress whose backends dangle against a Service that does not exist
+  (same guard for Gateway API routes whose `backendRefs` default to the
+  release Service — explicit `backendRefs` remain allowed without it).
+  `service.externalName` is an additive values key with schema validation
+  (`externalName` required when `type` is `ExternalName`).
+  `scripts/lint-library.sh` gained a six-leg `Cross-field guards` gate
+  (helm-factory-h8q).
 
 ### Fixed — annotation precedence (Ingress, Gateway API)
 

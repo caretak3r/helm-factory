@@ -56,6 +56,9 @@
 {{- end }}
 {{- $backendRefs := $http.backendRefs | default (list) -}}
 {{- if not (gt (len $backendRefs) 0) }}
+  {{- if not .Values.service.enabled }}
+    {{- fail (printf "gatewayApi.httpRoute has no backendRefs, so it defaults to the release Service %q, but service.enabled is false — the route would reference a Service that does not exist. Set service.enabled: true, or list gatewayApi.httpRoute.backendRefs explicitly." $fullName) }}
+  {{- end }}
   {{- $backendRefs = list (deepCopy $defaultBackend) -}}
 {{- end }}
 {{- $filters := $http.filters | default (list) -}}
@@ -127,6 +130,9 @@ spec:
 {{- end }}
 {{- $backendRefs := $grpc.backendRefs | default (list) -}}
 {{- if not (gt (len $backendRefs) 0) }}
+  {{- if not .Values.service.enabled }}
+    {{- fail (printf "gatewayApi.grpcRoute has no backendRefs, so it defaults to the release Service %q, but service.enabled is false — the route would reference a Service that does not exist. Set service.enabled: true, or list gatewayApi.grpcRoute.backendRefs explicitly." $fullName) }}
+  {{- end }}
   {{- $backendRefs = list (deepCopy $defaultBackend) -}}
 {{- end }}
 {{- $rules := $grpc.rules | default (list) -}}

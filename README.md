@@ -210,7 +210,7 @@ Expose pods via a Kubernetes Service.
 ```yaml
 service:
   enabled: true
-  type: ClusterIP               # ClusterIP | NodePort | LoadBalancer
+  type: ClusterIP               # ClusterIP | NodePort | LoadBalancer | ExternalName
   ports:
     - name: http
       port: 80
@@ -220,9 +220,24 @@ service:
   annotations: {}
 ```
 
+`type: ExternalName` aliases an external DNS name instead of selecting pods —
+set `service.externalName` (required; rendering fails without it) and the
+Service renders only `type` + `externalName`, omitting ports and selector:
+
+```yaml
+service:
+  enabled: true
+  type: ExternalName
+  externalName: db.example.com
+```
+
 ### Ingress
 
-Route external traffic to the service via an Ingress controller.
+Route external traffic to the service via an Ingress controller. Every
+Ingress backend points at the chart's own Service, so `ingress.enabled: true`
+requires `service.enabled: true` — rendering fails otherwise (the Ingress
+would be accepted by the API server but dangle against a Service that does
+not exist).
 
 ```yaml
 ingress:
@@ -281,7 +296,9 @@ This generates an HTTPRoute that:
 - Attaches to the specified Gateway via `parentRefs`
 - Uses `ingress.hostname` as the hostname (if `gatewayApi.hostnames` not set)
 - Routes `ingress.path` to this service's primary port
-- Auto-generates `backendRefs` targeting this service
+- Auto-generates `backendRefs` targeting this service (which therefore
+  requires `service.enabled: true` — rendering fails otherwise; routes with
+  explicit `backendRefs` don't need the chart's own Service)
 - Negotiates its `apiVersion` against the cluster per Kind (HTTPRoute:
   `gateway.networking.k8s.io/v1` falling back to `v1beta1`; GRPCRoute: `v1`
   falling back to `v1alpha2`) — set `gatewayApi.apiVersion` only to pin both
@@ -656,6 +673,9 @@ mtls:
 ```
 
 ### Certificates (cert-manager)
+
+`certificate.issuer` is required — rendering fails when it is empty, because
+a Certificate with a null `issuerRef.name` can never be issued.
 
 ```yaml
 certificate:

@@ -55,6 +55,10 @@
 {{- include "platform.emit" (include "platform.service.headless" .) }}
 {{- end }}
 
+{{- if and .Values.ingress.enabled (not .Values.service.enabled) -}}
+{{- fail (printf "ingress.enabled is true but service.enabled is false: every Ingress backend points at the release Service %q, which would not exist, so the Ingress would be accepted but dangling. Set service.enabled: true (Ingress backends target it), or disable the Ingress." (include "platform.fullname" .)) -}}
+{{- end }}
+
 {{- if .Values.ingress.enabled }}
 {{- include "platform.emit" (include "platform.ingress" .) }}
 {{- end }}

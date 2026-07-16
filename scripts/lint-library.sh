@@ -855,7 +855,10 @@ echo "==> TLS secret name convergence (ingress <-> managed cert sources)"
 # to "<hostname>-tls", which nothing creates unless hostname == fullname.)
 # Ingress spec.tls renders via toYaml|nindent 4, so its secretName sits at
 # 6-space indent; Certificate's spec.secretName sits at 2-space indent.
-if out=$("$RENDER" daemon --set ingress.enabled=true --set ingress.tls=true 2>&1); then
+# (service.enabled=true because the daemon fixture has no Service and the
+# ingress-without-service guard would otherwise fail these renders.)
+if out=$("$RENDER" daemon --set ingress.enabled=true --set ingress.tls=true \
+  --set service.enabled=true 2>&1); then
   tls_secret=$(awk '/^kind: Secret$/{s=1} s && /^  name: /{n=$2} s && $0 == "type: kubernetes.io/tls" {print n; exit}' <<<"$out")
   ing_secret=$(awk '/^      secretName: /{print $2; exit}' <<<"$out")
   if [[ -n "$tls_secret" && "$ing_secret" == "$tls_secret" ]]; then
@@ -883,7 +886,7 @@ fi
 
 # ingress.existingSecret still beats every managed default.
 if out=$("$RENDER" daemon --set ingress.enabled=true --set ingress.tls=true \
-  --set ingress.existingSecret=byo-tls 2>&1); then
+  --set service.enabled=true --set ingress.existingSecret=byo-tls 2>&1); then
   ing_secret=$(awk '/^      secretName: /{print $2; exit}' <<<"$out")
   if [[ "$ing_secret" == "byo-tls" ]]; then
     echo "  OK: ingress.existingSecret overrides the managed TLS secret name"
@@ -905,6 +908,71 @@ if out=$("$RENDER" minimal --set ingress.enabled=true --set ingress.tls=true 2>&
   fi
 else
   echo "  FAIL: render failed for minimal with ingress.tls"; echo "$out" | tail -3; fail=1
+fi
+
+echo "==> Cross-field guards (ExternalName / certificate.issuer / dangling backends)"
+# Three cross-field combinations used to render objects the API server rejects
+# or that dangle against a Service that does not exist. Each now fails at
+# template time with a prescriptive message. The ExternalName and issuer legs
+# use --skip-schema-validation because the helm-side schema also rejects those
+# values — the template guard is the layer that survives consumer schema drift.
+
+# ExternalName is now supported properly: type + externalName only, no
+# ports/selector (the API server rejects ExternalName without externalName,
+# and ports/selector are meaningless for it).
+if out=$("$RENDER" minimal --set service.type=ExternalName \
+  --set service.externalName=db.example.com 2>&1); then
+  svc_doc=$(awk '/^kind: Service$/{s=1} s && /^---/{exit} s{print}' <<<"$out")
+  if grep -q '^  externalName: db.example.com$' <<<"$svc_doc" \
+    && ! grep -q '^  selector:' <<<"$svc_doc" && ! grep -q '^  ports:' <<<"$svc_doc"; then
+    echo "  OK: ExternalName Service renders spec.externalName with no ports/selector"
+  else
+    echo "  FAIL: ExternalName Service must render spec.externalName and omit ports/selector"; echo "$svc_doc" | tail -8; fail=1
+  fi
+else
+  echo "  FAIL: render failed for minimal with a valid ExternalName Service"; echo "$out" | tail -3; fail=1
+fi
+
+if out=$("$RENDER" minimal --skip-schema-validation --set service.type=ExternalName 2>&1); then
+  echo "  FAIL: render succeeded with service.type=ExternalName and no service.externalName"; fail=1
+elif grep -q "service.type is ExternalName but service.externalName is empty" <<<"$out"; then
+  echo "  OK: ExternalName without service.externalName rejected"
+else
+  echo "  FAIL: ExternalName without externalName failed without the expected message"; echo "$out" | tail -3; fail=1
+fi
+
+if out=$("$RENDER" full --skip-schema-validation --set certificate.issuer= 2>&1); then
+  echo "  FAIL: render succeeded with certificate.enabled=true and an empty certificate.issuer"; fail=1
+elif grep -q "certificate.enabled is true but certificate.issuer is empty" <<<"$out"; then
+  echo "  OK: certificate with empty issuer rejected"
+else
+  echo "  FAIL: empty certificate.issuer failed without the expected message"; echo "$out" | tail -3; fail=1
+fi
+
+if out=$("$RENDER" minimal --set ingress.enabled=true --set service.enabled=false 2>&1); then
+  echo "  FAIL: render succeeded with ingress.enabled=true and service.enabled=false"; fail=1
+elif grep -q "ingress.enabled is true but service.enabled is false" <<<"$out"; then
+  echo "  OK: ingress without the backing Service rejected"
+else
+  echo "  FAIL: ingress-without-service failed without the expected message"; echo "$out" | tail -3; fail=1
+fi
+
+# Gateway API routes default their backendRefs to the release Service; guard
+# fires only for that defaulted path — explicit backendRefs stay allowed.
+if out=$("$RENDER" full --set service.enabled=false --set ingress.enabled=false 2>&1); then
+  echo "  FAIL: render succeeded with a defaulted HTTPRoute backend and service.enabled=false"; fail=1
+elif grep -q "gatewayApi.httpRoute has no backendRefs" <<<"$out"; then
+  echo "  OK: defaulted HTTPRoute backend without the Service rejected"
+else
+  echo "  FAIL: defaulted-backend-without-service failed without the expected message"; echo "$out" | tail -3; fail=1
+fi
+
+if out=$("$RENDER" full --set service.enabled=false --set ingress.enabled=false \
+  --set 'gatewayApi.httpRoute.backendRefs[0].name=other' \
+  --set 'gatewayApi.httpRoute.backendRefs[0].port=8080' 2>&1); then
+  echo "  OK: explicit HTTPRoute backendRefs render without the release Service"
+else
+  echo "  FAIL: explicit backendRefs must not require service.enabled"; echo "$out" | tail -3; fail=1
 fi
 
 echo "==> StatefulSet governing headless Service"
