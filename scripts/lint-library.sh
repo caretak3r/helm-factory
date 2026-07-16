@@ -272,6 +272,28 @@ else
   fi
 fi
 
+echo "==> extraManifests skips entries that render to nothing (hf-8k3)"
+# The raw escape hatch must apply the same "separator only when non-empty"
+# rule as platform.emit/extraObjects: a string manifest whose template
+# collapses to empty (or an empty map) must emit no document at all, while a
+# real entry in the same list still renders. minimal renders 3 kinds, so the
+# live ConfigMap makes exactly 4 document separators — an unguarded generator
+# emits 6 (one stray per empty entry).
+if out=$("$RENDER" minimal --set-json 'extraManifests=["{{- if false }}never{{- end }}", {}, {"apiVersion":"v1","kind":"ConfigMap","metadata":{"name":"em-live"},"data":{"k":"v"}}]' 2>&1); then
+  seps=$(grep -c '^---' <<<"$out" || true)
+  if [[ "$seps" != "4" ]]; then
+    echo "  FAIL: expected 4 document separators (3 minimal kinds + live ConfigMap), got $seps — an extraManifests entry that renders to nothing emitted a stray document"; fail=1
+  elif grep -qE '^\{\}\s*$' <<<"$out"; then
+    echo "  FAIL: empty {} document emitted from an empty-map extraManifests entry"; fail=1
+  elif ! grep -q '^  name: em-live$' <<<"$out"; then
+    echo "  FAIL: the non-empty extraManifests entry did not render"; fail=1
+  else
+    echo "  OK: empty extraManifests entries skipped, live entry rendered"
+  fi
+else
+  echo "  FAIL: extraManifests render itself failed"; echo "$out" | tail -5; fail=1
+fi
+
 echo "==> rollout checksum annotations reach every workload type"
 # Config/Secret changes must roll pods on ALL workload types (hf-bk0): the
 # checksum annotations were once gated on workload.type == Deployment, leaving
