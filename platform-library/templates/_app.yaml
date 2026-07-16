@@ -18,7 +18,7 @@
 {{- end }}
 
 {{- if and .Values.certificate.enabled .Values.tlsSelfSigned.enabled -}}
-{{- fail (printf "certificate.enabled and tlsSelfSigned.enabled are both true: both target the Secret %q (certificate.secretName defaults to it), so enabling both collides. Set only one to true — certificate.enabled for cert-manager-issued certificates in production, tlsSelfSigned.enabled for local dev/CI self-signed convenience." (printf "%s-tls" (include "platform.fullname" .))) -}}
+{{- fail (printf "certificate.enabled and tlsSelfSigned.enabled are both true: both target the Secret %q (certificate.secretName defaults to it), so enabling both collides. Set only one to true — certificate.enabled for cert-manager-issued certificates in production, tlsSelfSigned.enabled for local dev/CI self-signed convenience." (include "platform.tlsSecretName" .)) -}}
 {{- end }}
 
 {{- if include "platform.capabilities.gateOpen" (list . "Certificate") }}
@@ -49,6 +49,14 @@
 
 {{- if .Values.service.enabled }}
 {{- include "platform.emit" (include "platform.service" .) }}
+{{- end }}
+
+{{- if include "platform.statefulset.needsManagedHeadless" . }}
+{{- include "platform.emit" (include "platform.service.headless" .) }}
+{{- end }}
+
+{{- if and .Values.ingress.enabled (not .Values.service.enabled) -}}
+{{- fail (printf "ingress.enabled is true but service.enabled is false: every Ingress backend points at the release Service %q, which would not exist, so the Ingress would be accepted but dangling. Set service.enabled: true (Ingress backends target it), or disable the Ingress." (include "platform.fullname" .)) -}}
 {{- end }}
 
 {{- if .Values.ingress.enabled }}

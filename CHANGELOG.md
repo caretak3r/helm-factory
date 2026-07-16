@@ -49,6 +49,66 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
   `passthrough container image resolution` gate (dict resolution, string
   passthrough, and two negative pins) (helm-factory-4lc).
 
+### Fixed — networking and TLS
+
+- The Ingress `spec.tls` secretName now converges with the release-managed TLS
+  Secret: with `ingress.tls` enabled and no `ingress.existingSecret`, the
+  Ingress references the Secret `tlsSelfSigned` actually writes (or the
+  `certificate` block's `spec.secretName`) instead of the conventional
+  `<hostname>-tls` that nothing creates unless the hostname happens to equal
+  the fullname. The name comes from a new shared helper
+  `platform.tlsSecretName` (`<fullname>-tls`) used by `_tls-selfsigned.yaml`,
+  `_certificate.yaml`, and `_ingress.yaml` so writer and reader can never
+  disagree. `ingress.existingSecret` still wins, and without any managed cert
+  source the `<hostname>-tls` fallback is preserved. `scripts/lint-library.sh`
+  gained a four-leg `TLS secret name convergence` gate (hf-bly).
+- Removed the dead value `ingress.selfSigned` from `platform-library/values.yaml`
+  — it was read by no template (the real knob is `tlsSelfSigned.enabled`) and
+  misled consumers. It was never in the reference schema. (`global.storageClass`,
+  the other dead knob named by hf-bly, was already removed in #25.) (hf-bly)
+- StatefulSets now get a resolvable governing headless Service by default.
+  `spec.serviceName` previously defaulted to `<fullname>` — a Service that
+  doesn't exist unless `service.enabled: true`, and is a ClusterIP VIP when it
+  does — so stable per-pod DNS (`<pod>.<svc>.<ns>`) never resolved. When
+  `workload.type: StatefulSet` and `statefulSet.serviceName` is unset, the
+  library now renders a headless Service `<fullname>-headless` (`clusterIP:
+  None`, same selector/ports as the primary Service) and points
+  `spec.serviceName` at it. An explicit `statefulSet.serviceName` is used
+  verbatim, and a primary Service that is already headless
+  (`service.clusterIP: None`) governs directly with no extra Service. The
+  stateful golden gained the new Service, and `scripts/lint-library.sh` gained
+  a four-leg `StatefulSet governing headless Service` gate (hf-dtq).
+- `gatewayApi.apiVersion` now defaults to `""` so capability negotiation
+  actually runs, matching every other CRD-backed generator. The shipped
+  literal `gateway.networking.k8s.io/v1` always won over the negotiated
+  value, so on a cluster serving only `v1beta1` the capability gate passed
+  (it negotiated `v1beta1`) and the HTTPRoute then rendered as `v1` — an
+  apiVersion the cluster does not serve. Each route now negotiates its own
+  Kind (HTTPRoute `v1` → `v1beta1`, GRPCRoute `v1` → `v1alpha2`, so GRPCRoute
+  no longer inherits HTTPRoute's negotiated version); a non-empty
+  `gatewayApi.apiVersion` or per-route `apiVersion` is still used verbatim.
+  **Behavior change:** consumers on pre-1.0 Gateway API installs go from a
+  hard apiVersion mismatch to a correct `v1beta1`/`v1alpha2` render; `v1`
+  clusters and offline `helm template` output are unchanged.
+  `scripts/lint-library.sh` gained a three-leg
+  `Gateway API apiVersion negotiation` gate (helm-factory-5ar).
+- Three cross-field combinations that silently rendered invalid or dangling
+  objects now fail at template time with prescriptive messages:
+  `service.type: ExternalName` is now supported properly — the Service renders
+  `spec.externalName` from the new `service.externalName` value (required;
+  rendering fails when empty) and omits ports/selector, where it previously
+  rendered ports+selector with no `externalName` and was rejected by the API
+  server; `certificate.enabled` with an empty `certificate.issuer` fails
+  instead of rendering a null `issuerRef.name` cert-manager can never issue;
+  and `ingress.enabled` without `service.enabled` fails instead of rendering
+  an Ingress whose backends dangle against a Service that does not exist
+  (same guard for Gateway API routes whose `backendRefs` default to the
+  release Service — explicit `backendRefs` remain allowed without it).
+  `service.externalName` is an additive values key with schema validation
+  (`externalName` required when `type` is `ExternalName`).
+  `scripts/lint-library.sh` gained a six-leg `Cross-field guards` gate
+  (helm-factory-h8q).
+
 ### Fixed — annotation precedence (Ingress, Gateway API)
 
 - Resource-specific annotations now override `commonAnnotations` on Ingress,

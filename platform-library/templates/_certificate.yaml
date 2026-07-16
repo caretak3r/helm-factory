@@ -1,5 +1,8 @@
 {{- define "platform.certificate" -}}
 {{- if .Values.certificate.enabled -}}
+{{- if not .Values.certificate.issuer -}}
+{{- fail "certificate.enabled is true but certificate.issuer is empty: the Certificate would render issuerRef.name as null and cert-manager could never issue the TLS Secret. Set certificate.issuer to the name of your cert-manager issuer (its kind comes from certificate.issuerKind, default ClusterIssuer)." -}}
+{{- end -}}
 {{- $dnsSet := dict -}}
 {{- $dnsNames := list -}}
 {{- if .Values.ingress.hostname }}
@@ -28,7 +31,7 @@ metadata:
   labels:
     {{- include "platform.labels" . | nindent 4 }}
 spec:
-  secretName: {{ .Values.certificate.secretName | default (printf "%s-tls" (include "platform.fullname" .)) }}
+  secretName: {{ .Values.certificate.secretName | default (include "platform.tlsSecretName" .) }}
   issuerRef:
     name: {{ .Values.certificate.issuer }}
     kind: {{ .Values.certificate.issuerKind | default "ClusterIssuer" }}

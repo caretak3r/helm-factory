@@ -25,6 +25,12 @@ metadata:
   {{- end }}
 spec:
   type: {{ .Values.service.type }}
+  {{- if eq .Values.service.type "ExternalName" }}
+  {{- if not .Values.service.externalName }}
+  {{- fail "service.type is ExternalName but service.externalName is empty: the API server rejects an ExternalName Service without spec.externalName. Set service.externalName to the external DNS name to alias (e.g. db.example.com), or pick another service.type." -}}
+  {{- end }}
+  externalName: {{ .Values.service.externalName }}
+  {{- else }}
   {{- if .Values.service.sessionAffinity }}
   sessionAffinity: {{ .Values.service.sessionAffinity }}
   {{- end }}
@@ -50,6 +56,7 @@ spec:
   ports: {{- toYaml (index $servicePorts "value") | nindent 4 }}
   selector:
     {{- include "platform.selectorLabels" . | nindent 4 }}
+  {{- end }}
 {{- end }}
 {{- end }}
 

@@ -54,7 +54,7 @@ expected_kinds() {
   case "$1" in
     minimal)  echo 3 ;;
     full)     echo 26 ;;
-    stateful) echo 6 ;;
+    stateful) echo 7 ;;
     daemon)   echo 3 ;;
     *)        echo "unknown fixture: $1" >&2; return 1 ;;
   esac
@@ -795,6 +795,49 @@ else
   echo "  FAIL: render failed for annotation-precedence check"; echo "$out" | tail -3; fail=1
 fi
 
+echo "==> Gateway API apiVersion negotiation (no hardcoded default)"
+# gatewayApi.apiVersion ships empty so each route negotiates its own Kind
+# through the capability registry; a non-empty value is an explicit override.
+# Clear the fixture's capabilities.apiVersions force-assume list so the
+# --api-versions flags (full group/version/Kind form) are the only statement
+# of what the cluster serves, then check a pre-1.0 Gateway API install.
+if out=$("$RENDER" full --set capabilities.apiVersions=null \
+    --set gatewayApi.grpcRoute.enabled=true \
+    --api-versions gateway.networking.k8s.io/v1beta1/HTTPRoute \
+    --api-versions gateway.networking.k8s.io/v1alpha2/GRPCRoute 2>&1); then
+  http_api=$(grep -B1 '^kind: HTTPRoute$' <<<"$out" | grep '^apiVersion:' || true)
+  grpc_api=$(grep -B1 '^kind: GRPCRoute$' <<<"$out" | grep '^apiVersion:' || true)
+  if [[ "$http_api" == "apiVersion: gateway.networking.k8s.io/v1beta1" \
+     && "$grpc_api" == "apiVersion: gateway.networking.k8s.io/v1alpha2" ]]; then
+    echo "  OK: routes negotiate per Kind on a pre-1.0 Gateway API cluster (HTTPRoute v1beta1, GRPCRoute v1alpha2)"
+  else
+    echo "  FAIL: expected negotiated HTTPRoute v1beta1 / GRPCRoute v1alpha2, got '${http_api:-none}' / '${grpc_api:-none}' (a hardcoded gatewayApi.apiVersion default defeats negotiation and can emit an unserved apiVersion)"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for v1beta1/v1alpha2 negotiation check"; echo "$out" | tail -3; fail=1
+fi
+if out=$("$RENDER" full --set capabilities.apiVersions=null \
+    --api-versions gateway.networking.k8s.io/v1/HTTPRoute 2>&1); then
+  http_api=$(grep -B1 '^kind: HTTPRoute$' <<<"$out" | grep '^apiVersion:' || true)
+  if [[ "$http_api" == "apiVersion: gateway.networking.k8s.io/v1" ]]; then
+    echo "  OK: HTTPRoute still negotiates v1 when v1 is served"
+  else
+    echo "  FAIL: expected negotiated HTTPRoute apiVersion v1, got '${http_api:-none}'"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for v1 negotiation check"; echo "$out" | tail -3; fail=1
+fi
+if out=$("$RENDER" full --set gatewayApi.apiVersion=gateway.networking.k8s.io/v1beta1 2>&1); then
+  http_api=$(grep -B1 '^kind: HTTPRoute$' <<<"$out" | grep '^apiVersion:' || true)
+  if [[ "$http_api" == "apiVersion: gateway.networking.k8s.io/v1beta1" ]]; then
+    echo "  OK: explicit gatewayApi.apiVersion override still wins over negotiation"
+  else
+    echo "  FAIL: expected overridden HTTPRoute apiVersion v1beta1, got '${http_api:-none}'"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for explicit-override check"; echo "$out" | tail -3; fail=1
+fi
+
 echo "==> TLS mechanism collision"
 # certificate + tlsSelfSigned both target the <fullname>-tls Secret and collide.
 # (full fixture already has certificate.enabled=true.)
@@ -804,6 +847,196 @@ elif grep -q "certificate.enabled and tlsSelfSigned.enabled are both true" <<<"$
   echo "  OK: certificate + tlsSelfSigned collision rejected"
 else
   echo "  FAIL: certificate/tlsSelfSigned collision failed without the expected message"; echo "$out" | tail -3; fail=1
+fi
+
+echo "==> TLS secret name convergence (ingress <-> managed cert sources)"
+# tlsSelfSigned writes the Secret named by platform.tlsSecretName; the Ingress
+# spec.tls default must reference the SAME Secret. (Historically it defaulted
+# to "<hostname>-tls", which nothing creates unless hostname == fullname.)
+# Ingress spec.tls renders via toYaml|nindent 4, so its secretName sits at
+# 6-space indent; Certificate's spec.secretName sits at 2-space indent.
+# (service.enabled=true because the daemon fixture has no Service and the
+# ingress-without-service guard would otherwise fail these renders.)
+if out=$("$RENDER" daemon --set ingress.enabled=true --set ingress.tls=true \
+  --set service.enabled=true 2>&1); then
+  tls_secret=$(awk '/^kind: Secret$/{s=1} s && /^  name: /{n=$2} s && $0 == "type: kubernetes.io/tls" {print n; exit}' <<<"$out")
+  ing_secret=$(awk '/^      secretName: /{print $2; exit}' <<<"$out")
+  if [[ -n "$tls_secret" && "$ing_secret" == "$tls_secret" ]]; then
+    echo "  OK: Ingress spec.tls references the tlsSelfSigned Secret ($tls_secret)"
+  else
+    echo "  FAIL: tlsSelfSigned writes Secret '$tls_secret' but Ingress spec.tls references '$ing_secret'"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for daemon with ingress + tlsSelfSigned TLS"; echo "$out" | tail -3; fail=1
+fi
+
+# Same convergence for cert-manager: the Ingress default must equal the
+# Certificate's spec.secretName (full fixture has certificate.enabled=true).
+if out=$("$RENDER" full --set ingress.tls=true 2>&1); then
+  cert_secret=$(awk '/^  secretName: /{print $2; exit}' <<<"$out")
+  ing_secret=$(awk '/^      secretName: /{print $2; exit}' <<<"$out")
+  if [[ -n "$cert_secret" && "$ing_secret" == "$cert_secret" ]]; then
+    echo "  OK: Ingress spec.tls references the Certificate's secretName ($cert_secret)"
+  else
+    echo "  FAIL: Certificate targets Secret '$cert_secret' but Ingress spec.tls references '$ing_secret'"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for full with ingress.tls + certificate"; echo "$out" | tail -3; fail=1
+fi
+
+# ingress.existingSecret still beats every managed default.
+if out=$("$RENDER" daemon --set ingress.enabled=true --set ingress.tls=true \
+  --set service.enabled=true --set ingress.existingSecret=byo-tls 2>&1); then
+  ing_secret=$(awk '/^      secretName: /{print $2; exit}' <<<"$out")
+  if [[ "$ing_secret" == "byo-tls" ]]; then
+    echo "  OK: ingress.existingSecret overrides the managed TLS secret name"
+  else
+    echo "  FAIL: ingress.existingSecret=byo-tls but Ingress spec.tls references '$ing_secret'"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for daemon with ingress.existingSecret"; echo "$out" | tail -3; fail=1
+fi
+
+# No managed cert source: the conventional "<hostname>-tls" fallback is kept
+# (consumer provisions it; library default hostname is app.local).
+if out=$("$RENDER" minimal --set ingress.enabled=true --set ingress.tls=true 2>&1); then
+  ing_secret=$(awk '/^      secretName: /{print $2; exit}' <<<"$out")
+  if [[ "$ing_secret" == "app.local-tls" ]]; then
+    echo "  OK: without a managed cert source the <hostname>-tls fallback is preserved"
+  else
+    echo "  FAIL: expected fallback secretName 'app.local-tls', got '$ing_secret'"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for minimal with ingress.tls"; echo "$out" | tail -3; fail=1
+fi
+
+echo "==> Cross-field guards (ExternalName / certificate.issuer / dangling backends)"
+# Three cross-field combinations used to render objects the API server rejects
+# or that dangle against a Service that does not exist. Each now fails at
+# template time with a prescriptive message. The ExternalName and issuer legs
+# use --skip-schema-validation because the helm-side schema also rejects those
+# values — the template guard is the layer that survives consumer schema drift.
+
+# ExternalName is now supported properly: type + externalName only, no
+# ports/selector (the API server rejects ExternalName without externalName,
+# and ports/selector are meaningless for it).
+if out=$("$RENDER" minimal --set service.type=ExternalName \
+  --set service.externalName=db.example.com 2>&1); then
+  svc_doc=$(awk '/^kind: Service$/{s=1} s && /^---/{exit} s{print}' <<<"$out")
+  if grep -q '^  externalName: db.example.com$' <<<"$svc_doc" \
+    && ! grep -q '^  selector:' <<<"$svc_doc" && ! grep -q '^  ports:' <<<"$svc_doc"; then
+    echo "  OK: ExternalName Service renders spec.externalName with no ports/selector"
+  else
+    echo "  FAIL: ExternalName Service must render spec.externalName and omit ports/selector"; echo "$svc_doc" | tail -8; fail=1
+  fi
+else
+  echo "  FAIL: render failed for minimal with a valid ExternalName Service"; echo "$out" | tail -3; fail=1
+fi
+
+if out=$("$RENDER" minimal --skip-schema-validation --set service.type=ExternalName 2>&1); then
+  echo "  FAIL: render succeeded with service.type=ExternalName and no service.externalName"; fail=1
+elif grep -q "service.type is ExternalName but service.externalName is empty" <<<"$out"; then
+  echo "  OK: ExternalName without service.externalName rejected"
+else
+  echo "  FAIL: ExternalName without externalName failed without the expected message"; echo "$out" | tail -3; fail=1
+fi
+
+if out=$("$RENDER" full --skip-schema-validation --set certificate.issuer= 2>&1); then
+  echo "  FAIL: render succeeded with certificate.enabled=true and an empty certificate.issuer"; fail=1
+elif grep -q "certificate.enabled is true but certificate.issuer is empty" <<<"$out"; then
+  echo "  OK: certificate with empty issuer rejected"
+else
+  echo "  FAIL: empty certificate.issuer failed without the expected message"; echo "$out" | tail -3; fail=1
+fi
+
+if out=$("$RENDER" minimal --set ingress.enabled=true --set service.enabled=false 2>&1); then
+  echo "  FAIL: render succeeded with ingress.enabled=true and service.enabled=false"; fail=1
+elif grep -q "ingress.enabled is true but service.enabled is false" <<<"$out"; then
+  echo "  OK: ingress without the backing Service rejected"
+else
+  echo "  FAIL: ingress-without-service failed without the expected message"; echo "$out" | tail -3; fail=1
+fi
+
+# Gateway API routes default their backendRefs to the release Service; guard
+# fires only for that defaulted path — explicit backendRefs stay allowed.
+if out=$("$RENDER" full --set service.enabled=false --set ingress.enabled=false 2>&1); then
+  echo "  FAIL: render succeeded with a defaulted HTTPRoute backend and service.enabled=false"; fail=1
+elif grep -q "gatewayApi.httpRoute has no backendRefs" <<<"$out"; then
+  echo "  OK: defaulted HTTPRoute backend without the Service rejected"
+else
+  echo "  FAIL: defaulted-backend-without-service failed without the expected message"; echo "$out" | tail -3; fail=1
+fi
+
+if out=$("$RENDER" full --set service.enabled=false --set ingress.enabled=false \
+  --set 'gatewayApi.httpRoute.backendRefs[0].name=other' \
+  --set 'gatewayApi.httpRoute.backendRefs[0].port=8080' 2>&1); then
+  echo "  OK: explicit HTTPRoute backendRefs render without the release Service"
+else
+  echo "  FAIL: explicit backendRefs must not require service.enabled"; echo "$out" | tail -3; fail=1
+fi
+
+echo "==> StatefulSet governing headless Service"
+# A StatefulSet's per-pod DNS (<pod>.<svc>.<ns>) only resolves when
+# spec.serviceName points at a headless Service that exists. Historically the
+# default pointed at "<fullname>" — a Service that may not exist and is a
+# ClusterIP VIP when it does. Unless the consumer wires it themselves, the
+# library now renders "<fullname>-headless" (clusterIP: None) and points at it.
+headless_service_of() {
+  # prints "yes" when the render contains a Service named $2 with clusterIP: None
+  awk -v want="$2" '
+    /^---/ {kind=""; name=""; cip=""}
+    /^kind: /{kind=$2}
+    kind=="Service" && name=="" && /^  name: / {name=$2}
+    kind=="Service" && /^  clusterIP: None$/ {cip="None"}
+    kind=="Service" && name==want && cip=="None" {print "yes"; exit}
+  ' <<<"$1"
+}
+if out=$("$RENDER" stateful 2>&1); then
+  svc_name=$(awk '/^  serviceName: /{print $2; exit}' <<<"$out")
+  if [[ "$svc_name" == *-headless && "$(headless_service_of "$out" "$svc_name")" == "yes" ]]; then
+    echo "  OK: default StatefulSet render governs via managed headless Service ($svc_name)"
+  else
+    echo "  FAIL: StatefulSet serviceName '$svc_name' is not a rendered managed headless Service"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for stateful fixture"; echo "$out" | tail -3; fail=1
+fi
+
+# Explicit statefulSet.serviceName is consumer-managed: used verbatim, no managed Service.
+if out=$("$RENDER" stateful --set statefulSet.serviceName=byo-headless 2>&1); then
+  svc_name=$(awk '/^  serviceName: /{print $2; exit}' <<<"$out")
+  extra=$(grep -c '^  name: .*-headless$' <<<"$out" || true)
+  if [[ "$svc_name" == "byo-headless" && "$extra" -eq 0 ]]; then
+    echo "  OK: explicit statefulSet.serviceName is used verbatim with no managed headless Service"
+  else
+    echo "  FAIL: statefulSet.serviceName=byo-headless rendered serviceName '$svc_name' with $extra managed headless object(s)"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for stateful with statefulSet.serviceName override"; echo "$out" | tail -3; fail=1
+fi
+
+# A primary Service that is already headless (clusterIP: None) governs directly.
+if out=$("$RENDER" stateful --set service.clusterIP=None 2>&1); then
+  svc_name=$(awk '/^  serviceName: /{print $2; exit}' <<<"$out")
+  extra=$(grep -c '^  name: .*-headless$' <<<"$out" || true)
+  if [[ "$svc_name" != *-headless && "$extra" -eq 0 && "$(headless_service_of "$out" "$svc_name")" == "yes" ]]; then
+    echo "  OK: headless primary Service (clusterIP: None) governs directly ($svc_name), no extra Service"
+  else
+    echo "  FAIL: with service.clusterIP=None expected primary Service '$svc_name' to govern; managed headless count=$extra"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for stateful with service.clusterIP=None"; echo "$out" | tail -3; fail=1
+fi
+
+# Non-StatefulSet workloads never get the managed headless Service.
+if out=$("$RENDER" minimal 2>&1); then
+  if grep -q '^  name: .*-headless$' <<<"$out"; then
+    echo "  FAIL: minimal (Deployment) fixture rendered a managed headless Service"; fail=1
+  else
+    echo "  OK: Deployment fixture renders no managed headless Service"
+  fi
+else
+  echo "  FAIL: render failed for minimal fixture"; echo "$out" | tail -3; fail=1
 fi
 
 if [[ $fail -eq 0 ]]; then echo "==> PASS"; else echo "==> FAIL"; fi

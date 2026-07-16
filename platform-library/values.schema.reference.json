@@ -33,8 +33,11 @@
       "properties": {
         "enabled": { "type": "boolean" },
         "type": { "type": "string", "enum": ["ClusterIP", "NodePort", "LoadBalancer", "ExternalName"] },
+        "externalName": { "type": "string", "description": "Required when type is ExternalName: the external DNS name the Service aliases (e.g. db.example.com). ExternalName Services render only type + externalName; ports and selector are omitted." },
         "ports": { "type": "array", "items": { "type": "object" } }
-      }
+      },
+      "if": { "properties": { "type": { "const": "ExternalName" } }, "required": ["type"] },
+      "then": { "required": ["externalName"], "properties": { "externalName": { "minLength": 1 } } }
     },
     "secret": {
       "type": "object",
@@ -53,7 +56,7 @@
       "properties": {
         "enabled": { "type": "boolean" },
         "hostname": { "type": "string", "pattern": "^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$", "description": "RFC 1123 DNS subdomain (lowercase alphanumerics, '-', '.'); empty string disables host-based routing." },
-        "tls": { "type": "boolean", "description": "Terminate TLS for ingress.hostname. Uses ingress.existingSecret when set, else the conventional name <hostname>-tls (the Secret must exist or be created by cert-manager/ingress.secrets)." },
+        "tls": { "type": "boolean", "description": "Terminate TLS for ingress.hostname. secretName resolution: ingress.existingSecret when set; else the release-managed <fullname>-tls Secret when tlsSelfSigned.enabled or certificate.enabled (certificate.secretName wins if set); else the conventional <hostname>-tls, which must be provisioned separately." },
         "existingSecret": { "type": "string" },
         "secrets": { "type": "array", "items": { "type": "object" }, "description": "DISCOURAGED: inline TLS cert/key material in values. Prefer cert-manager (certificate block) or a pre-created Secret via existingSecret." }
       }
@@ -121,7 +124,7 @@
       "additionalProperties": true,
       "properties": {
         "enabled": { "type": "boolean" },
-        "apiVersion": { "type": "string" },
+        "apiVersion": { "type": "string", "description": "Explicit apiVersion override for both routes. Leave empty (the default) so each route negotiates its Kind's apiVersion against the cluster (HTTPRoute: v1 then v1beta1; GRPCRoute: v1 then v1alpha2)." },
         "hostnames": { "type": "array", "items": { "type": "string" } },
         "parentRefs": { "type": "array", "items": { "type": "object" } },
         "httpRoute": {

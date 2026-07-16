@@ -159,6 +159,23 @@ workload:
 | `StatefulSet` | Databases, stateful apps | Replicas | Per-pod PVCs |
 | `DaemonSet` | Node agents, log collectors | One per node | Node-local |
 
+#### StatefulSet governing Service
+
+Stable per-pod DNS (`<pod>.<svc>.<namespace>.svc`) requires the StatefulSet's
+`spec.serviceName` to point at a headless Service that exists. The library
+resolves this automatically:
+
+1. `statefulSet.serviceName` set → used verbatim; you manage that Service.
+2. `service.enabled: true` with `service.clusterIP: None` → the primary
+   Service is already headless and governs the StatefulSet.
+3. Otherwise a managed headless Service `<fullname>-headless` (`clusterIP:
+   None`, same selector and ports as the primary Service) is rendered and
+   `spec.serviceName` points at it.
+
+The managed headless Service carries the standard labels, so a ServiceMonitor
+using the default selector matches it alongside the primary Service; set
+`serviceMonitor.selector` explicitly if the duplicate scrape target matters.
+
 ### Container Image
 
 A **tag or digest is required** — there is no `latest` fallback, and rendering
@@ -193,7 +210,7 @@ Expose pods via a Kubernetes Service.
 ```yaml
 service:
   enabled: true
-  type: ClusterIP               # ClusterIP | NodePort | LoadBalancer
+  type: ClusterIP               # ClusterIP | NodePort | LoadBalancer | ExternalName
   ports:
     - name: http
       port: 80
@@ -203,9 +220,24 @@ service:
   annotations: {}
 ```
 
+`type: ExternalName` aliases an external DNS name instead of selecting pods —
+set `service.externalName` (required; rendering fails without it) and the
+Service renders only `type` + `externalName`, omitting ports and selector:
+
+```yaml
+service:
+  enabled: true
+  type: ExternalName
+  externalName: db.example.com
+```
+
 ### Ingress
 
-Route external traffic to the service via an Ingress controller.
+Route external traffic to the service via an Ingress controller. Every
+Ingress backend points at the chart's own Service, so `ingress.enabled: true`
+requires `service.enabled: true` — rendering fails otherwise (the Ingress
+would be accepted by the API server but dangle against a Service that does
+not exist).
 
 ```yaml
 ingress:
@@ -219,11 +251,13 @@ ingress:
     cert-manager.io/cluster-issuer: letsencrypt-prod
 ```
 
-`ingress.tls` defaults to `false` and is deliberately not flipped: when `true`, the Ingress
-references `ingress.existingSecret` or the conventional `<hostname>-tls` Secret, which **must be
-provisioned** — by cert-manager (the `certificate` block or a cert-manager ingress annotation),
-`ingress.existingSecret`, or `ingress.secrets`. Enabling an ingress hostname without TLS prints an
-install-time `WARNING:` in the release notes.
+`ingress.tls` defaults to `false` and is deliberately not flipped: when `true`, the TLS
+`secretName` is resolved in order — `ingress.existingSecret` if set; else the release-managed
+`<fullname>-tls` Secret when `tlsSelfSigned.enabled` or `certificate.enabled` is on
+(`certificate.secretName` wins if set), so the Ingress always points at the Secret the chart
+actually writes; else the conventional `<hostname>-tls` Secret, which **must be provisioned** —
+by cert-manager (an issuer annotation), `ingress.existingSecret`, or `ingress.secrets`. Enabling
+an ingress hostname without TLS prints an install-time `WARNING:` in the release notes.
 
 Additional hosts, paths, TLS configs, and custom rules:
 
@@ -262,14 +296,20 @@ This generates an HTTPRoute that:
 - Attaches to the specified Gateway via `parentRefs`
 - Uses `ingress.hostname` as the hostname (if `gatewayApi.hostnames` not set)
 - Routes `ingress.path` to this service's primary port
-- Auto-generates `backendRefs` targeting this service
+- Auto-generates `backendRefs` targeting this service (which therefore
+  requires `service.enabled: true` — rendering fails otherwise; routes with
+  explicit `backendRefs` don't need the chart's own Service)
+- Negotiates its `apiVersion` against the cluster per Kind (HTTPRoute:
+  `gateway.networking.k8s.io/v1` falling back to `v1beta1`; GRPCRoute: `v1`
+  falling back to `v1alpha2`) — set `gatewayApi.apiVersion` only to pin both
+  routes explicitly
 
 #### Explicit Configuration
 
 ```yaml
 gatewayApi:
   enabled: true
-  apiVersion: gateway.networking.k8s.io/v1
+  apiVersion: gateway.networking.k8s.io/v1   # optional pin; omit to negotiate
   hostnames:
     - api.example.com
   parentRefs:
@@ -634,6 +674,9 @@ mtls:
 
 ### Certificates (cert-manager)
 
+`certificate.issuer` is required — rendering fails when it is empty, because
+a Certificate with a null `issuerRef.name` can never be issued.
+
 ```yaml
 certificate:
   enabled: true
@@ -653,7 +696,9 @@ certificate:
 > `tlsSelfSigned.enabled` cannot both be `true` — both target the Secret `<fullname>-tls`
 > and the render fails closed naming the collision; pick one mechanism.
 
-Generates a self-signed CA and certificate into the Secret `<fullname>-tls`.
+Generates a self-signed CA and certificate into the Secret `<fullname>-tls`. With
+`ingress.tls: true` the Ingress references this Secret automatically — no manual
+`ingress.existingSecret` needed.
 On `helm install`/`helm upgrade` against a real cluster the chart **looks up the
 existing Secret and reuses its `tls.crt`/`tls.key`/`ca.crt`**, so the CA and key
 are stable across upgrades — *unless* the cert is within `renewBeforeDays` of

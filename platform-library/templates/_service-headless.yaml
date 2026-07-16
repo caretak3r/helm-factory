@@ -1,0 +1,30 @@
+{{- define "platform.service.headless" -}}
+{{- if include "platform.statefulset.needsManagedHeadless" . }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "platform.headlessServiceName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+    {{- range $k, $v := .Values.commonLabels }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+  {{- if .Values.commonAnnotations }}
+  annotations:
+    {{- range $k, $v := .Values.commonAnnotations }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+  {{- end }}
+spec:
+  type: ClusterIP
+  clusterIP: None
+  {{- $servicePorts := dict "value" .Values.service.ports -}}
+  {{- if not (index $servicePorts "value") }}
+    {{- $_ := set $servicePorts "value" (list (include "platform.primaryServicePort" . | fromYaml)) -}}
+  {{- end }}
+  ports: {{- toYaml (index $servicePorts "value") | nindent 4 }}
+  selector:
+    {{- include "platform.selectorLabels" . | nindent 4 }}
+{{- end }}
+{{- end }}

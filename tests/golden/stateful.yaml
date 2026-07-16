@@ -96,6 +96,32 @@ spec:
     app.kubernetes.io/component: app
 ---
 # Source: stateful/templates/app.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: t-stateful-headless
+  namespace: default
+  labels:
+    helm.sh/chart: stateful-0.1.0
+    app.kubernetes.io/name: stateful
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/component: app
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+    - name: http
+      port: 80
+      protocol: TCP
+      targetPort: http
+  selector:
+    app.kubernetes.io/name: stateful
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/component: app
+---
+# Source: stateful/templates/app.yaml
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -109,7 +135,7 @@ metadata:
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/managed-by: Helm
 spec:
-  serviceName: t-stateful
+  serviceName: t-stateful-headless
   replicas: 1
   podManagementPolicy: OrderedReady
   updateStrategy:
