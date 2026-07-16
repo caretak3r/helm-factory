@@ -9,6 +9,19 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
 
 ## [Unreleased]
 
+### Fixed — workload templates
+
+- Config/Secret checksum rollout annotations (`checksum/config`,
+  `checksum/secret`) now apply to StatefulSet and DaemonSet pod templates, not
+  just Deployments — previously a `helm upgrade` changing `configMap.data` or
+  `secret.stringData` left StatefulSet/DaemonSet pods running stale config
+  until manually rolled. The helper is renamed
+  `platform.rolloutAnnotations`; `platform.deployment.rolloutAnnotations`
+  remains as a deprecated alias. The full fixture now enables `configMap` to
+  snapshot the Deployment path, and `scripts/lint-library.sh` gained a
+  `rollout checksum` gate asserting the annotations reach the full and
+  stateful pod templates (hf-bk0).
+
 ### Fixed — annotation precedence (Ingress, Gateway API)
 
 - Resource-specific annotations now override `commonAnnotations` on Ingress,

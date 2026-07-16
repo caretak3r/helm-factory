@@ -5,6 +5,13 @@ image:
   repository: example/app
   tag: "1.2.3"
 
+configMap:
+  enabled: true
+  mounted: true
+  data:
+    app.properties: |
+      mode=full
+
 service:
   enabled: true
   ports:

@@ -127,6 +127,9 @@ spec:
         app.kubernetes.io/name: stateful
         app.kubernetes.io/instance: t
         app.kubernetes.io/component: app
+      annotations:
+        checksum/config: "38f8294285858e5d93c4c7ac5e01405018a87aa0fe5da3eccb8e4c3aa31f72f6"
+        checksum/secret: "12d6c8edea6119fe35ad5d29e8c17a4f9969d3e27a286d74fe7a5c46f6d5b6a3"
     spec:
       serviceAccountName: t-stateful
       automountServiceAccountToken: false

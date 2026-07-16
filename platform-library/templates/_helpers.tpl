@@ -225,13 +225,11 @@ metadata:
   {{- range $k, $v := $ctx.Values.podAnnotations }}
     {{- $_ := set $podAnnotations $k $v -}}
   {{- end }}
-  {{- if eq $ctx.Values.workload.type "Deployment" }}
-    {{- $rollout := (include "platform.deployment.rolloutAnnotations" $ctx | trim) -}}
-    {{- if $rollout }}
-      {{- $rolloutMap := fromYaml $rollout -}}
-      {{- range $k, $v := $rolloutMap }}
-        {{- $_ := set $podAnnotations $k $v -}}
-      {{- end }}
+  {{- $rollout := (include "platform.rolloutAnnotations" $ctx | trim) -}}
+  {{- if $rollout }}
+    {{- $rolloutMap := fromYaml $rollout -}}
+    {{- range $k, $v := $rolloutMap }}
+      {{- $_ := set $podAnnotations $k $v -}}
     {{- end }}
   {{- end }}
   {{- if gt (len $podAnnotations) 0 }}
@@ -584,10 +582,11 @@ An unset type means the Kubernetes default, RollingUpdate, so rollingUpdate stay
 {{- end }}
 
 {{/*
-Build deterministic checksum annotations to trigger Deployment rollouts when
-ConfigMaps or Secrets change.
+Build deterministic checksum annotations to trigger pod rollouts when
+ConfigMaps or Secrets change. Applies to every workload type: StatefulSet and
+DaemonSet pods mount config at least as often as Deployments do.
 */}}
-{{- define "platform.deployment.rolloutAnnotations" -}}
+{{- define "platform.rolloutAnnotations" -}}
 {{- $ctx := . -}}
 {{- $annotations := dict -}}
 {{- if $ctx.Values.configMap.enabled }}
@@ -599,6 +598,14 @@ ConfigMaps or Secrets change.
 {{- if gt (len $annotations) 0 }}
 {{ toYaml $annotations }}
 {{- end }}
+{{- end }}
+
+{{/*
+Deprecated alias, kept for consumers that include the old Deployment-scoped
+name directly. Use platform.rolloutAnnotations instead.
+*/}}
+{{- define "platform.deployment.rolloutAnnotations" -}}
+{{- include "platform.rolloutAnnotations" . -}}
 {{- end }}
 
 

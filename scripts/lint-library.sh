@@ -53,7 +53,7 @@ fail=0
 expected_kinds() {
   case "$1" in
     minimal)  echo 3 ;;
-    full)     echo 25 ;;
+    full)     echo 26 ;;
     stateful) echo 6 ;;
     daemon)   echo 3 ;;
     *)        echo "unknown fixture: $1" >&2; return 1 ;;
@@ -197,6 +197,29 @@ else
     echo "  OK: no empty documents"
   fi
 fi
+
+echo "==> rollout checksum annotations reach every workload type"
+# Config/Secret changes must roll pods on ALL workload types (hf-bk0): the
+# checksum annotations were once gated on workload.type == Deployment, leaving
+# StatefulSet/DaemonSet pods running stale config after helm upgrade. full is
+# the Deployment path (configMap enabled), stateful the StatefulSet path
+# (configMap + secret enabled).
+check_rollout_checksum() {
+  local fixture="$1" annotation="$2"
+  local out
+  if out=$("$RENDER" "$fixture" 2>&1); then
+    if grep -q "$annotation:" <<<"$out"; then
+      echo "  OK: $fixture pod template carries $annotation"
+    else
+      echo "  FAIL: $fixture pod template missing $annotation — config/secret changes will not roll pods"; fail=1
+    fi
+  else
+    echo "  FAIL: render failed for $fixture $annotation check"; echo "$out" | tail -3; fail=1
+  fi
+}
+check_rollout_checksum full checksum/config
+check_rollout_checksum stateful checksum/config
+check_rollout_checksum stateful checksum/secret
 
 echo "==> updateStrategy compatibility"
 # rollingUpdate is only valid when type is RollingUpdate. The library ships
