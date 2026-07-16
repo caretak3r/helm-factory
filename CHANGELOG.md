@@ -124,6 +124,23 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
 
 ### Fixed — CI/tooling
 
+- `scripts/lint-library.sh`: per-document assertions no longer key on
+  `metadata.name` (or field/indent position) alone — ambiguous since the
+  pre-install hook ServiceAccount and hook Job legitimately share a name, so a
+  name-keyed extractor silently read whichever same-named document rendered
+  first. A shared `doc_of <kind> <name>` extractor now defines the kind+name
+  key once, and every single-document extractor (hook-Job serviceAccountName,
+  imagePullSecrets order, Ingress/Certificate TLS secretName convergence,
+  ExternalName Service shape, StatefulSet serviceName) was swept onto it
+  (helm-factory-4b1).
+- `scripts/lint-library.sh`: `FIXTURES` and `KUBE_VERSIONS` are now
+  env-overridable with space-separated subsets for a fast local feedback loop
+  (e.g. `FIXTURES=minimal scripts/lint-library.sh` runs in seconds instead of
+  minutes). A subset run covers only the per-fixture legs, skips the guardrail
+  suite, and ends `==> PASS (subset)` so it can't masquerade as full-gate
+  evidence; unknown fixtures or versions outside the vendored schema window
+  fail fast with a prescriptive message. Bare invocation (and CI) is unchanged
+  (hf-3p0).
 - `scripts/lint-library.sh`: the negative-render check was a bare
   command-substitution assignment under `set -euo pipefail`, so a render failure
   there aborted the whole script at that line — silently skipping every later

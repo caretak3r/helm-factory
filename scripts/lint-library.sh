@@ -23,6 +23,22 @@
 #   UPDATE_GOLDEN=1 scripts/lint-library.sh        # regenerate tests/golden/*.yaml
 #   REQUIRE_KUBECONFORM=1 scripts/lint-library.sh  # fail if kubeconform missing (CI)
 #   REQUIRE_CHECK_JSONSCHEMA=1 scripts/lint-library.sh  # fail if check-jsonschema missing (CI)
+#   FIXTURES=minimal scripts/lint-library.sh       # fast local loop: subset of fixtures
+#   FIXTURES="full stateful" KUBE_VERSIONS=1.36 scripts/lint-library.sh  # subset of both
+#
+# FIXTURES and KUBE_VERSIONS accept space-separated subsets for a fast local
+# feedback loop; both default to the full CI matrix (all four fixtures × the
+# vendored k8s window from scripts/lib/schema-manifest.sh), so a bare
+# invocation — and CI — is unchanged. A subset run covers the per-fixture
+# legs only: values validation, render matrix, kubeconform, and golden diffs
+# (goldens always render at GOLDEN_KUBE_VERSION regardless of KUBE_VERSIONS,
+# and UPDATE_GOLDEN only rewrites the selected fixtures' goldens). The
+# guardrail and negative-render suite is SKIPPED in subset mode (it exercises
+# fixed fixture+version combinations outside any slice) and the run ends
+# "==> PASS (subset)" so it can never masquerade as full-gate evidence — run
+# the bare gate before push. KUBE_VERSIONS entries must be inside the vendored
+# schema window; anything else has no kubeconform schemas and fails fast here
+# rather than confusingly mid-run.
 # =============================================================================
 set -euo pipefail
 
@@ -31,11 +47,37 @@ LIB="$REPO_ROOT/platform-library"
 RENDER="$REPO_ROOT/tests/render.sh"
 GOLDEN_DIR="$REPO_ROOT/tests/golden"
 SCHEMA_DIR="$REPO_ROOT/tests/schemas"
+# Capture env overrides (see usage above) before the defaults below and the
+# manifest source clobber the variables.
+FIXTURES_ENV="${FIXTURES:-}"
+KUBE_VERSIONS_ENV="${KUBE_VERSIONS:-}"
+
 FIXTURES=(minimal full stateful daemon)
 GOLDEN_KUBE_VERSION=1.34   # canonical version for golden snapshots
 
 # shellcheck source=scripts/lib/schema-manifest.sh
-source "$REPO_ROOT/scripts/lib/schema-manifest.sh"   # sets KUBE_VERSIONS
+source "$REPO_ROOT/scripts/lib/schema-manifest.sh"   # sets KUBE_VERSIONS (full vendored window)
+
+if [[ -n "$FIXTURES_ENV" ]]; then
+  read -ra FIXTURES <<<"$FIXTURES_ENV"
+  for fx in "${FIXTURES[@]}"; do
+    if [[ ! -d "$REPO_ROOT/tests/fixtures/$fx" ]]; then
+      echo "FATAL: unknown fixture '$fx' in \$FIXTURES — valid: minimal full stateful daemon" >&2
+      exit 2
+    fi
+  done
+fi
+
+if [[ -n "$KUBE_VERSIONS_ENV" ]]; then
+  KUBE_VERSIONS_ALL=("${KUBE_VERSIONS[@]}")
+  read -ra KUBE_VERSIONS <<<"$KUBE_VERSIONS_ENV"
+  for kv in "${KUBE_VERSIONS[@]}"; do
+    if [[ " ${KUBE_VERSIONS_ALL[*]} " != *" $kv "* ]]; then
+      echo "FATAL: KUBE_VERSIONS entry '$kv' has no vendored schemas — supported: ${KUBE_VERSIONS_ALL[*]} (see scripts/lib/schema-manifest.sh)" >&2
+      exit 2
+    fi
+  done
+fi
 
 # Schema validation is fully hermetic: both locations point at schemas
 # vendored into tests/schemas/ (see tests/schemas/README.md for provenance),
@@ -69,6 +111,27 @@ normalize_render() {
   sed -E \
     -e 's/^(  (tls\.crt|tls\.key|ca\.crt): ).*/\1REDACTED/' \
     -e 's#^(    platform/tls-not-after: ).*#\1REDACTED#'
+}
+
+# Shared per-document extractor: prints the rendered document whose kind is $1
+# and metadata.name is $2, reading a multi-doc render on stdin. kind+name is
+# the only unique per-document key in a render — objects of different Kinds
+# legitimately share a name (the pre-install hook ServiceAccount and hook Job
+# are both "<fullname>-preinstall"), so per-document assertions must never key
+# on name alone: a name-only extractor silently reads whichever same-named
+# document the render emits first (helm-factory-4b1).
+doc_of() {
+  awk -v kind="$1" -v name="$2" '
+    function flush() {
+      if (kd == kind && nm == name) { printf "%s", buf; found = 1 }
+      buf = ""; kd = ""; nm = ""
+    }
+    /^---[[:space:]]*$/ { flush(); if (found) exit; next }
+    { buf = buf $0 "\n" }
+    /^kind: / { kd = $2 }
+    /^  name: / && nm == "" { nm = $2 }
+    END { flush() }
+  '
 }
 
 echo "==> helm lint $LIB"
@@ -179,6 +242,17 @@ for fx in "${FIXTURES[@]}"; do
   fi
 done
 
+# Fast local loop (hf-3p0): a FIXTURES/KUBE_VERSIONS subset covers only the
+# per-fixture legs above. The guardrail and negative-render suite below
+# exercises fixed fixture+version combinations regardless of the requested
+# slice, so it is skipped outright rather than silently half-run — and the
+# summary line says so. The bare invocation (and CI) always runs it in full.
+if [[ -n "$FIXTURES_ENV" || -n "$KUBE_VERSIONS_ENV" ]]; then
+  echo "==> guardrail + negative-render suite: SKIPPED (FIXTURES/KUBE_VERSIONS subset — run bare scripts/lint-library.sh for the full gate)"
+  if [[ $fail -eq 0 ]]; then echo "==> PASS (subset)"; else echo "==> FAIL"; fi
+  exit $fail
+fi
+
 echo "==> negative render: CRDs must drop without force-assume (full fixture)"
 # Guarded so a render failure here reports and lets the remaining gate run,
 # instead of set -e aborting the whole script (and the guardrail suite below)
@@ -229,8 +303,9 @@ if out=$("$RENDER" minimal \
     --set 'global.imagePullSecrets[1]=global-only' \
     --set 'image.pullSecrets[0]=shared-pull' \
     --set 'image.pullSecrets[1]=image-only' 2>&1); then
-  got=$(awk '/^ *imagePullSecrets:$/ { inblk = 1; next }
-             inblk { if ($1 == "-") print $3; else exit }' <<<"$out" | paste -sd, -)
+  got=$(doc_of Deployment t-minimal <<<"$out" |
+        awk '/^ *imagePullSecrets:$/ { inblk = 1; next }
+             inblk { if ($1 == "-") print $3; else exit }' | paste -sd, -)
   if [[ "$got" == "shared-pull,global-only,image-only" ]]; then
     echo "  OK: merged list is deduped and ordered global-first"
   else
@@ -541,8 +616,8 @@ echo "==> hook Job dependency ordering (fresh install)"
 # goldens can never catch this: assert the annotations directly.
 #
 # Prints "<kind>/<metadata.name> <hook-events|nohook> <hook-weight|noweight>" per
-# document (the hook ServiceAccount and the hook Job share a name, so the kind is
-# part of the key).
+# document — same kind+name key rule as doc_of (the hook ServiceAccount and the
+# hook Job share a name, so the kind is part of the key).
 hook_table() {
   awk '
     function flush() {
@@ -579,7 +654,10 @@ check_hook_ordering() {
   elif [[ -z "$sa_w" || "$sa_w" -ge "$job_w" ]]; then
     echo "  FAIL: $label — the hook ServiceAccount is missing or not ordered ahead of the Job (weight $sa_w vs $job_w)"; fail=1
   else
-    job_sa=$(awk '/^      serviceAccountName: t-full-preinstall$/ { n++ } END { print n + 0 }' <<<"$out")
+    # Scoped to the hook Job document: the hook ServiceAccount shares its name,
+    # so a whole-render (or name-keyed) scan could be satisfied by the wrong doc.
+    job_sa=$(doc_of Job t-full-preinstall <<<"$out" |
+      awk '/^      serviceAccountName: t-full-preinstall$/ { n++ } END { print n + 0 }')
     if [[ "$job_sa" -ne 1 ]]; then
       echo "  FAIL: $label — the pre-install Job does not reference the hook ServiceAccount"; fail=1
     else
@@ -853,14 +931,24 @@ echo "==> TLS secret name convergence (ingress <-> managed cert sources)"
 # tlsSelfSigned writes the Secret named by platform.tlsSecretName; the Ingress
 # spec.tls default must reference the SAME Secret. (Historically it defaulted
 # to "<hostname>-tls", which nothing creates unless hostname == fullname.)
-# Ingress spec.tls renders via toYaml|nindent 4, so its secretName sits at
-# 6-space indent; Certificate's spec.secretName sits at 2-space indent.
+# secretName appears only under spec.tls within the Ingress document, so the
+# doc_of-scoped grep needs no indent gymnastics.
 # (service.enabled=true because the daemon fixture has no Service and the
 # ingress-without-service guard would otherwise fail these renders.)
+ingress_tls_secret_of() {
+  doc_of Ingress "$1" | awk '/^ *secretName: /{print $2; exit}'
+}
 if out=$("$RENDER" daemon --set ingress.enabled=true --set ingress.tls=true \
   --set service.enabled=true 2>&1); then
-  tls_secret=$(awk '/^kind: Secret$/{s=1} s && /^  name: /{n=$2} s && $0 == "type: kubernetes.io/tls" {print n; exit}' <<<"$out")
-  ing_secret=$(awk '/^      secretName: /{print $2; exit}' <<<"$out")
+  # kind+type keyed: the name of the (single) kubernetes.io/tls Secret document.
+  tls_secret=$(awk '
+    function flush() { if (kd == "Secret" && tls) print nm; kd = ""; nm = ""; tls = 0 }
+    /^---[[:space:]]*$/ { flush(); next }
+    /^kind: / { kd = $2 }
+    /^  name: / && nm == "" { nm = $2 }
+    /^type: kubernetes.io\/tls$/ { tls = 1 }
+    END { flush() }' <<<"$out")
+  ing_secret=$(ingress_tls_secret_of t-daemon <<<"$out")
   if [[ -n "$tls_secret" && "$ing_secret" == "$tls_secret" ]]; then
     echo "  OK: Ingress spec.tls references the tlsSelfSigned Secret ($tls_secret)"
   else
@@ -873,8 +961,8 @@ fi
 # Same convergence for cert-manager: the Ingress default must equal the
 # Certificate's spec.secretName (full fixture has certificate.enabled=true).
 if out=$("$RENDER" full --set ingress.tls=true 2>&1); then
-  cert_secret=$(awk '/^  secretName: /{print $2; exit}' <<<"$out")
-  ing_secret=$(awk '/^      secretName: /{print $2; exit}' <<<"$out")
+  cert_secret=$(doc_of Certificate t-full-tls <<<"$out" | awk '/^  secretName: /{print $2; exit}')
+  ing_secret=$(ingress_tls_secret_of t-full <<<"$out")
   if [[ -n "$cert_secret" && "$ing_secret" == "$cert_secret" ]]; then
     echo "  OK: Ingress spec.tls references the Certificate's secretName ($cert_secret)"
   else
@@ -887,7 +975,7 @@ fi
 # ingress.existingSecret still beats every managed default.
 if out=$("$RENDER" daemon --set ingress.enabled=true --set ingress.tls=true \
   --set service.enabled=true --set ingress.existingSecret=byo-tls 2>&1); then
-  ing_secret=$(awk '/^      secretName: /{print $2; exit}' <<<"$out")
+  ing_secret=$(ingress_tls_secret_of t-daemon <<<"$out")
   if [[ "$ing_secret" == "byo-tls" ]]; then
     echo "  OK: ingress.existingSecret overrides the managed TLS secret name"
   else
@@ -900,7 +988,7 @@ fi
 # No managed cert source: the conventional "<hostname>-tls" fallback is kept
 # (consumer provisions it; library default hostname is app.local).
 if out=$("$RENDER" minimal --set ingress.enabled=true --set ingress.tls=true 2>&1); then
-  ing_secret=$(awk '/^      secretName: /{print $2; exit}' <<<"$out")
+  ing_secret=$(ingress_tls_secret_of t-minimal <<<"$out")
   if [[ "$ing_secret" == "app.local-tls" ]]; then
     echo "  OK: without a managed cert source the <hostname>-tls fallback is preserved"
   else
@@ -922,7 +1010,7 @@ echo "==> Cross-field guards (ExternalName / certificate.issuer / dangling backe
 # and ports/selector are meaningless for it).
 if out=$("$RENDER" minimal --set service.type=ExternalName \
   --set service.externalName=db.example.com 2>&1); then
-  svc_doc=$(awk '/^kind: Service$/{s=1} s && /^---/{exit} s{print}' <<<"$out")
+  svc_doc=$(doc_of Service t-minimal <<<"$out")
   if grep -q '^  externalName: db.example.com$' <<<"$svc_doc" \
     && ! grep -q '^  selector:' <<<"$svc_doc" && ! grep -q '^  ports:' <<<"$svc_doc"; then
     echo "  OK: ExternalName Service renders spec.externalName with no ports/selector"
@@ -983,16 +1071,13 @@ echo "==> StatefulSet governing headless Service"
 # library now renders "<fullname>-headless" (clusterIP: None) and points at it.
 headless_service_of() {
   # prints "yes" when the render contains a Service named $2 with clusterIP: None
-  awk -v want="$2" '
-    /^---/ {kind=""; name=""; cip=""}
-    /^kind: /{kind=$2}
-    kind=="Service" && name=="" && /^  name: / {name=$2}
-    kind=="Service" && /^  clusterIP: None$/ {cip="None"}
-    kind=="Service" && name==want && cip=="None" {print "yes"; exit}
-  ' <<<"$1"
+  if doc_of Service "$2" <<<"$1" | grep -q '^  clusterIP: None$'; then echo yes; fi
+}
+statefulset_service_name_of() {
+  doc_of StatefulSet t-stateful | awk '/^  serviceName: /{print $2; exit}'
 }
 if out=$("$RENDER" stateful 2>&1); then
-  svc_name=$(awk '/^  serviceName: /{print $2; exit}' <<<"$out")
+  svc_name=$(statefulset_service_name_of <<<"$out")
   if [[ "$svc_name" == *-headless && "$(headless_service_of "$out" "$svc_name")" == "yes" ]]; then
     echo "  OK: default StatefulSet render governs via managed headless Service ($svc_name)"
   else
@@ -1004,7 +1089,7 @@ fi
 
 # Explicit statefulSet.serviceName is consumer-managed: used verbatim, no managed Service.
 if out=$("$RENDER" stateful --set statefulSet.serviceName=byo-headless 2>&1); then
-  svc_name=$(awk '/^  serviceName: /{print $2; exit}' <<<"$out")
+  svc_name=$(statefulset_service_name_of <<<"$out")
   extra=$(grep -c '^  name: .*-headless$' <<<"$out" || true)
   if [[ "$svc_name" == "byo-headless" && "$extra" -eq 0 ]]; then
     echo "  OK: explicit statefulSet.serviceName is used verbatim with no managed headless Service"
@@ -1017,7 +1102,7 @@ fi
 
 # A primary Service that is already headless (clusterIP: None) governs directly.
 if out=$("$RENDER" stateful --set service.clusterIP=None 2>&1); then
-  svc_name=$(awk '/^  serviceName: /{print $2; exit}' <<<"$out")
+  svc_name=$(statefulset_service_name_of <<<"$out")
   extra=$(grep -c '^  name: .*-headless$' <<<"$out" || true)
   if [[ "$svc_name" != *-headless && "$extra" -eq 0 && "$(headless_service_of "$out" "$svc_name")" == "yes" ]]; then
     echo "  OK: headless primary Service (clusterIP: None) governs directly ($svc_name), no extra Service"
