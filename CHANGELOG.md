@@ -149,6 +149,20 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
   `if ! neg=$(...)` idiom and kept stderr, so a broken negative render now reports
   `FAIL`, the rest of the gate still runs, and the script exits 1 (hf-tgh).
 
+### Fixed — docs
+
+- Docs no longer teach the bare `--api-versions group/version` CLI form, which
+  does NOT satisfy the capability gate (the gate checks
+  `.Capabilities.APIVersions.Has` with the full `group/version/Kind` string, so
+  the object is skipped silently with a clean exit 0). The published
+  capability-catalog page (`site/docs/capability-catalog/index.md`) — which
+  directly contradicted the README — now shows the full form and explains why
+  the bare form fails; `CORE.md` debug commands/pitfalls and the
+  `tests/render.sh` usage comment use the full form and carry the warning;
+  the `g/v` shorthand in the discovery command tables became `g/v/Kind`. Only
+  the `capabilities.apiVersions` values list accepts bare `group/version`
+  (helm-factory-o5d).
+
 ## [2.0.0] - 2026-07-14
 
 The v2 rewrite — the first published release of this chart. Everything below
