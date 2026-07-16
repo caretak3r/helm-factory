@@ -35,15 +35,16 @@
 9. Workload — always; `platform.workload` dispatches on `workload.type` (`Deployment` default, `StatefulSet`, `DaemonSet`)
 10. HPA — `autoscaling.enabled`; only for `Deployment`/`StatefulSet` (`_hpa.yaml` guards, DaemonSet is skipped)
 11. Service — `service.enabled`
-12. Ingress — `ingress.enabled`
-13. Gateway API (HTTPRoute/GRPCRoute) — `gatewayApi.enabled` + capability gate (`HTTPRoute`)
-14. NetworkPolicy — `networkPolicy.enabled`
-15. PodDisruptionBudget — `podDisruptionBudget.enabled`
-16. ServiceAccount — `serviceAccount.create` or `serviceAccount.name`
-17. ServiceMonitor — `serviceMonitor.enabled` + capability gate
-18. PodMonitor — `podMonitor.enabled` + capability gate
-19. CronJob — `cronJob.enabled`
-20. Pre-install Job, then post-install Job — `jobs.preInstall/postInstall.enabled`
+12. Headless Service `<fullname>-headless` — `workload.type: StatefulSet` without an explicit `statefulSet.serviceName` or an already-headless primary Service (`service.clusterIP: None`); governs the StatefulSet so per-pod DNS resolves
+13. Ingress — `ingress.enabled`
+14. Gateway API (HTTPRoute/GRPCRoute) — `gatewayApi.enabled` + capability gate (`HTTPRoute`)
+15. NetworkPolicy — `networkPolicy.enabled`
+16. PodDisruptionBudget — `podDisruptionBudget.enabled`
+17. ServiceAccount — `serviceAccount.create` or `serviceAccount.name`
+18. ServiceMonitor — `serviceMonitor.enabled` + capability gate
+19. PodMonitor — `podMonitor.enabled` + capability gate
+20. CronJob — `cronJob.enabled`
+21. Pre-install Job, then post-install Job — `jobs.preInstall/postInstall.enabled`
 
 `platform.render` then appends `platform.extraObjects` (any Kind, capability-negotiated, cluster-scoped Kinds gated by `allowClusterScopedExtras`) and `platform.extraManifests` (raw maps or `tpl` strings).
 
@@ -274,6 +275,7 @@ Not workload types (separate features):
 - `mtls.enabled` → capability-gated on Istio; requires `mtls.allowedPrincipals` (or explicit `mtls.allowAllPrincipals: true`)
 - `networkPolicy.enabled` → requires a CNI supporting NetworkPolicy; empty ingress+egress = default-deny (NOTES warning)
 - `persistence.enabled` → creates a PVC unless `persistence.existingClaim` is set; StatefulSets can use `statefulSet.volumeClaimTemplates` instead
+- `workload.type: StatefulSet` → `spec.serviceName` resolves to `statefulSet.serviceName` if set, else the primary Service when it is headless (`service.enabled` + `service.clusterIP: None`), else a library-managed headless Service `<fullname>-headless` is rendered and used
 - `extraObjects` with cluster-scoped Kinds → requires `allowClusterScopedExtras: true`
 
 ## Debug Commands

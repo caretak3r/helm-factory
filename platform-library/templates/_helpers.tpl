@@ -602,6 +602,44 @@ spec:
 {{- end }}
 
 {{/*
+Name of the library-managed headless Service that governs a StatefulSet.
+*/}}
+{{- define "platform.headlessServiceName" -}}
+{{- printf "%s-headless" (include "platform.fullname" .) -}}
+{{- end }}
+
+{{/*
+Whether the library must render its managed headless Service (returns "true"
+or ""). Stable per-pod DNS (<pod>.<svc>.<ns>) only works when the StatefulSet's
+spec.serviceName points at a headless Service that exists, so the library
+renders one unless the consumer already provides the wiring: an explicit
+statefulSet.serviceName, or a primary Service that is itself headless
+(service.enabled with clusterIP: None).
+*/}}
+{{- define "platform.statefulset.needsManagedHeadless" -}}
+{{- if and (eq (.Values.workload.type | default "Deployment") "StatefulSet") (not .Values.statefulSet.serviceName) -}}
+{{- if not (and .Values.service.enabled (eq .Values.service.type "ClusterIP") (eq (printf "%v" .Values.service.clusterIP) "None")) -}}
+true
+{{- end -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Governing Service name for the StatefulSet: statefulSet.serviceName verbatim
+when set, the primary Service when it is already headless, otherwise the
+library-managed headless Service.
+*/}}
+{{- define "platform.statefulset.serviceName" -}}
+{{- if .Values.statefulSet.serviceName -}}
+{{- .Values.statefulSet.serviceName -}}
+{{- else if include "platform.statefulset.needsManagedHeadless" . -}}
+{{- include "platform.headlessServiceName" . -}}
+{{- else -}}
+{{- include "platform.fullname" . -}}
+{{- end -}}
+{{- end }}
+
+{{/*
 Workload template selector
 */}}
 {{- define "platform.workload" -}}

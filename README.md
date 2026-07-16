@@ -159,6 +159,23 @@ workload:
 | `StatefulSet` | Databases, stateful apps | Replicas | Per-pod PVCs |
 | `DaemonSet` | Node agents, log collectors | One per node | Node-local |
 
+#### StatefulSet governing Service
+
+Stable per-pod DNS (`<pod>.<svc>.<namespace>.svc`) requires the StatefulSet's
+`spec.serviceName` to point at a headless Service that exists. The library
+resolves this automatically:
+
+1. `statefulSet.serviceName` set → used verbatim; you manage that Service.
+2. `service.enabled: true` with `service.clusterIP: None` → the primary
+   Service is already headless and governs the StatefulSet.
+3. Otherwise a managed headless Service `<fullname>-headless` (`clusterIP:
+   None`, same selector and ports as the primary Service) is rendered and
+   `spec.serviceName` points at it.
+
+The managed headless Service carries the standard labels, so a ServiceMonitor
+using the default selector matches it alongside the primary Service; set
+`serviceMonitor.selector` explicitly if the duplicate scrape target matters.
+
 ### Container Image
 
 A **tag or digest is required** — there is no `latest` fallback, and rendering
