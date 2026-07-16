@@ -102,3 +102,17 @@ Before starting work, inspect relevant project skills in `.claude/skills/`.
 Do not load unrelated skills. Do not rewrite large files unless the task requires it.
 Every completion must include the verification command actually run.
 For complex work, read `.claude/operating/fable-to-opus.md` first. For simple work, do not load it.
+
+## Delivery rule: PR-only main
+
+Every change to `main` — code, docs, CHANGELOG, anything — goes through a pull
+request with the `ci` workflow green. Never push directly to `main`. Squash-merge
+only (linear history). If CI fails on infra flake (e.g. a tool download reset),
+re-run the job rather than bypassing it.
+
+Stacked-PR gotcha: merging a parent PR with `--delete-branch` auto-CLOSES any
+child PR based on that branch, and closed PRs cannot be retargeted or reopened
+once the base ref is gone. Retarget children to `main` (`gh pr edit N --base main`)
+BEFORE merging/deleting their base, then rebase them onto `main`
+(`git rebase --onto origin/main <last-parent-commit> <child-branch>`) and
+force-push with `--force-with-lease`.
