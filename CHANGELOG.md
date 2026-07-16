@@ -124,7 +124,15 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
 
 ### Fixed — CI/tooling
 
-- `scripts/lint-library.sh`: the negative-render check was a bare
+- `scripts/lint-library.sh`: per-document assertions no longer key on
+  `metadata.name` (or field/indent position) alone — ambiguous since the
+  pre-install hook ServiceAccount and hook Job legitimately share a name, so a
+  name-keyed extractor silently read whichever same-named document rendered
+  first. A shared `doc_of <kind> <name>` extractor now defines the kind+name
+  key once, and every single-document extractor (hook-Job serviceAccountName,
+  imagePullSecrets order, Ingress/Certificate TLS secretName convergence,
+  ExternalName Service shape, StatefulSet serviceName) was swept onto it
+  (helm-factory-4b1).
   command-substitution assignment under `set -euo pipefail`, so a render failure
   there aborted the whole script at that line — silently skipping every later
   check (image-pin enforcement, schema enforcement, posture/hardening guardrails,
