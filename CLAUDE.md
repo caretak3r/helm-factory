@@ -2,6 +2,49 @@
 
 This file provides instructions and context for AI coding agents working on this project.
 
+## What this project is
+
+`platform` (source dir `platform-library/`, published as
+`oci://ghcr.io/caretak3r/charts/platform`) is a **Helm 4 pure library chart** —
+it ships no installable templates of its own. Product/app charts declare it as a
+dependency with `import-values: [defaults]` and render *everything* through one
+entrypoint: `{{ include "platform.render" . }}`.
+
+**The product outcome:** an app team describes intent in ~30 lines of values and
+gets hardened (PSS-restricted), capability-negotiated, policy-consistent
+manifests — workloads (Deployment/StatefulSet/DaemonSet/CronJob), networking
+(Service/Ingress/Gateway API), TLS, monitors, PDB/HPA/NetworkPolicy, lifecycle
+hook Jobs, plus an `extraObjects` escape hatch for the long tail. **The
+platform-owner outcome:** one place to fix a class of bug for every consumer at
+once — the 2026-07 correctness waves (selector scoping, annotation precedence,
+hook ordering) each shipped as one library change instead of N app-chart fixes.
+
+### Design invariants (violating any of these is a bug, not a style choice)
+
+1. **Fail closed.** Invalid or ambiguous config fails at template time with a
+   named error — never render a dangling/invalid object and let the API server
+   or (worse) production discover it.
+2. **Capability negotiation.** Never emit an apiVersion the cluster doesn't
+   serve. CRD-backed Kinds gate on the `_capabilities.tpl` registry; skipped
+   Kinds are warned in NOTES. `helm template` has no cluster: always pass the
+   full `group/version/Kind` form to `--api-versions` — the bare `group/version`
+   form silently skips objects.
+3. **Specific beats common.** Resource-specific values/labels/annotations always
+   win over `common*`/`global` on key collision. Sprig `merge` keeps the
+   DESTINATION's keys — use the range+set idiom or `mergeOverwrite` with the
+   specific map last.
+4. **Goldens are the contract.** `tests/golden/*.yaml` are byte-exact rendered
+   output. A golden diff you can't explain means your change is wrong; never
+   regenerate to make red go green.
+5. **Gates are guarded and mutation-tested.** Every lint-gate assertion uses the
+   guarded `if out=$(...)` idiom (a bare `var=$(...)` under `set -e` aborts the
+   whole gate silently), and every new check must be proven able to go RED by
+   temporarily reverting the fix it guards.
+6. **Hardening is default-on and per-container.** PSS-restricted is evaluated
+   per container — one unhardened sidecar fails admission for the whole pod, so
+   passthrough containers get the same hardening pass as the main container,
+   with user-supplied keys winning via `mergeOverwrite`.
+
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:6cd5cc61 -->
 ## Beads Issue Tracker
 
@@ -68,21 +111,73 @@ See [AGENTS.md](AGENTS.md) for the same notes alongside the full agent instructi
 
 ## Build & Test
 
-_Add your build and test commands here_
+Toolchain: Helm 4.x, `kubeconform`, `check-jsonschema`, `shellcheck` (all via
+homebrew/pipx). K8s schema versions are vendored under `tests/schemas/`
+(`scripts/vendor-schemas.sh`); the supported version matrix comes from
+`scripts/lib/schema-manifest.sh`.
 
 ```bash
-# Example:
-# npm install
-# npm test
+# THE gate — must end "==> PASS" (exit 0). This is the definition of done.
+REQUIRE_KUBECONFORM=1 REQUIRE_CHECK_JSONSCHEMA=1 scripts/lint-library.sh
+
+# Fast local loop (~14s vs ~4min): subset run, ends "==> PASS (subset)",
+# SKIPS the guardrail suite — never sufficient to claim work is done.
+FIXTURES=minimal scripts/lint-library.sh
+
+shellcheck -x scripts/*.sh tests/render.sh   # CI uses -x (follows sourced files)
+helm lint platform-library/
+tests/render.sh <fixture> [--set k=v ...]    # render one fixture the gate's way
+UPDATE_GOLDEN=1 scripts/lint-library.sh      # accept INTENTIONAL render changes only
+scripts/new-app-chart.sh <name>              # scaffold a new consumer chart
 ```
+
+CI (`.github/workflows/ci.yaml`) runs shellcheck, `helm lint`, a metaschema
+check on `values.schema.reference.json`, and the strict gate on every PR; the
+`main-pr-only` ruleset makes that check required. Releases: tag `vX.Y.Z` (must
+equal `platform-library/Chart.yaml` version, CHANGELOG must have a matching
+`## [X.Y.Z]` section) → `release.yaml` re-runs the gates → publishes to GHCR.
+Gates run AFTER the tag exists — a bad tag needs manual deletion before retry.
 
 ## Architecture Overview
 
-_Add a brief overview of your project architecture_
+Render pipeline: consumer values → `import-values: [defaults]` merge →
+`platform.render` → `_app.yaml` dispatches per Kind → capability gate
+(`platform.capabilities.gatedKinds` registry / `gateOpen`; skipped Kinds warned
+in NOTES) → generator template (`_*.yaml`) → shared helpers in `_helpers.tpl` /
+`_util.tpl` (naming, labels, image resolution, `hardenContainers`) → object.
+
+The verification stack mirrors it: `tests/fixtures/{minimal,full,stateful,daemon}`
+are curated consumer charts; `tests/render.sh` renders them exactly as the gate
+does; `tests/golden/*.yaml` freeze the output; `scripts/lint-library.sh` layers
+30+ guardrail sections (render matrix across the K8s versions, kubeconform
+against vendored schemas, negative renders, precedence/posture/hook-ordering
+assertions) on top.
+
+One load-bearing subtlety: pre-install hook Jobs depend on a script ConfigMap
+and a **distinctly named** hook ServiceAccount (`<fullname>-preinstall`),
+weight-ordered below the Job. The distinct name is not cosmetic — a same-named
+hook copy of the release SA would let `before-hook-creation` delete the LIVE SA
+on every upgrade, invalidating running pods' tokens.
+
+Deep dive + diagrams: `docs/specs/platform-library-v2-architecture.md`
+(refresh tracked in bead `helm-factory-jdx`).
 
 ## Conventions & Patterns
 
-_Add your project-specific conventions here_
+- Conventional Commits; every completion states the verification command
+  actually run and its result. "Should pass" is not a result.
+- Template edits follow the `template-house-style` skill. Non-negotiables:
+  range+set for map precedence (never bare sprig `merge`), quoted
+  annotation/label values, fail-closed guards over silent fallbacks.
+- Any consumer-facing values key change goes through the
+  `values-contract-change` skill and updates `values.schema.reference.json`.
+  New keys are features (minor bump), not patches.
+- New lint-gate checks: guarded idiom + mutation test, always (invariant 5).
+- Every consumer-visible change gets a `CHANGELOG.md` `[Unreleased]` entry —
+  the release gate greps for the version header at tag time.
+- Security defaults are invariants; read `security-posture-invariants` before
+  touching hardening, tokens, or escape hatches. Escape hatches
+  (`allowClusterScopedExtras`, `allowAllPrincipals`) stay opt-in and warned.
 
 ## Operating rule
 

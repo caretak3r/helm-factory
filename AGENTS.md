@@ -1,5 +1,13 @@
 # Agent Instructions
 
+**What you are working on:** see "What this project is" in [CLAUDE.md](CLAUDE.md)
+— a Helm 4 pure library chart (`platform`) with six design invariants
+(fail-closed, capability negotiation, specific-beats-common, goldens-as-contract,
+guarded+mutation-tested gates, per-container hardening), the real build/test
+commands, and the architecture overview. Read that section before your first
+change; the strict gate (`REQUIRE_KUBECONFORM=1 REQUIRE_CHECK_JSONSCHEMA=1
+scripts/lint-library.sh` ending `==> PASS`) is the definition of done.
+
 This project uses **bd** (beads) for issue tracking. Run `bd onboard` to get started.
 
 ## Quick Reference
