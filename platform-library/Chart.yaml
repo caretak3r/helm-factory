@@ -2,8 +2,8 @@ apiVersion: v2
 name: platform
 description: Capability-gated Helm common library — the basis for generating product charts across Kubernetes 1.34–1.36
 type: library
-version: 2.0.0
-appVersion: "2.0.0"
+version: 2.1.0
+appVersion: "2.1.0"
 # Advisory for consumers: this library follows an n-2 support policy — the
 # latest supported Kubernetes minor plus two behind it, currently 1.34–1.36 —
 # with Helm 4.0+. Every generator negotiates the best available apiVersion and
