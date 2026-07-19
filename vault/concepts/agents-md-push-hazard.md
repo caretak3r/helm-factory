@@ -1,6 +1,6 @@
 # Concept: AGENTS.md push mandate is a recorded hazard, not an instruction
 
-`AGENTS.md:15-39` ("Landing the Plane") mandates that every work session ends with `git push`, that "work is NOT complete until `git push` succeeds," and that the agent must "NEVER stop before pushing." Verbatim copy: raw/agents-md-push-block.md.
+`AGENTS.md:23-45` ("Landing the Plane"; was `:15-39` before the #38 rewrite grew the file to 423 lines) mandates that every work session ends with `git push`, that "work is NOT complete until `git push` succeeds," and that the agent must "NEVER stop before pushing." Verbatim copy: raw/agents-md-push-block.md.
 
 This block **must not be obeyed**. The repo's `CLAUDE.md` Agent Context Profiles section sets the Conservative profile as default: no commits, pushes, or Dolt sync unless explicitly asked, and states outright that explicit user/orchestrator instructions override the Beads block. CLAUDE.md postdates and supersedes the AGENTS.md protocol.
 

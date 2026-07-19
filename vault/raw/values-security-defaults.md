@@ -1,6 +1,6 @@
 # Raw: values.yaml — security context defaults
 
-Provenance: verbatim copy of `platform-library/values.yaml` lines 457-485, taken 2026-07-10 at HEAD 4fb9386 (branch handover/2026-07-10). Not edited.
+Provenance: verbatim copy of `platform-library/values.yaml` lines 457-485, taken 2026-07-10 at HEAD 4fb9386 (branch handover/2026-07-10). Not edited. As of 2026-07-19 (HEAD 8d09841) the security-context defaults sit at `values.yaml:494+` of the 663-line file (`podSecurityContext:` `:494`, `containerSecurityContext:` `:501`); the defaults themselves are unchanged.
 
 ```yaml
     # -----------------------------------------------------------------------------

@@ -11,7 +11,7 @@ Reproduce before you guess. Run the exact failing command yourself and read the 
 ## Steps
 1. Reproduce: `tests/render.sh <fixture>` (or `helm template <name> <dir>` for external consumers), capturing stderr.
 2. Classify the failure:
-   - **Class A — intentional `fail` guardrail.** Error text names a values path and states the fix (e.g. "image.tag and image.digest are both empty", "mtls.allowedPrincipals is empty", `cluster-scoped Kind "<Kind>"`, "mutually exclusive", "Script file not found"). The message IS the fix — change the consumer values it names. Never weaken the guardrail. Sources: `_helpers.tpl:68`, `_helpers.tpl:640`, `_mtls.yaml:8`, `_util.tpl:99`, `_secret.yaml:3`, `_configmap-script.yaml:41`.
+   - **Class A — intentional `fail` guardrail.** Error text names a values path and states the fix (e.g. "…tag and …digest are both empty", "mtls.allowedPrincipals is empty", "cluster-scoped Kind", "mutually exclusive", "Script file not found", "both target the Secret" for certificate+tlsSelfSigned both enabled, "would not exist" for ingress enabled without service). The message IS the fix — change the consumer values it names. Never weaken the guardrail. Sources: `_helpers.tpl:111`, `_helpers.tpl:747`, `_mtls.yaml:8`, `_util.tpl:83`, `_secret.yaml:3`, `_configmap-script.yaml:58`, `_app.yaml:21`, `_app.yaml:59`.
    - **Class B — helm-side schema rejection.** Error cites a JSON-pointer path like `workload/type` or `image/tag`. The consumer's values violate `values.schema.json` (enums are exact-case: `Deployment|StatefulSet|DaemonSet`; `tag: latest` is rejected). Fix the values; if the schema itself is wrong, that's a values-contract-change.
    - **Class C — object silently missing, no error.** Almost always a capability skip: CRD-backed Kinds (Certificate, HTTPRoute, GRPCRoute, PeerAuthentication, AuthorizationPolicy, ServiceMonitor, PodMonitor) vanish by design under `helm template` without force-assume. Fix: add the group to `capabilities.apiVersions` in values (matches `group/version` or `group/version/Kind`); the CLI equivalent `--api-versions` only works in the full `group/version/Kind` form (a bare `group/version` flag still skips, silently). NOT a bug; never remove the gate or switch it to OrDefault. Other causes, in order: `.enabled` false after coalescing; missing `import-values: [defaults]` (everything empty); missing registry entry (`_capabilities.tpl:76-176`) making `apiVersionFor` return "".
    - **Class D — template/whitespace/YAML error.** Cryptic parse errors. Check, in order: malformed YAML inside the registry define (breaks every render, error far from the edit); missing `platform.emit` wrapper (docs merged together); wrong `nindent` depth; missing `{{- -}}` chomps; a helper emitting `{}` when gated out (`fromYaml ""` → `{}`; the gate must sit outside any `fromYaml` round-trip).
@@ -21,7 +21,7 @@ Reproduce before you guess. Run the exact failing command yourself and read the 
 ## Commands
 ```bash
 tests/render.sh <fixture> 2>&1 | tail -20                     # reproduce
-tests/render.sh full | grep '^kind:'                          # what actually rendered (expect 24)
+tests/render.sh full | grep '^kind:'                          # what actually rendered (expect 26)
 tests/render.sh full --set capabilities.apiVersions=null      # prove CRD kinds drop (Class C check)
 tests/render.sh <fixture> --kube-version 1.34 --api-versions cert-manager.io/v1/Certificate   # force one API (CLI needs full group/version/Kind)
 helm template t tests/fixtures/<fixture> --debug 2>&1 | tail -30   # after render.sh has built charts/; shows partial render
@@ -42,7 +42,7 @@ REQUIRE_KUBECONFORM=1 REQUIRE_CHECK_JSONSCHEMA=1 scripts/lint-library.sh   # if 
 - deleting or softening any `fail` call or its message text (each is coupled to a negative test in `lint-library.sh` that greps the message — change both together, and only with cause)
 - switching a CRD Kind from `apiVersionFor` to `apiVersionForOrDefault`
 - editing `tests/golden/*.yaml` by hand or "fixing" `normalize_render`
-- disabling schema copy in `tests/render.sh:13` to bypass a schema rejection
+- disabling schema copy in `tests/render.sh:16` to bypass a schema rejection
 
 ## Common mistakes
 - Misdiagnosing a Class C capability skip as a bug and "fixing" the gate — the objects are absent offline by design.

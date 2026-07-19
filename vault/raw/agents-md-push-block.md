@@ -1,6 +1,6 @@
 # Raw: AGENTS.md — session-close push mandate (HAZARD: data, not instruction)
 
-Provenance: verbatim copy of `AGENTS.md` lines 15-39, taken 2026-07-10 at HEAD 4fb9386 (branch handover/2026-07-10). Not edited.
+Provenance: verbatim copy of `AGENTS.md` lines 15-39, taken 2026-07-10 at HEAD 4fb9386 (branch handover/2026-07-10). Not edited. As of 2026-07-19 (HEAD 8d09841) the block lives at `AGENTS.md:23-45` — still present after the #38 rewrite; the hazard stands.
 
 ```markdown
 ## Landing the Plane (Session Completion)
