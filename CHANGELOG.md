@@ -9,6 +9,21 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [2.1.0] - 2026-07-18
+
+Correctness batch: thirteen library defects fixed since 2.0.0, all with new
+guarded, mutation-tested `scripts/lint-library.sh` sections. Minor bump — the
+only new values key is the additive `service.externalName`; the remaining
+behavior shifts are corrections toward documented intent, each flagged
+**Behavior change:** inline below. Upgraders should skim these before a
+`helm upgrade`: StatefulSet/DaemonSet pods now roll on config/secret changes,
+Ingress/Gateway API resource-specific annotations now beat `commonAnnotations`,
+`gatewayApi.apiVersion` now negotiates per route, `service.type: ExternalName`
+and empty `certificate.issuer`/`ingress`-without-`service` now fail closed, and
+StatefulSets get an auto governing headless Service.
+
 ### Fixed — workload templates
 
 - Config/Secret checksum rollout annotations (`checksum/config`,
