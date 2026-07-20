@@ -43,7 +43,7 @@ scripts/new-app-chart.sh myapp --dir /path/to/myapp
 helm dependency update /path/to/myapp && helm template myapp /path/to/myapp   # zero-config = 3 kinds
 tests/render.sh <fixture> [--kube-version 1.34] [--set k=v]                   # for in-repo fixtures
 ```
-When the consumer lives outside this repo, rewrite the scaffolded `file://../platform-library` repository to an absolute `file:///Users/rohit/Documents/helm-factory/platform-library` (or pass `--repo`). Fixture edits additionally require the full gate: `REQUIRE_KUBECONFORM=1 REQUIRE_CHECK_JSONSCHEMA=1 scripts/lint-library.sh` (passes at HEAD 8d09841, strict gate re-run 2026-07-19: `==> PASS`).
+When the consumer lives outside this repo, rewrite the scaffolded `file://../platform-library` repository to an absolute `file:///absolute/path/to/helm-factory/platform-library` (or pass `--repo`). Fixture edits additionally require the full gate: `REQUIRE_KUBECONFORM=1 REQUIRE_CHECK_JSONSCHEMA=1 scripts/lint-library.sh` (passes at HEAD 8d09841, strict gate re-run 2026-07-19: `==> PASS`).
 
 ## Quality bar
 (1) The chart renders clean at every supported `--kube-version` (1.34-1.36) with its CRD groups force-assumed; (2) do not disable security contexts, re-enable token automount, or loosen guardrails in the consumer unless the application demonstrably needs it — and then per-field, never `enabled: false` wholesale; (3) consumer values use only documented library keys — check README/schema rather than inventing keys that silently no-op.

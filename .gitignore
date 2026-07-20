@@ -51,6 +51,17 @@ Thumbs.db
 .beads/proxieddb/
 .relay/
 
+# Per-actor beads activity log. Machine-local audit trail (who changed what,
+# when); nothing reads it and it re-dirties on every bd command.
+# .beads/issues.jsonl remains the tracked interchange artifact.
+.beads/interactions.jsonl
+
+# Agent session artifacts — local working state, never part of a release
+.claude/settings.local.json
+.claude/skills/_staging/
+context-log.md
+*.handover-backup
+
 # Docusaurus site (site/)
 site/node_modules/
 site/build/
