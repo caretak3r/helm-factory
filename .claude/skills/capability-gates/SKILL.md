@@ -9,24 +9,25 @@ description: Use when touching platform-library/templates/_capabilities.tpl, cha
 There are exactly two negotiation modes and the choice is a contract, not a preference. `apiVersionFor` is strict — returns `""` when no listed API is served, so the object is skipped (CRDs: never conflict on deploy). `apiVersionForOrDefault` never returns empty — falls back to the first registry preference (built-ins: never drop a core workload from a bare `helm template`). Swapping them in either direction is a bug.
 
 ## Steps
-1. Understand the split before editing: under `helm template` with no cluster, `.Capabilities.APIVersions` is a minimal static set — no CRDs, not even all built-in groups. On a real cluster it is live discovery. This is why offline and on-cluster renders differ, and why CI bridges it with force-assume values (`tests/fixtures/full/values.yaml:75-80`) or `--api-versions` flags. Asymmetry (verified by render): the *values* list matches `group/version` or `group/version/Kind`; the helm CLI flag only satisfies the gate in the full `group/version/Kind` form, because `has` checks `.Capabilities.APIVersions.Has` with the full gvk string.
+1. Understand the split before editing: under `helm template` with no cluster, `.Capabilities.APIVersions` is a minimal static set — no CRDs, not even all built-in groups. On a real cluster it is live discovery. This is why offline and on-cluster renders differ, and why CI bridges it with force-assume values (`tests/fixtures/full/values.yaml:83-87`) or `--api-versions` flags. Asymmetry (verified by render): the *values* list matches `group/version` or `group/version/Kind`; the helm CLI flag only satisfies the gate in the full `group/version/Kind` form, because `has` checks `.Capabilities.APIVersions.Has` with the full gvk string.
 2. The moving parts, all in `_capabilities.tpl`:
    - `has` (`:27-45`): true when `$top.Capabilities.APIVersions.Has $gvk` OR the entry appears in `.Values.capabilities.apiVersions` (matching `group/version` or `group/version/Kind`).
    - `registry` (`:76-176`): Kind → ordered apiVersion preference list, newest GA first. It is a YAML document inside a define, parsed with `fromYaml` at every call site — one malformed line breaks every render.
    - `apiVersionFor` (`:183-191`) strict; `apiVersionForOrDefault` (`:202-213`) with fallback.
-   - `isStable` (`:222-233`): Kind's first-preference group ∈ the hardcoded built-in group list → "true". This is the selector `platform.genericResource` (`_util.tpl:52-56`) uses to pick the mode for extraObjects automatically.
-   - `clusterScoped` set (`:239-241`): drives namespace stamping and the extras gate.
+   - `isStable` (`:222-233`): Kind's first-preference group ∈ the hardcoded built-in group list → "true". This is the selector `platform.genericResource` (`_util.tpl:36-41`) uses to pick the mode for extraObjects automatically.
+   - `gatedKinds` (`:259-265`): Kind → values-block-name map for the five gated CRD features; `gateOpen` (`:273-280`) folds the block's `.enabled` and the strict `apiVersionFor` gate into one check, and the same map drives the NOTES skipped-Kind warnings (`skippedKinds`, `:288+`). A gated Kind missing from this map never renders.
+   - `clusterScoped` set (`:304-306`): drives namespace stamping and the extras gate.
 3. When adding a registry entry: order preferences newest-GA-first (the first entry is also the OrDefault fallback, so it must be the version you want emitted offline). Add cluster-scoped Kinds to the set.
 4. When changing preference order (e.g. an apiVersion went GA): remember goldens snapshot the negotiated version at k8s 1.34 — an order change is a golden change; review the diff.
-5. In `_app.yaml`, CRD-backed generators carry the second gate in the wrapper (pattern: `_app.yaml:20,32,54,70,74`). Inside a generator body, OrDefault is acceptable for a CRD only because the wrapper's strict gate already proved availability (`_mtls.yaml:11` does this).
+5. In `_app.yaml`, CRD-backed generators are wrapped in `platform.capabilities.gateOpen` (pattern: `_app.yaml:24,36,66,86,90`). Inside a generator body, OrDefault is acceptable for a CRD only because the wrapper's gate already proved availability (`_mtls.yaml:11` does this).
 6. Prove behavior with the negative render (below) after any change.
 
 ## Commands
 ```bash
 tests/render.sh full --set capabilities.apiVersions=null      # CRD-backed kinds must vanish (full renders 6 of the 7 the gate greps — no GRPCRoute), no {} docs
-tests/render.sh full | grep -E '^(apiVersion|kind):'          # inspect negotiated versions (24 objects)
+tests/render.sh full | grep -E '^(apiVersion|kind):'          # inspect negotiated versions (26 objects)
 tests/render.sh minimal --set serviceMonitor.enabled=true --api-versions monitoring.coreos.com/v1/ServiceMonitor   # CLI force-assume: full group/version/Kind required
-REQUIRE_KUBECONFORM=1 REQUIRE_CHECK_JSONSCHEMA=1 scripts/lint-library.sh   # full proof; passes at HEAD 4fb9386
+REQUIRE_KUBECONFORM=1 REQUIRE_CHECK_JSONSCHEMA=1 scripts/lint-library.sh   # full proof; passes at HEAD 8d09841 (strict gate re-run 2026-07-19: ==> PASS)
 ```
 
 ## Quality bar
@@ -34,14 +35,14 @@ REQUIRE_KUBECONFORM=1 REQUIRE_CHECK_JSONSCHEMA=1 scripts/lint-library.sh   # ful
 
 ## Verification checklist
 - [ ] `tests/render.sh full --set capabilities.apiVersions=null` shows zero Certificate/HTTPRoute/GRPCRoute/PeerAuthentication/AuthorizationPolicy/ServiceMonitor/PodMonitor kinds and zero `{}` docs
-- [ ] Full fixture still renders 24 objects with force-assume intact
+- [ ] Full fixture still renders 26 objects with force-assume intact
 - [ ] Registry still parses: any single fixture render exits 0 (a registry YAML error breaks all of them)
 - [ ] Golden diff after preference reordering reviewed and intentional
 - [ ] Gate `==> PASS`
 
 ## Stop and ask before
 - changing strict↔OrDefault mode for any existing Kind
-- editing the `isStable` built-in group list (`:207`) — it silently flips gate modes for every extraObjects Kind in affected groups
+- editing the `isStable` built-in group list (`:222-233`) — it silently flips gate modes for every extraObjects Kind in affected groups
 - removing a registry preference entry (consumers on older clusters may be relying on the fallback chain)
 - changing the force-assume matching semantics in `has`
 

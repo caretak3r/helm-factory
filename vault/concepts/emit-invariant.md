@@ -10,6 +10,6 @@ Failure modes the invariant prevents:
 
 Related invariant: enable/capability gating must happen **outside** any `fromYaml` round-trip, because `fromYaml ""` yields `{}`.
 
-Enforced by [[lint-library-gate]]'s negative render, which asserts no `^{}$` documents (`scripts/lint-library.sh:172-176`). Verified passing 2026-07-10.
+Enforced by [[lint-library-gate]]'s negative render, which asserts no empty documents (`scripts/lint-library.sh:256-271`). Verified passing 2026-07-10; re-ran green 2026-07-19 (HEAD 8d09841).
 
 Sources: raw/util-emit-merge-source.md; `_app.yaml` read 2026-07-10, HEAD 4fb9386.

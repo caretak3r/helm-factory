@@ -1,6 +1,6 @@
 # Raw: CORE.md — Known Issues (Tracked)
 
-Provenance: verbatim copy of `CORE.md` lines 95-106, taken 2026-07-10 at HEAD 4fb9386 (branch handover/2026-07-10). Not edited.
+Provenance: verbatim copy of `CORE.md` lines 95-106, taken 2026-07-10 at HEAD 4fb9386 (branch handover/2026-07-10). Not edited. As of 2026-07-19 (HEAD 8d09841): the "Service selector includes mutable labels" row is STALE — bead hf-7a1 (P0) was fixed and closed 2026-07-13; `_service.yaml:57-58` uses `platform.selectorLabels` only. The live `CORE.md:102` table still carries the stale row (repo doc bug, flagged in the refresh report).
 
 ```markdown
 ## Known Issues (Tracked)

@@ -1,8 +1,9 @@
 # Operating Manual: Executor Conduct in helm-factory
 
-Written by the handover AUTHOR phase (Fable, 2026-07-10, HEAD 4fb9386) for the executor model.
-These are observable procedures — things you visibly do — not attitudes. The staged skills in
-`.claude/skills/_staging/` hold the domain runbooks; this manual is how you operate between them.
+Written by the handover AUTHOR phase (Fable, 2026-07-10, HEAD 4fb9386); refreshed 2026-07-19
+at HEAD 8d09841. These are observable procedures — things you visibly do — not attitudes. The
+promoted skills in `.claude/skills/` hold the domain runbooks; this manual is how you operate
+between them.
 
 ## 1. Scope the real task before editing
 **Procedure:** Before the first edit, write one sentence stating: the layer being changed
@@ -10,18 +11,20 @@ These are observable procedures — things you visibly do — not attitudes. The
 merge bar it can violate — (1) matrix renders, (2) hardening, (3) values contract. If you cannot
 name the layer, read until you can. Trace any symptom to its source of truth first: rendered
 output, goldens, and fixture `charts/`/`values.schema.json` copies are never the thing to edit.
-**Example:** Asked to "fix the Service getting commonLabels in its selector," the wrong scope is
-editing `tests/golden/full.yaml` where you saw it. The right scope: it's generator behavior in
-`platform-library/templates/`, it's also CORE.md tracked known issue #2, and fixing it changes
-live Service selectors — a contract question to raise, not a drive-by fix.
+**Example:** Asked to "make probes render when only `enabled` is set," the wrong scope is
+editing `tests/golden/full.yaml` where you saw the missing probe. The right scope: it's generator
+behavior in `platform-library/templates/_helpers.tpl` (the probe guard is subtle by design and
+tracked as bead `hf-d97`), and changing it alters every consumer's rendered probes — a contract
+question to raise, not a drive-by fix.
 **Prevents:** editing generated artifacts; "fixing" tracked known issues; silent contract breaks.
 
 ## 2. Decide what evidence the task needs — then collect exactly that
 **Procedure:** Before reporting done, name the verification tier the change requires and run it:
 docs-only → none but a re-read; consumer values tweak → that chart's render; anything touching
 `platform-library/`, fixtures, schema, or scripts → the full gate
-(`REQUIRE_KUBECONFORM=1 REQUIRE_CHECK_JSONSCHEMA=1 scripts/lint-library.sh`, ~1-2 min). State the
-tier you chose in your report.
+(`REQUIRE_KUBECONFORM=1 REQUIRE_CHECK_JSONSCHEMA=1 scripts/lint-library.sh`, ~4 min). The fast
+subset (`FIXTURES=minimal scripts/lint-library.sh`, ~14 s) ends `==> PASS (subset)` and skips the
+guardrail suite — it is never sufficient evidence of done. State the tier you chose in your report.
 **Example:** Changing a README code sample: render nothing, but check the sample against the
 schema enums (`Deployment`, never `deployment`; no `tag: latest`). Changing `_helpers.tpl`: full
 gate, no exceptions — `helm lint` alone passes on a broken library by construction.
@@ -38,7 +41,7 @@ regenerate goldens intentionally, run the gate, report. Not: reorganizing the sc
 **Prevents:** unreviewable diffs; accidental contract changes riding along as "cleanup".
 
 ## 4. Verify claims with the repo's commands before reporting them
-**Procedure:** Every factual claim in your report ("renders 24 objects", "the gate passes",
+**Procedure:** Every factual claim in your report ("renders 26 objects", "the gate passes",
 "the CRD drops offline") must have been produced by a command you ran this session, and the
 command's actual output (or its tail) appears in the report. Claims from memory or from reading
 code alone are labeled as such: "expected from source, not executed."
@@ -54,16 +57,19 @@ reproduce it verbatim before forming a hypothesis; make one change per re-run. A
 fixes on the same hypothesis, stop, re-read the whole file top-down, and state where your model
 was wrong before trying again.
 **Example:** Unsure whether `--set mtls.allowedPrincipals=null` sets null or deletes the key?
-Don't debate — render it. (It deletes the key; the gate's comment at `scripts/lint-library.sh:222`
+Don't debate — render it. (It deletes the key; the gate's comment at `scripts/lint-library.sh:527`
 says so, and the render proves it.)
 **Prevents:** hallucinated Helm semantics; fix-thrashing; three-deep stacks of wrong assumptions.
 
 ## 6. Report uncertainty explicitly
 **Procedure:** Split every report into "verified" (command + output) and "not verified" (with the
 reason: no cluster, mutating command not run, upstream service). Never average the two into
-confident prose. Inherited unverified claims stay marked: real-cluster `.Capabilities` behavior,
-and the tag→GHCR publish path have never been executed in this environment. (The `global.*`
-umbrella helpers and `serviceEndpoints` were removed on 2026-07-12 — see bead `helm-factory-b01`.)
+confident prose. Inherited unverified claims stay marked: live-cluster `.Capabilities` discovery
+and `lookup`-based tlsSelfSigned reuse have not been executed in YOUR session unless you ran them.
+(Historical anchors: the tag→GHCR publish path WAS executed for real — v2.0.0 published 2026-07-15,
+release run 29384461101 green — and a live kind-cluster install verified hook ordering on
+2026-07-14. The `global.*` umbrella helpers and `serviceEndpoints` were removed on 2026-07-12 —
+see bead `helm-factory-b01`.)
 **Example:** After a capability change: "Verified: offline negative render clean, gate PASS.
 Not verified: live-cluster discovery behavior — no cluster here; the strict gate's on-cluster
 semantics are from source reading only."
@@ -76,7 +82,7 @@ follow-ups as beads (`bd create`), not as extra diffs. Conversely, don't stop ea
 fails, the task is not done regardless of how plausible the code looks — say exactly what failed
 and what you'll try next, or that you're blocked.
 **Example:** Gate passes after adding a Kind → report and stop, even though you noticed the
-Service-selector label leak nearby (that's tracked known issue #2 — note it, file nothing new,
+subtle probe-guard condition nearby (that's tracked bead `hf-d97` — note it, file nothing new,
 move on). Gate fails on a golden diff you didn't expect → you are NOT done; investigate the hunk.
 **Prevents:** scope creep after success; premature completion claims before it.
 

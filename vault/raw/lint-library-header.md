@@ -1,6 +1,6 @@
 # Raw: lint-library.sh — header, matrix, expected_kinds, normalize
 
-Provenance: verbatim copy of `scripts/lint-library.sh` lines 1-56, taken 2026-07-10 at HEAD 4fb9386 (branch handover/2026-07-10). Not edited.
+Provenance: verbatim copy of `scripts/lint-library.sh` lines 1-56, taken 2026-07-10 at HEAD 4fb9386 (branch handover/2026-07-10). Not edited. SUPERSEDED as of 2026-07-19 (HEAD 8d09841): the header was rewritten — schemas are now vendored under `tests/schemas/`, the matrix lives in `scripts/lib/schema-manifest.sh`, and `FIXTURES`/`KUBE_VERSIONS` env subsets exist. Current facts: [[lint-library-gate]].
 
 ```bash
 #!/usr/bin/env bash

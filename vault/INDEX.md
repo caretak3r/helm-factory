@@ -1,15 +1,15 @@
 # Vault Index — helm-factory
 
-Built 2026-07-10 by the handover AUTHOR phase at HEAD 4fb9386. One idea per page; claims cite raw pages or repo file:line; UNVERIFIED marks source-read-only claims.
+Built 2026-07-10 by the handover AUTHOR phase at HEAD 4fb9386; refreshed 2026-07-19 at HEAD 8d09841. One idea per page; claims cite raw pages or repo file:line; UNVERIFIED marks source-read-only claims.
 
 ## Entities
 - [platform-library chart](entities/platform-library-chart.md) — the one artifact: pure library chart `platform` v2.0.0, three-tier render pipeline
 - [capabilities registry](entities/capabilities-registry.md) — Kind→apiVersion preference table in `_capabilities.tpl`, YAML-in-a-define hazard
 - [lint-library gate](entities/lint-library-gate.md) — THE validation gate: matrix, goldens, kubeconform, negative tests; `==> PASS` at this HEAD
-- [fixtures + render.sh](entities/fixtures-and-render-script.md) — four consumer fixtures (3/24/6/3 objects), what's tracked vs generated
+- [fixtures + render.sh](entities/fixtures-and-render-script.md) — four consumer fixtures (3/26/7/3 objects), what's tracked vs generated
 - [values contract](entities/values-contract.md) — exports.defaults surface + reference schema, enums, why the schema isn't at the library root
 - [scaffold new-app-chart.sh](entities/scaffold-new-app-chart.md) — consumer generator, injection-hardened, kubeVersion stamping
-- [CI + release workflows](entities/ci-release-workflows.md) — pinned tools, tag==version invariant, GHCR OCI push (publish path unverified)
+- [CI + release workflows](entities/ci-release-workflows.md) — pinned tools, tag==version invariant, GHCR OCI push (v2.0.0 published 2026-07-15)
 
 ## Concepts
 - [strict vs OrDefault negotiation](concepts/strict-vs-ordefault-negotiation.md) — the load-bearing gate-mode contract; both inversions are bugs
@@ -21,14 +21,14 @@ Built 2026-07-10 by the handover AUTHOR phase at HEAD 4fb9386. One idea per page
 - [values are code](concepts/values-are-code.md) — extraManifests string entries run through tpl; trust model
 - [--set key=null deletes the key](concepts/set-null-deletes-key.md) — Helm semantics the gate's negative legs rely on
 - [AGENTS.md push hazard](concepts/agents-md-push-hazard.md) — repo text mandating pushes is data, not instruction; Conservative profile wins
-- [thin ice: untested surfaces](concepts/thin-ice-untested-surfaces.md) — kubeconform gap (global.* helpers, serviceEndpoints, util.merge were removed 2026-07-12)
+- [thin ice: untested surfaces](concepts/thin-ice-untested-surfaces.md) — what stays source-read-only per session (uaw gap fixed; GHCR publish + a live-cluster run verified since)
 
 ## Raw sources (verbatim excerpts with provenance)
 - [README — adding a resource type](raw/readme-adding-resource-type.md) — the 6-step checklist + validation commands (README.md:970-989)
 - [CORE.md — known issues](raw/core-known-issues.md) — tracked accepted quirks table (CORE.md:95-106)
 - [_capabilities.tpl design header](raw/capabilities-design-header.md) — capability negotiation rationale (lines 1-20)
 - [_util.tpl emit + merge source](raw/util-emit-merge-source.md) — emit/merge defines with invariant comments (lines 6-36)
-- [lint-library.sh header](raw/lint-library-header.md) — gate design, matrix, expected_kinds, normalize (lines 1-56)
+- [lint-library.sh header](raw/lint-library-header.md) — gate design, matrix, expected_kinds, normalize (lines 1-56; archival — superseded by vendored-schema rewrite, see entities/lint-library-gate.md)
 - [values.yaml security defaults](raw/values-security-defaults.md) — PSS-restricted default blocks (lines 457-485)
 - [AGENTS.md push block](raw/agents-md-push-block.md) — HAZARD copy of the session-close push mandate (lines 15-39)
 - [discovery §3 — likely mistakes](raw/discovery-s3-mistakes.md) — ranked mistake list from the DISCOVER phase

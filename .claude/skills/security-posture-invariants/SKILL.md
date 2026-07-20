@@ -10,17 +10,17 @@ Secure-by-default hardening is merge bar #2 and is never weakened in **library d
 
 ## Steps
 1. Know the never-weaken surface (all in `platform-library/values.yaml` under `exports.defaults`):
-   - `podSecurityContext` / `containerSecurityContext` enabled by default targeting PSS `restricted`: runAsNonRoot, seccomp RuntimeDefault, drop ALL capabilities, readOnlyRootFilesystem, no privilege escalation (`values.yaml:468-485`). Applied identically to the main workload, CronJob, and hook Job pods.
+   - `podSecurityContext` / `containerSecurityContext` enabled by default targeting PSS `restricted`: runAsNonRoot, seccomp RuntimeDefault, drop ALL capabilities, readOnlyRootFilesystem, no privilege escalation (`values.yaml:494-510`). Applied identically to the main workload, CronJob, and hook Job pods.
    - Dedicated ServiceAccount by default with `automountServiceAccountToken: false` on both the SA and every pod spec; `enableServiceLinks: false`.
 2. Know the fail-closed guardrails; each is coupled to a negative test in `lint-library.sh` that greps its message:
    | Guardrail | Source | Negative test |
    |---|---|---|
-   | Unpinned image (no tag, no digest) | `_helpers.tpl:68` | `lint-library.sh:178-185` |
-   | Hook Job resolves to no pin | `_helpers.tpl:640` | `lint-library.sh:195-201` |
-   | mTLS with empty `allowedPrincipals` | `_mtls.yaml:8` | `lint-library.sh:223-229` |
-   | Cluster-scoped extraObjects without opt-in | `_util.tpl:99` | `lint-library.sh:240-246` |
-   | `existingSecret` + inline data | `_secret.yaml:3` | `lint-library.sh:249-255` |
-   | `tag: latest` / lowercase workload type | values.schema (helm-side) | `lint-library.sh:203-218` |
+   | Unpinned image (no tag, no digest) | `_helpers.tpl:111` | `lint-library.sh:389-404` |
+   | Hook Job resolves to no pin | `_helpers.tpl:747` | `lint-library.sh:406-412` |
+   | mTLS with empty `allowedPrincipals` | `_mtls.yaml:8` | `lint-library.sh:528-541` |
+   | Cluster-scoped extraObjects without opt-in | `_util.tpl:83` | `lint-library.sh:544-550` |
+   | `existingSecret` + inline data | `_secret.yaml:3` | `lint-library.sh:553-560` |
+   | `tag: latest` / lowercase workload type | values.schema (helm-side) | `lint-library.sh:457-523` (7 rejection legs) |
 3. Any change to a `fail` message updates its coupled grep in the same commit — the gate breaks otherwise (by design).
 4. Softer hazards warn instead of failing, via `platform.notes` (`_notes.tpl`) into the consumer's install-time NOTES.txt (plain-HTTP ingress, default-deny NetworkPolicy, hostPath/privileged/cluster-RBAC in extras). NOTES never appears in `helm template` manifest output, so goldens/counts are unaffected — a new warning belongs here when failing would break legitimate use.
 5. New security-relevant behavior follows the pattern: fail-closed guardrail + prescriptive message naming the values path and the fix + negative test asserting both failure AND message text + explicit opt-out key documented in README.
@@ -33,15 +33,15 @@ tests/render.sh minimal --set image.tag=                      # must FAIL naming
 tests/render.sh full --set mtls.allowedPrincipals=null        # must FAIL naming mtls.allowedPrincipals
 tests/render.sh full --set allowClusterScopedExtras=false     # must FAIL naming ClusterRole
 tests/render.sh minimal | grep -A6 'securityContext:'         # eyeball the restricted posture
-REQUIRE_KUBECONFORM=1 REQUIRE_CHECK_JSONSCHEMA=1 scripts/lint-library.sh   # posture legs included; passes at HEAD 4fb9386
+REQUIRE_KUBECONFORM=1 REQUIRE_CHECK_JSONSCHEMA=1 scripts/lint-library.sh   # posture legs included; passes at HEAD 8d09841 (re-run 2026-07-19: ==> PASS)
 ```
 
 ## Quality bar
-(1) Gate passes including every posture/guardrail negative leg; (2) hardening strictly non-decreasing — the diff of `values.yaml:468-485`, SA/token defaults, and every `fail` call shows no loosening; (3) opt-out keys are additive consumer surface and documented, never re-defaulted to permissive.
+(1) Gate passes including every posture/guardrail negative leg; (2) hardening strictly non-decreasing — the diff of `values.yaml:494-510`, SA/token defaults, and every `fail` call shows no loosening; (3) opt-out keys are additive consumer surface and documented, never re-defaulted to permissive.
 
 ## Verification checklist
 - [ ] All three negative renders above still fail with their exact message substrings
-- [ ] `git diff` over `values.yaml` security blocks, `_helpers.tpl:68`, `_helpers.tpl:640`, `_mtls.yaml`, `_util.tpl`, `_secret.yaml` shows no weakened default or deleted `fail`
+- [ ] `git diff` over `values.yaml` security blocks, `_helpers.tpl:111`, `_helpers.tpl:747`, `_mtls.yaml`, `_util.tpl`, `_secret.yaml` shows no weakened default or deleted `fail`
 - [ ] Any message text change has its matching grep updated in `lint-library.sh`
 - [ ] Consumer relaxations are per-field, in the consumer's values only, with risk stated
 - [ ] Gate `==> PASS`

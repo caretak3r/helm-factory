@@ -4,7 +4,7 @@ Scaffolds a complete consumer chart wired to the library. Usage: `scripts/new-ap
 
 Generates the four-piece consumer anatomy ([[exports-defaults-import-mechanics]]): Chart.yaml with the `platform` dependency + `import-values: [defaults]`, `templates/app.yaml` (`{{ include "platform.render" . }}`), overrides-only values.yaml, and a copy of the reference schema as `values.schema.json` — plus NOTES.txt and .helmignore. Stamps `kubeVersion: ">=1.34.0-0 <1.37.0-0"` into the new chart (heredoc at `:81`) — part of the version-bump touch list.
 
-Injection-hardened: chart name must match RFC 1123 (`:49-50`); repo/version/app-version charsets are restricted so crafted arguments cannot inject YAML structure (`:58-63`).
+Injection-hardened: chart name must match RFC 1123 (`:49-50`); repo/version/app-version charsets are restricted so crafted arguments cannot inject YAML structure (`:59-66`).
 
 Discovery verified the end-to-end path (scaffold → `helm dependency update` → `helm template` → 3 kinds: ServiceAccount, Service, Deployment) in a scratchpad; when the chart lives outside the repo, the `file://../platform-library` path must be rewritten to an absolute path or set via `--repo` (raw/discovery-s4-commands.md, row 8).
 

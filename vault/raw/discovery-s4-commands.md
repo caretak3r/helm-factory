@@ -5,7 +5,7 @@ Provenance: verbatim copy of `.claude/operating/discovery.md` lines 124-143, tak
 ```markdown
 ## 4. The COMMANDS that prove work is done
 
-All run on 2026-07-10 from repo root `/Users/rohit/Documents/helm-factory`; every one passed. Fixture renders regenerate only gitignored artifacts — `git status` confirmed clean after the full gate.
+All run on 2026-07-10 from repo root `/absolute/path/to/helm-factory`; every one passed. Fixture renders regenerate only gitignored artifacts — `git status` confirmed clean after the full gate.
 
 | # | Command | Proves | Success signal |
 |---|---|---|---|
@@ -16,7 +16,7 @@ All run on 2026-07-10 from repo root `/Users/rohit/Documents/helm-factory`; ever
 | 5 | `UPDATE_GOLDEN=1 scripts/lint-library.sh` | Accepts an *intentional* render change into `tests/golden/*.yaml`. NOT run this session (mutating). Must be followed by reviewing `git diff tests/golden/` and re-running #4 clean. | `updated tests/golden/<fx>.yaml` lines, then `==> PASS` |
 | 6 | `shellcheck scripts/*.sh tests/render.sh` | Script hygiene (CI step) | No output, exit 0 |
 | 7 | `check-jsonschema --check-metaschema platform-library/values.schema.reference.json` | Reference schema is valid JSON Schema (CI step) | `ok -- validation done` |
-| 8 | `scripts/new-app-chart.sh <name> --dir <path>` then `helm dependency update <path> && helm template <name> <path>` | Scaffold + consumer pipeline works. Verified in scratchpad; when the chart lives outside the repo, rewrite the `file://../platform-library` repo path in Chart.yaml to an absolute `file:///Users/rohit/Documents/helm-factory/platform-library` (or use `--repo`). | 3 kinds rendered (ServiceAccount, Service, Deployment) |
+| 8 | `scripts/new-app-chart.sh <name> --dir <path>` then `helm dependency update <path> && helm template <name> <path>` | Scaffold + consumer pipeline works. Verified in scratchpad; when the chart lives outside the repo, rewrite the `file://../platform-library` repo path in Chart.yaml to an absolute `file:///absolute/path/to/helm-factory/platform-library` (or use `--repo`). | 3 kinds rendered (ServiceAccount, Service, Deployment) |
 | 9 | `tests/render.sh full --set capabilities.apiVersions=null` | Negative render: all 7 CRD-backed Kinds absent from output (subset of #3, useful standalone when touching gates) | No `kind: Certificate\|HTTPRoute\|GRPCRoute\|PeerAuthentication\|AuthorizationPolicy\|ServiceMonitor\|PodMonitor` lines |
 
 Timing: the full gate (#4) takes ~1–2 min warm (kubeconform schema cache in `${TMPDIR}/kubeconform-schema-cache`); first run downloads CRD schemas from the datreeio catalog (network required).
