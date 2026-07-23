@@ -93,15 +93,14 @@
 
 ## Known Issues (Tracked)
 Tracked in the Beads issue tracker (`bd ready`, `bd show <id>`; the git-tracked seed
-is [`.beads/issues.jsonl`](.beads/issues.jsonl)). The long-standing ones below were
-re-verified still present at these locations:
+is [`.beads/issues.jsonl`](.beads/issues.jsonl)). The long-standing one below was
+re-verified still present at this location:
 
 | Issue | Bead | File:Line | Impact |
 |-------|------|-----------|--------|
-| Probe render condition is subtle | `hf-d97` | `_helpers.tpl:244-251` | `omit ... "enabled"` yields an empty dict when the probe carries no other keys, and Go templates treat an empty dict as false — so `and enabled (omit ...)` is a real guard against emitting an empty probe, not a redundancy. Worth a comment or a clearer helper |
-| Service selector includes mutable labels | `hf-7a1` | `_service.yaml:51-55` | `commonLabels` are added to the Service selector; selectors are immutable, so changing `commonLabels` breaks the Service |
+| Probe render condition is subtle | `hf-d97` | `_helpers.tpl:342-349` | `omit ... "enabled"` yields an empty dict when the probe carries no other keys, and Go templates treat an empty dict as false — so `and enabled (omit ...)` is a real guard against emitting an empty probe, not a redundancy. Worth a comment or a clearer helper |
 
-Fixed since the v1 review (no longer issues): DaemonSet+HPA (guarded in `_hpa.yaml:2`), silent hook-script skip (fails with a message in `_configmap-script.yaml:41`). Full history: [`CHANGELOG.md`](CHANGELOG.md) and `fable5-review.md`. For the current reconciliation of `fable5-review.md` against `main`, plus the outstanding productionization/Helm-v4-modernization backlog, see [`docs/productionization-plan.md`](docs/productionization-plan.md).
+Fixed since the v1 review (no longer issues): DaemonSet+HPA (guarded in `_hpa.yaml:3`), silent hook-script skip (fails with a message in `_configmap-script.yaml:58`), and the Service-selector mutable-label leak (`hf-7a1`, P0 — the Service selector is now `platform.selectorLabels`-only at `_service.yaml:57-58`, so `commonLabels` can no longer orphan the Service). Full history: [`CHANGELOG.md`](CHANGELOG.md) and `fable5-review.md`. For the current reconciliation of `fable5-review.md` against `main`, plus the outstanding productionization/Helm-v4-modernization backlog, see [`docs/productionization-plan.md`](docs/productionization-plan.md).
 
 ## Directory Structure
 ```
