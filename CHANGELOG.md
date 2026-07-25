@@ -11,7 +11,7 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
 
 Nothing yet.
 
-## [2.1.0] - 2026-07-18
+## [2.1.0] - 2026-07-20
 
 Correctness batch: thirteen library defects fixed since 2.0.0, all with new
 guarded, mutation-tested `scripts/lint-library.sh` sections. Minor bump — the
