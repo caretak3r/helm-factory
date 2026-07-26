@@ -54,6 +54,10 @@ jobs:
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
+        with:
+          # Self-enable Pages (build_type=workflow) on first run instead of
+          # requiring a manual Settings toggle; the job already holds pages:write.
+          enablement: true
 
       - name: Upload build artifact
         uses: actions/upload-pages-artifact@v3
