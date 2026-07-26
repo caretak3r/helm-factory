@@ -5,41 +5,41 @@ description: The user journey from sourcing the library to rendered manifests, a
 
 # How It Works
 
-`platform` is a **pure library chart**. It ships no installable templates — a
-consumer chart declares it as a dependency and renders *everything* through one
-entrypoint, `{{ include "platform.render" . }}`. This page traces the whole path
-twice: first the **user journey** (what a service team does), then the **render
-pipeline** (what the library does when Helm calls it).
+`platform` is a pure library chart. It ships no installable templates of its own.
+A consumer chart depends on it and renders everything through one entrypoint:
+`{{ include "platform.render" . }}`. This page walks that path from both sides.
+First what a service team does (the user journey), then what the library does
+when Helm calls it (the render pipeline).
 
 ## The user journey
 
-A service team never writes a manifest. They describe intent in ~30 lines of
-values, and the library generates hardened, capability-negotiated objects.
+A service team never writes a manifest. They describe intent in about 30 lines of
+values, and the library generates the objects: hardened, and negotiated against
+what the target cluster can actually serve.
 
 ```mermaid
 flowchart TD
-    A["Service team writes ~30 lines<br/>of values.yaml — intent only"] --> B["Chart.yaml declares the platform<br/>dependency from GHCR, with<br/>import-values defaults"]
+    A["Service team writes ~30 lines<br/>of values.yaml, intent only"] --> B["Chart.yaml declares the platform<br/>dependency from GHCR, with<br/>import-values defaults"]
     B --> C["helm dependency update<br/>pulls the library from GHCR"]
     C --> D["import-values defaults merges<br/>exports.defaults into the<br/>consumer ROOT values scope"]
     D --> E["templates/app.yaml renders the<br/>platform.render entrypoint"]
     E --> F["helm template / helm install<br/>invokes the render pipeline"]
     F --> G["Hardened, PSS-restricted,<br/>capability-negotiated manifests"]
-    G --> H["Objects the cluster actually serves —<br/>absent CRDs skip cleanly, warned in NOTES"]
+    G --> H["Objects the cluster actually serves:<br/>absent CRDs skip cleanly, warned in NOTES"]
 
     style A fill:#e8f0fe,stroke:#1a73e8,color:#000
     style G fill:#e6f4ea,stroke:#188038,color:#000
     style H fill:#e6f4ea,stroke:#188038,color:#000
 ```
 
-The load-bearing step is `import-values: [defaults]`. Without it, the library's
-defaults never reach your root values and nothing renders correctly — see
-[Getting Started](/docs/getting-started/) for the exact dependency block.
+The step people forget is `import-values: [defaults]`. Leave it out and the
+library's defaults never reach your root values, so nothing renders right.
+[Getting Started](/docs/getting-started/) has the exact dependency block.
 
 ## The render pipeline
 
 `platform.render` (in `_util.tpl`) composes three layers in a fixed order. Tier-1
-is the opinionated primary app; tier-2 and the raw layer are escape hatches for
-the long tail.
+is the opinionated primary app. Tier-2 and the raw layer handle the long tail.
 
 ```mermaid
 flowchart TD
@@ -68,9 +68,9 @@ flowchart TD
 
 ### Tier-1 dispatch order
 
-`platform.app` walks enabled features in a fixed order and includes the matching
-generator, each wrapped in `platform.emit`. Order matters — TLS secrets exist
-before the workload that mounts them, and hook Jobs land last.
+`platform.app` walks the enabled features in a fixed order, wrapping each
+generator in `platform.emit`. The order matters: TLS secrets get created before
+the workload that mounts them, and hook Jobs come last.
 
 | # | Object(s) | Gate |
 |---|---|---|
@@ -96,16 +96,17 @@ before the workload that mounts them, and hook Jobs land last.
 | 20 | Pre-install hook Job | `jobs.preInstall.enabled` |
 | 21 | Post-install hook Job | `jobs.postInstall.enabled` |
 
-The two-part gate on CRD-backed objects (Certificate, mTLS, Gateway routes,
-ServiceMonitor, PodMonitor) — the feature flag **and** a successful capability
-negotiation — is what lets those objects skip cleanly when the CRD is absent.
+CRD-backed objects (Certificate, mTLS, Gateway routes, ServiceMonitor,
+PodMonitor) sit behind a two-part gate: the feature flag plus a successful
+capability negotiation. That second condition is what lets them drop cleanly when
+the CRD isn't installed.
 
 ## Capability negotiation
 
-For each Kind, the library decides *which* `apiVersion` to emit — or whether to
-emit at all — by class. Built-ins must always render (a plain `helm template`
-with no cluster still needs a Deployment); CRDs must never render when their API
-is absent (a deploy must not conflict).
+For each Kind, the library picks which `apiVersion` to emit, or whether to emit
+at all. It decides by class. A built-in has to render even from a plain
+`helm template` with no cluster, since you still want your Deployment. A CRD must
+not render when its API is absent, or the deploy conflicts.
 
 ```mermaid
 flowchart TD
@@ -125,17 +126,17 @@ flowchart TD
     style DROP fill:#fce8e6,stroke:#d93025,color:#000
 ```
 
-Under bare `helm template` (no cluster), Helm's API discovery is minimal — it
-reports neither the full built-in group set nor any CRD. That is exactly why
-built-ins use `OrDefault` (fall back to preferred GA) and CRDs use strict
-`apiVersionFor` (skip when absent). To render CRD-backed objects offline, in CI,
-**force-assume** their groups via `capabilities.apiVersions` — full detail and
-the exact-string `--api-versions` gotcha live in the
-[Capability Catalog](/docs/capability-catalog/).
+Run `helm template` with no cluster and Helm's API discovery is threadbare: it
+reports neither the full set of built-in groups nor any CRD. That's the reason
+for the split. Built-ins fall back to preferred GA (`OrDefault`); CRDs skip when
+absent (strict `apiVersionFor`). To render CRD-backed objects offline in CI,
+force-assume their groups through `capabilities.apiVersions`. The
+[Capability Catalog](/docs/capability-catalog/) has the details, including the
+`--api-versions` exact-string gotcha.
 
 ## Where to go next
 
-- [Capability Catalog](/docs/capability-catalog/) — the full Kind → apiVersion registry.
-- [Conventions & Tricks](/docs/conventions-and-tricks/) — the Helm idioms, primitives, and hacks the library leans on.
-- [Values Reference](/docs/values-reference/) — every configurable key.
-- [Security Model](/docs/security-model/) — hardening defaults and trust boundaries.
+- [Capability Catalog](/docs/capability-catalog/): the full Kind → apiVersion registry.
+- [Conventions & Tricks](/docs/conventions-and-tricks/): the Helm idioms and hacks the library uses.
+- [Values Reference](/docs/values-reference/): every configurable key.
+- [Security Model](/docs/security-model/): hardening defaults and trust boundaries.
