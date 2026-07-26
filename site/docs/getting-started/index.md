@@ -92,8 +92,10 @@ parent chart's root scope automatically.
 
 ## Where to go next
 
+- [How It Works](/docs/how-it-works/) — the user journey and render pipeline, with diagrams.
 - [Values Reference](/docs/values-reference/) — every configurable key.
 - [Capability Catalog](/docs/capability-catalog/) — which Kinds render and how apiVersion
   negotiation works.
+- [Conventions & Tricks](/docs/conventions-and-tricks/) — the Helm idioms and hacks the library uses.
 - [Security Model](/docs/security-model/) — trust boundaries and secrets handling.
 - [Examples & Recipes](/docs/examples-recipes/) — worked examples per workload type.
