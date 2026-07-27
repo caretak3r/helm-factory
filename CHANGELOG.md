@@ -102,6 +102,15 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
   **Behavior change:** the headless Service gains one label; consumers that
   wrote their own selector matching *every* Service of the release should
   confirm they still want both targets.
+### Added — PodDisruptionBudget eviction policy
+
+- `podDisruptionBudget.unhealthyPodEvictionPolicy` — optional passthrough for
+  the PDB's `unhealthyPodEvictionPolicy` field (GA since Kubernetes 1.31).
+  Set to `AlwaysAllow` to let node drains evict permanently-unhealthy pods
+  instead of deadlocking under the default `IfHealthyBudget` behavior.
+  Empty string (default) omits the field, preserving current behavior. Any
+  other value fails at template time with a named error (guarded,
+  mutation-tested gate section included).
 
 ## [2.1.0] - 2026-07-20
 

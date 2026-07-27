@@ -21,5 +21,8 @@ spec:
   {{- else }}
   minAvailable: {{ $min | default 1 }}
   {{- end }}
+  {{- if .Values.podDisruptionBudget.unhealthyPodEvictionPolicy }}
+  unhealthyPodEvictionPolicy: {{ .Values.podDisruptionBudget.unhealthyPodEvictionPolicy }}
+  {{- end }}
 {{- end }}
 {{- end }}

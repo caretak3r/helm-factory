@@ -855,6 +855,7 @@ podDisruptionBudget:
   minAvailable: 1
   # OR
   # maxUnavailable: 1
+  unhealthyPodEvictionPolicy: AlwaysAllow  # optional; IfHealthyBudget or AlwaysAllow
 ```
 
 ### Volumes
