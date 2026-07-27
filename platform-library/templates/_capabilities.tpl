@@ -286,6 +286,9 @@ serviceMonitor:
 podMonitor:
   composition: atomic
   kinds: [PodMonitor]
+prometheusRule:
+  composition: atomic
+  kinds: [PrometheusRule]
 {{- end -}}
 
 {{/*

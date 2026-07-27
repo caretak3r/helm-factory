@@ -45,8 +45,9 @@
 19. ServiceAccount — `serviceAccount.create` or `serviceAccount.name`
 20. ServiceMonitor — `serviceMonitor.enabled` + capability gate
 21. PodMonitor — `podMonitor.enabled` + capability gate
-22. CronJob — `cronJob.enabled`
-23. Pre-install Job, then post-install Job — `jobs.preInstall/postInstall.enabled`
+22. PrometheusRule — `prometheusRule.enabled` + capability gate
+23. CronJob — `cronJob.enabled`
+24. Pre-install Job, then post-install Job — `jobs.preInstall/postInstall.enabled`
 
 `platform.render` then appends `platform.extraObjects` (any Kind, capability-negotiated, cluster-scoped Kinds gated by `allowClusterScopedExtras`) and `platform.extraManifests` (raw maps or `tpl` strings).
 
@@ -151,7 +152,8 @@ helm-factory/
 │       ├── _job-preinstall.yaml  # Pre-install hook Job
 │       ├── _job-postinstall.yaml # Post-install hook Job
 │       ├── _servicemonitor.yaml  # Prometheus ServiceMonitor
-│       └── _podmonitor.yaml      # Prometheus PodMonitor
+│       ├── _podmonitor.yaml      # Prometheus PodMonitor
+│       └── _prometheusrule.yaml  # Prometheus PrometheusRule
 ├── scripts/
 │   ├── new-app-chart.sh          # Consumer chart scaffold
 │   ├── lint-library.sh           # Full validation gate (matrix, goldens, kubeconform)
@@ -273,7 +275,7 @@ Not workload types (separate features):
 - `autoscaling.enabled` → only renders for `workload.type: Deployment` or `StatefulSet` (DaemonSet silently skipped)
 - `ingress.enabled` → requires `service.enabled: true`
 - `gatewayApi.enabled` → capability-gated on Gateway API CRDs; `parentRefs` required when a route is enabled
-- `serviceMonitor.enabled` / `podMonitor.enabled` → capability-gated on Prometheus Operator CRDs
+- `serviceMonitor.enabled` / `podMonitor.enabled` / `prometheusRule.enabled` → capability-gated on Prometheus Operator CRDs
 - `certificate.enabled` → capability-gated on cert-manager CRDs
 - `mtls.enabled` → capability-gated on Istio; requires `mtls.allowedPrincipals` (or explicit `mtls.allowAllPrincipals: true`)
 - `networkPolicy.enabled` → requires a CNI supporting NetworkPolicy; empty ingress+egress = default-deny (NOTES warning)

@@ -107,7 +107,7 @@ fail=0
 expected_kinds() {
   case "$1" in
     minimal)  echo 3 ;;
-    full)     echo 28 ;;
+    full)     echo 29 ;;
     stateful) echo 8 ;;
     daemon)   echo 3 ;;
     *)        echo "unknown fixture: $1" >&2; return 1 ;;
@@ -350,7 +350,7 @@ if ! neg=$("$RENDER" full --set capabilities.apiVersions=null 2>&1); then
   echo "  FAIL: negative render itself failed"; echo "$neg" | tail -5; fail=1
 else
   validate_render "CRD-drop (full, no force-assume)" "$neg"
-  if grep -qE '^kind: (Certificate|HTTPRoute|GRPCRoute|PeerAuthentication|AuthorizationPolicy|ServiceMonitor|PodMonitor)$' <<<"$neg"; then
+  if grep -qE '^kind: (Certificate|HTTPRoute|GRPCRoute|PeerAuthentication|AuthorizationPolicy|ServiceMonitor|PodMonitor|PrometheusRule)$' <<<"$neg"; then
     echo "  FAIL: a CRD-backed object rendered without a present API"; fail=1
   else
     echo "  OK: CRD-backed objects skipped"
@@ -1109,22 +1109,28 @@ echo "==> NOTES: Kinds enabled in values but skipped by capability gating"
 # deployed when they did not — a silent security/observability gap.
 if out=$(notes_of minimal \
   --set certificate.enabled=true --set certificate.issuer=letsencrypt \
-  --set serviceMonitor.enabled=true 2>&1); then
+  --set serviceMonitor.enabled=true \
+  --set prometheusRule.enabled=true 2>&1); then
   if grep -q "SKIPPED KINDS" <<<"$out" &&
      grep -q "Certificate (tried cert-manager.io/v1)" <<<"$out" &&
-     grep -q "ServiceMonitor (tried monitoring.coreos.com/v1)" <<<"$out"; then
+     grep -q "ServiceMonitor (tried monitoring.coreos.com/v1)" <<<"$out" &&
+     grep -q "PrometheusRule (tried monitoring.coreos.com/v1)" <<<"$out"; then
     echo "  OK: enabled-but-skipped Kinds are named in a NOTES warning with the apiVersions tried"
   else
-    echo "  FAIL: enabled-but-skipped Certificate/ServiceMonitor produced no naming NOTES warning"; echo "$out" | tail -5; fail=1
+    echo "  FAIL: enabled-but-skipped Certificate/ServiceMonitor/PrometheusRule produced no naming NOTES warning"; echo "$out" | tail -5; fail=1
   fi
 else
   echo "  FAIL: helm install --dry-run=client failed for minimal fixture with gated Kinds enabled"; echo "$out" | tail -5; fail=1
 fi
 
-# Force-assuming the APIs closes the gap: the objects render, so there is nothing to warn about.
+# Force-assuming the APIs closes the gap: the objects render, so there is nothing
+# to warn about. With the gate open the PrometheusRule generator actually runs,
+# so its empty-groups fail guard demands at least one group here.
 if out=$(notes_of minimal \
   --set certificate.enabled=true --set certificate.issuer=letsencrypt \
   --set serviceMonitor.enabled=true \
+  --set prometheusRule.enabled=true \
+  --set 'prometheusRule.groups[0].name=basic' \
   --set 'capabilities.apiVersions[0]=cert-manager.io/v1' \
   --set 'capabilities.apiVersions[1]=monitoring.coreos.com/v1' 2>&1); then
   if grep -q "SKIPPED KINDS" <<<"$out"; then
@@ -1136,12 +1142,12 @@ else
   echo "  FAIL: helm install --dry-run=client failed for minimal fixture with force-assumed apiVersions"; echo "$out" | tail -5; fail=1
 fi
 
-# No false positives: the features registry covers 7 Kinds — 5 representatives
+# No false positives: the features registry covers 8 Kinds — 6 representatives
 # gated in _app.yaml (Certificate, PeerAuthentication, HTTPRoute, ServiceMonitor,
-# PodMonitor) plus 2 secondary Kinds gated inside their own feature template
-# (AuthorizationPolicy, GRPCRoute). The full fixture enables mtls and
-# gatewayApi.httpRoute (not grpcRoute) and force-assumes every API those enabled
-# Kinds need, so it must stay silent.
+# PodMonitor, PrometheusRule) plus 2 secondary Kinds gated inside their own
+# feature template (AuthorizationPolicy, GRPCRoute). The full fixture enables
+# mtls and gatewayApi.httpRoute (not grpcRoute) and force-assumes every API
+# those enabled Kinds need, so it must stay silent.
 if out=$(notes_of full 2>&1); then
   if grep -q "SKIPPED KINDS" <<<"$out"; then
     echo "  FAIL: full fixture warns about skipped Kinds it actually renders"; echo "$out" | tail -5; fail=1
@@ -1628,7 +1634,7 @@ else
   echo "  FAIL: explicit backendRefs must not require service.enabled"; echo "$out" | tail -3; fail=1
 fi
 
-echo "==> ResourceQuota / LimitRange guardrails (empty spec enforces nothing)"
+echo "==> ResourceQuota / LimitRange / PrometheusRule guardrails (empty spec enforces nothing)"
 if out=$("$RENDER" minimal --skip-schema-validation --set resourceQuota.enabled=true 2>&1); then
   echo "  FAIL: render succeeded with resourceQuota.enabled=true and no resourceQuota.hard"; fail=1
 elif grep -q "resourceQuota.enabled is true but resourceQuota.hard is empty" <<<"$out"; then
@@ -1655,6 +1661,27 @@ if out=$("$RENDER" minimal --set limitRange.enabled=true --set limitRange.min.cp
   echo "  OK: limitRange with only min set renders"
 else
   echo "  FAIL: limitRange with min set must render"; echo "$out" | tail -3; fail=1
+fi
+
+# PrometheusRule is capability-gated, so the gate must be forced open with the
+# full group/version/Kind form for the generator (and its guard) to run at all.
+if out=$("$RENDER" minimal --skip-schema-validation \
+  --api-versions monitoring.coreos.com/v1/PrometheusRule \
+  --set prometheusRule.enabled=true 2>&1); then
+  echo "  FAIL: render succeeded with prometheusRule.enabled=true and no prometheusRule.groups"; fail=1
+elif grep -q "prometheusRule.enabled is true but prometheusRule.groups is empty" <<<"$out"; then
+  echo "  OK: prometheusRule with empty groups rejected"
+else
+  echo "  FAIL: empty prometheusRule.groups failed without the expected message"; echo "$out" | tail -3; fail=1
+fi
+
+if out=$("$RENDER" minimal --skip-schema-validation \
+  --api-versions monitoring.coreos.com/v1/PrometheusRule \
+  --set prometheusRule.enabled=true \
+  --set prometheusRule.groups[0].name=basic 2>&1); then
+  echo "  OK: prometheusRule with a group set renders"
+else
+  echo "  FAIL: prometheusRule with a group set must render"; echo "$out" | tail -3; fail=1
 fi
 
 echo "==> StatefulSet governing headless Service"

@@ -116,6 +116,19 @@ serviceMonitor:
 podMonitor:
   enabled: true
 
+prometheusRule:
+  enabled: true
+  groups:
+    - name: app.rules
+      rules:
+        - alert: HighErrorRate
+          expr: rate(http_requests_total{status=~"5.."}[5m]) > 0.05
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: High error rate detected
+
 gatewayApi:
   enabled: true
   hostnames:

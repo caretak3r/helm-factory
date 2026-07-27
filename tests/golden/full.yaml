@@ -649,6 +649,31 @@ spec:
 ---
 # Source: full/templates/app.yaml
 apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: t-full
+  namespace: default
+  labels:
+    helm.sh/chart: full-0.1.0
+    app.kubernetes.io/name: full
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/component: app
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  groups:
+    - name: app.rules
+      rules:
+      - alert: HighErrorRate
+        annotations:
+          summary: High error rate detected
+        expr: rate(http_requests_total{status=~"5.."}[5m]) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+---
+# Source: full/templates/app.yaml
+apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   name: t-full
