@@ -647,6 +647,39 @@ exports:
       egress: []
 
     # -----------------------------------------------------------------------------
+    # Resource Quota (namespace QoS governance)
+    # -----------------------------------------------------------------------------
+    # Opt-in. This library targets a dedicated-namespace-per-app model, so a
+    # ResourceQuota caps the namespace's aggregate consumption. `hard` is a
+    # verbatim passthrough to spec.hard (requests.cpu, requests.memory,
+    # limits.cpu, limits.memory, pods, count/<resource>.<group>, ...) — size it
+    # off your workload, e.g. hard.requests.cpu roughly replicaCount times
+    # resources.requests.cpu (with headroom for autoscaling.maxReplicas and
+    # rolling updates); the library does not compute this for you.
+    resourceQuota:
+      enabled: false
+      hard: {}
+      scopes: []
+      scopeSelector: {}
+
+    # -----------------------------------------------------------------------------
+    # Limit Range (namespace QoS governance)
+    # -----------------------------------------------------------------------------
+    # Opt-in per-container default/defaultRequest/max/min, applied to every pod
+    # in the namespace. This is the namespace-level backstop for a workload
+    # that renders with no `resources:` set (BestEffort QoS) — set
+    # limitRange.default/defaultRequest so it gets a QoS class without this
+    # library forcing its own workload default. Maps are resourceName ->
+    # quantity (e.g. {cpu: "500m", memory: "512Mi"}).
+    limitRange:
+      enabled: false
+      type: Container
+      default: {}
+      defaultRequest: {}
+      max: {}
+      min: {}
+
+    # -----------------------------------------------------------------------------
     # Labels and Annotations
     # -----------------------------------------------------------------------------
     commonLabels: {}

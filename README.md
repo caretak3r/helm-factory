@@ -904,6 +904,48 @@ podDisruptionBudget:
   unhealthyPodEvictionPolicy: AlwaysAllow  # optional; IfHealthyBudget or AlwaysAllow
 ```
 
+### Resource Quota / Limit Range (namespace QoS governance)
+
+Opt-in, namespace-scoped governance for the dedicated-namespace-per-app model.
+Both fail closed when enabled with nothing to enforce.
+
+```yaml
+resourceQuota:
+  enabled: true
+  hard:                    # verbatim passthrough to spec.hard
+    requests.cpu: "4"
+    requests.memory: 8Gi
+    limits.cpu: "8"
+    limits.memory: 16Gi
+    pods: "20"
+  # Size hard off your workload, e.g. hard.requests.cpu roughly
+  # replicaCount * resources.requests.cpu, with headroom for
+  # autoscaling.maxReplicas and rolling updates. Not computed by the library.
+```
+
+```yaml
+limitRange:
+  enabled: true
+  type: Container           # Container (default) | Pod | PersistentVolumeClaim
+  default:                  # applied when a container omits resources.limits
+    cpu: 500m
+    memory: 512Mi
+  defaultRequest:            # applied when a container omits resources.requests
+    cpu: 250m
+    memory: 256Mi
+  max:
+    cpu: "2"
+    memory: 2Gi
+  min:
+    cpu: 50m
+    memory: 64Mi
+```
+
+> `limitRange.default`/`defaultRequest` is the namespace-level backstop for a
+> workload that renders with no `resources:` set (BestEffort QoS pod) — set
+> these so every pod in the namespace gets a QoS class, without this library
+> forcing its own workload-level default.
+
 ### Volumes
 
 Mount additional volumes beyond ConfigMap and PVC.

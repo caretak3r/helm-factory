@@ -1,0 +1,36 @@
+{{- define "platform.limitrange" -}}
+{{- if .Values.limitRange.enabled }}
+{{- $default := .Values.limitRange.default | default dict }}
+{{- $defaultRequest := .Values.limitRange.defaultRequest | default dict }}
+{{- $max := .Values.limitRange.max | default dict }}
+{{- $min := .Values.limitRange.min | default dict }}
+{{- if not (or $default $defaultRequest $max $min) }}
+{{- fail "limitRange.enabled is true but none of limitRange.default, limitRange.defaultRequest, limitRange.max, or limitRange.min is set: an empty LimitRangeItem enforces nothing. Set at least one." }}
+{{- end }}
+apiVersion: {{ include "platform.capabilities.apiVersionForOrDefault" (list . "LimitRange") }}
+kind: LimitRange
+metadata:
+  name: {{ include "platform.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+    {{- range $k, $v := .Values.commonLabels }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+spec:
+  limits:
+    - type: {{ .Values.limitRange.type | default "Container" }}
+      {{- if $default }}
+      default: {{- toYaml $default | nindent 8 }}
+      {{- end }}
+      {{- if $defaultRequest }}
+      defaultRequest: {{- toYaml $defaultRequest | nindent 8 }}
+      {{- end }}
+      {{- if $max }}
+      max: {{- toYaml $max | nindent 8 }}
+      {{- end }}
+      {{- if $min }}
+      min: {{- toYaml $min | nindent 8 }}
+      {{- end }}
+{{- end }}
+{{- end }}

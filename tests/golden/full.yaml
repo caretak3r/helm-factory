@@ -42,6 +42,27 @@ spec:
 apiVersion: v1
 kind: ResourceQuota
 metadata:
+  name: t-full
+  namespace: default
+  labels:
+    helm.sh/chart: full-0.1.0
+    app.kubernetes.io/name: full
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/component: app
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  hard:
+    limits.cpu: "8"
+    limits.memory: 16Gi
+    pods: "20"
+    requests.cpu: "4"
+    requests.memory: 8Gi
+---
+# Source: full/templates/app.yaml
+apiVersion: v1
+kind: ResourceQuota
+metadata:
   name: full-quota
   namespace: default
   labels:
@@ -54,6 +75,35 @@ metadata:
 spec:
   hard:
     pods: "10"
+---
+# Source: full/templates/app.yaml
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: t-full
+  namespace: default
+  labels:
+    helm.sh/chart: full-0.1.0
+    app.kubernetes.io/name: full
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/component: app
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  limits:
+    - type: Container
+      default:
+        cpu: 500m
+        memory: 512Mi
+      defaultRequest:
+        cpu: 250m
+        memory: 256Mi
+      max:
+        cpu: "2"
+        memory: 2Gi
+      min:
+        cpu: 50m
+        memory: 64Mi
 ---
 # Source: full/templates/app.yaml
 apiVersion: policy/v1

@@ -10,7 +10,7 @@
 ## Project Purpose
 - Capability-gated Helm library chart (`platform-library/`, chart name `platform`) that is the basis for generating product charts
 - Consumer charts depend on it (`import-values: [defaults]`) and render via `{{ include "platform.render" . }}`; the `scripts/new-app-chart.sh` generator scaffolds one
-- Renders the opinionated primary-app objects (Deployments, StatefulSets, DaemonSets, Services, Ingress, Gateway API, hook Jobs, CronJobs, ConfigMaps, Secrets, PVCs, HPA, PDB, NetworkPolicy, ServiceMonitor, PodMonitor, Certificates, mTLS) **plus** any other Kind via `extraObjects` and raw manifests via `extraManifests`
+- Renders the opinionated primary-app objects (Deployments, StatefulSets, DaemonSets, Services, Ingress, Gateway API, hook Jobs, CronJobs, ConfigMaps, Secrets, PVCs, HPA, PDB, NetworkPolicy, ResourceQuota, LimitRange, ServiceMonitor, PodMonitor, Certificates, mTLS) **plus** any other Kind via `extraObjects` and raw manifests via `extraManifests`
 
 ## Architecture
 - Library chart type — cannot be installed directly; pure (no self-rendering stub templates as of v2)
@@ -40,11 +40,13 @@
 14. Gateway API (HTTPRoute/GRPCRoute) — `gatewayApi.enabled` + capability gate (`HTTPRoute`)
 15. NetworkPolicy — `networkPolicy.enabled`
 16. PodDisruptionBudget — `podDisruptionBudget.enabled`
-17. ServiceAccount — `serviceAccount.create` or `serviceAccount.name`
-18. ServiceMonitor — `serviceMonitor.enabled` + capability gate
-19. PodMonitor — `podMonitor.enabled` + capability gate
-20. CronJob — `cronJob.enabled`
-21. Pre-install Job, then post-install Job — `jobs.preInstall/postInstall.enabled`
+17. ResourceQuota — `resourceQuota.enabled`; fails closed if `hard` is empty
+18. LimitRange — `limitRange.enabled`; fails closed if `default`/`defaultRequest`/`max`/`min` are all empty
+19. ServiceAccount — `serviceAccount.create` or `serviceAccount.name`
+20. ServiceMonitor — `serviceMonitor.enabled` + capability gate
+21. PodMonitor — `podMonitor.enabled` + capability gate
+22. CronJob — `cronJob.enabled`
+23. Pre-install Job, then post-install Job — `jobs.preInstall/postInstall.enabled`
 
 `platform.render` then appends `platform.extraObjects` (any Kind, capability-negotiated, cluster-scoped Kinds gated by `allowClusterScopedExtras`) and `platform.extraManifests` (raw maps or `tpl` strings).
 
@@ -135,6 +137,8 @@ helm-factory/
 │       ├── _hpa.yaml             # HorizontalPodAutoscaler
 │       ├── _pdb.yaml             # PodDisruptionBudget
 │       ├── _networkpolicy.yaml   # NetworkPolicy
+│       ├── _resourcequota.yaml   # ResourceQuota (namespace QoS governance)
+│       ├── _limitrange.yaml      # LimitRange (namespace QoS governance)
 │       ├── _configmap.yaml       # ConfigMap
 │       ├── _configmap-script.yaml # Hook script ConfigMaps
 │       ├── _secret.yaml          # Secret (existingSecret aware)
