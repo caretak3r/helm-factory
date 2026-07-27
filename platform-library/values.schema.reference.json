@@ -47,7 +47,12 @@
         "enabled": { "type": "boolean" },
         "type": { "type": "string", "enum": ["ClusterIP", "NodePort", "LoadBalancer", "ExternalName"] },
         "externalName": { "type": "string", "description": "Required when type is ExternalName: the external DNS name the Service aliases (e.g. db.example.com). ExternalName Services render only type + externalName; ports and selector are omitted." },
-        "ports": { "type": "array", "items": { "type": "object" } }
+        "ports": { "type": "array", "items": { "type": "object" } },
+        "ipFamilies": { "type": "array", "items": { "type": "string", "enum": ["IPv4", "IPv6"] }, "description": "Dual-stack address families, in preference order. Unset (default) omits the field; the API server applies the cluster default." },
+        "ipFamilyPolicy": { "type": "string", "enum": ["", "SingleStack", "PreferDualStack", "RequireDualStack"], "description": "Dual-stack policy. Empty string (default) omits the field from the rendered Service." },
+        "internalTrafficPolicy": { "type": "string", "enum": ["", "Cluster", "Local"], "description": "Routing policy for traffic originating inside the cluster. Empty string (default) omits the field." },
+        "trafficDistribution": { "type": "string", "enum": ["", "PreferClose"], "description": "Topology-aware endpoint selection hint. Empty string (default) omits the field." },
+        "publishNotReadyAddresses": { "type": "boolean", "description": "When true, not-yet-ready pod addresses are published to Endpoints/EndpointSlices. Also applied to the library-managed headless Service, where it matters for StatefulSet peer discovery during initial bootstrap." }
       },
       "if": { "properties": { "type": { "const": "ExternalName" } }, "required": ["type"] },
       "then": { "required": ["externalName"], "properties": { "externalName": { "minLength": 1 } } }

@@ -35,6 +35,10 @@ service:
       port: 80
       targetPort: http
       protocol: TCP
+  trafficDistribution: PreferClose
+  ipFamilyPolicy: SingleStack
+  ipFamilies:
+    - IPv4
 
 ingress:
   enabled: true

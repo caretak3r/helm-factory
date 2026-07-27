@@ -84,6 +84,8 @@ metadata:
 spec:
   type: ClusterIP
   sessionAffinity: None
+  internalTrafficPolicy: Local
+  publishNotReadyAddresses: true
   ports:
     - name: http
       port: 80
@@ -111,6 +113,7 @@ metadata:
 spec:
   type: ClusterIP
   clusterIP: None
+  publishNotReadyAddresses: true
   ports:
     - name: http
       port: 80
