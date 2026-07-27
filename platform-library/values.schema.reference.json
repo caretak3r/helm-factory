@@ -94,6 +94,18 @@
       }
     },
     "topologySpreadConstraints": { "type": "array", "items": { "type": "object" }, "description": "Pod topology spread constraints applied to the workload pod spec. Takes precedence over highAvailability.topologySpreadConstraints when non-empty." },
+    "runtimeClassName": { "type": "string", "description": "Alternate container runtime (e.g. gVisor, Kata, GPU runtimes). Empty string omits the field." },
+    "dnsPolicy": { "type": "string", "enum": ["", "ClusterFirst", "ClusterFirstWithHostNet", "Default", "None"], "description": "Pod DNS policy. Empty string omits the field (Kubernetes defaults to ClusterFirst)." },
+    "dnsConfig": { "type": "object", "additionalProperties": true, "description": "Pod DNS config (nameservers/searches/options) for custom resolvers or ndots tuning, rendered verbatim. Omitted when empty." },
+    "shareProcessNamespace": { "type": "boolean", "description": "Share the process namespace between all containers in the pod. Omitted (not rendered) when false." },
+    "os": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Pod-level OS designation, rendered verbatim (e.g. PSS admission can use this). Omitted when empty.",
+      "properties": {
+        "name": { "type": "string", "enum": ["linux", "windows"] }
+      }
+    },
     "daemonSet": {
       "type": "object",
       "additionalProperties": true,

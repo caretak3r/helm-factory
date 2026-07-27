@@ -5,6 +5,22 @@ image:
   repository: example/app
   tag: "1.2.3"
 
+# Pod-spec long-tail fields: exercised across the workload, CronJob, and
+# preinstall hook Job pod specs (all three share this fixture's values).
+runtimeClassName: gvisor
+dnsPolicy: ClusterFirst
+dnsConfig:
+  nameservers:
+    - 10.0.0.10
+  searches:
+    - ns1.svc.cluster.local
+  options:
+    - name: ndots
+      value: "5"
+shareProcessNamespace: true
+os:
+  name: linux
+
 configMap:
   enabled: true
   mounted: true
