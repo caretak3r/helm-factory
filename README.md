@@ -37,7 +37,7 @@ This library no longer targets Kubernetes 1.31–1.33 (its `kubeVersion` floor i
 |---------|-------------|
 | Workloads | Deployment, StatefulSet, DaemonSet |
 | Networking | Service, Ingress, Gateway API (HTTPRoute / GRPCRoute), NetworkPolicy |
-| Scaling | HPA, PodDisruptionBudget |
+| Scaling | HPA, VerticalPodAutoscaler (VPA), PodDisruptionBudget |
 | Security | PodSecurityContext, ContainerSecurityContext, mTLS (Istio), Certificates (cert-manager), TLS self-signed |
 | Observability | ServiceMonitor, PodMonitor, PrometheusRule (Prometheus Operator) |
 | Config/Secrets | ConfigMap, Secret, Environment Variables |
@@ -449,6 +449,34 @@ autoscaling:
     scaleDown:
       stabilizationWindowSeconds: 300
 ```
+
+### Vertical Pod Autoscaler
+
+CRD-backed (`autoscaling.k8s.io/v1`, the `kubernetes/autoscaler` project) and
+capability-gated the same way as Certificate/ServiceMonitor/PodMonitor:
+nothing renders unless the VPA CRDs are present, or the API is force-assumed
+via `capabilities.apiVersions` (see [Capability gating](#capability-gating)).
+`targetRef` auto-wires to this chart's own workload.
+
+```yaml
+verticalAutoscaling:
+  enabled: true
+  updateMode: Auto          # Off | Initial | Recreate | Auto
+  resourcePolicy:           # verbatim passthrough to spec.resourcePolicy
+    containerPolicies:
+      - containerName: "*"
+        minAllowed:
+          cpu: 50m
+          memory: 64Mi
+        maxAllowed:
+          cpu: "1"
+          memory: 512Mi
+```
+
+Enabling `verticalAutoscaling` alongside `autoscaling` (HPA) while HPA scales
+on CPU/memory fails closed at render time unless `updateMode: Off`
+(recommend-only) — HPA and VPA both acting on the same resource is a known
+anti-pattern that causes scaling churn.
 
 ### Probes
 
@@ -1156,6 +1184,7 @@ capabilities:
     - cert-manager.io/v1
     - monitoring.coreos.com/v1
     - security.istio.io/v1beta1
+    - autoscaling.k8s.io/v1
 ```
 
 The CLI flag works too, but **only in the full `group/version/Kind` form**: `helm template --api-versions monitoring.coreos.com/v1/ServiceMonitor` (and `--kube-version <x.y>` to set `.Capabilities.KubeVersion`). A bare `--api-versions group/version` flag does **not** satisfy the gate — the library checks `.Capabilities.APIVersions.Has` with the full group/version/Kind string, so the object is still skipped, silently. Only the `capabilities.apiVersions` values list above accepts the bare `group/version` form. See [`docs/specs/platform-library-v2-architecture.md`](docs/specs/platform-library-v2-architecture.md) for the full Kind→apiVersion registry and negotiation rules.
@@ -1183,6 +1212,7 @@ platform-library/
 │   ├── _ingress.yaml       ← Ingress
 │   ├── _gateway-api.yaml   ← Gateway API (HTTPRoute / GRPCRoute)
 │   ├── _hpa.yaml           ← HorizontalPodAutoscaler
+│   ├── _vpa.yaml           ← VerticalPodAutoscaler (kubernetes/autoscaler)
 │   ├── _pdb.yaml           ← PodDisruptionBudget
 │   ├── _networkpolicy.yaml ← NetworkPolicy
 │   ├── _configmap.yaml     ← ConfigMap

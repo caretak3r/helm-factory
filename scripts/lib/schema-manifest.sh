@@ -67,4 +67,5 @@ CRD_SCHEMA_PATHS=(
   monitoring.coreos.com/podmonitor_v1
   monitoring.coreos.com/servicemonitor_v1
   monitoring.coreos.com/prometheusrule_v1
+  autoscaling.k8s.io/verticalpodautoscaler_v1
 )

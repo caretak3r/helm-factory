@@ -10,7 +10,7 @@
 ## Project Purpose
 - Capability-gated Helm library chart (`platform-library/`, chart name `platform`) that is the basis for generating product charts
 - Consumer charts depend on it (`import-values: [defaults]`) and render via `{{ include "platform.render" . }}`; the `scripts/new-app-chart.sh` generator scaffolds one
-- Renders the opinionated primary-app objects (Deployments, StatefulSets, DaemonSets, Services, Ingress, Gateway API, hook Jobs, CronJobs, ConfigMaps, Secrets, PVCs, HPA, PDB, NetworkPolicy, ResourceQuota, LimitRange, ServiceMonitor, PodMonitor, Certificates, mTLS) **plus** any other Kind via `extraObjects` and raw manifests via `extraManifests`
+- Renders the opinionated primary-app objects (Deployments, StatefulSets, DaemonSets, Services, Ingress, Gateway API, hook Jobs, CronJobs, ConfigMaps, Secrets, PVCs, HPA, VPA, PDB, NetworkPolicy, ResourceQuota, LimitRange, ServiceMonitor, PodMonitor, Certificates, mTLS) **plus** any other Kind via `extraObjects` and raw manifests via `extraManifests`
 
 ## Architecture
 - Library chart type — cannot be installed directly; pure (no self-rendering stub templates as of v2)
@@ -34,20 +34,21 @@
 8. PVC — `persistence.enabled` (skipped when `persistence.existingClaim` is set)
 9. Workload — always; `platform.workload` dispatches on `workload.type` (`Deployment` default, `StatefulSet`, `DaemonSet`)
 10. HPA — `autoscaling.enabled`; only for `Deployment`/`StatefulSet` (`_hpa.yaml` guards, DaemonSet is skipped)
-11. Service — `service.enabled`
-12. Headless Service `<fullname>-headless` — `workload.type: StatefulSet` without an explicit `statefulSet.serviceName` or an already-headless primary Service (`service.clusterIP: None`); governs the StatefulSet so per-pod DNS resolves
-13. Ingress — `ingress.enabled`
-14. Gateway API (HTTPRoute/GRPCRoute) — `gatewayApi.enabled` + capability gate (`HTTPRoute`)
-15. NetworkPolicy — `networkPolicy.enabled`
-16. PodDisruptionBudget — `podDisruptionBudget.enabled`
-17. ResourceQuota — `resourceQuota.enabled`; fails closed if `hard` is empty
-18. LimitRange — `limitRange.enabled`; fails closed if `default`/`defaultRequest`/`max`/`min` are all empty
-19. ServiceAccount — `serviceAccount.create` or `serviceAccount.name`
-20. ServiceMonitor — `serviceMonitor.enabled` + capability gate
-21. PodMonitor — `podMonitor.enabled` + capability gate
-22. PrometheusRule — `prometheusRule.enabled` + capability gate
-23. CronJob — `cronJob.enabled`
-24. Pre-install Job, then post-install Job — `jobs.preInstall/postInstall.enabled`
+11. VerticalPodAutoscaler — `verticalAutoscaling.enabled` + capability gate (`VerticalPodAutoscaler`); fails closed if `autoscaling.enabled` (HPA) is also true, HPA scales on CPU/memory, and `verticalAutoscaling.updateMode` is not `Off`
+12. Service — `service.enabled`
+13. Headless Service `<fullname>-headless` — `workload.type: StatefulSet` without an explicit `statefulSet.serviceName` or an already-headless primary Service (`service.clusterIP: None`); governs the StatefulSet so per-pod DNS resolves
+14. Ingress — `ingress.enabled`
+15. Gateway API (HTTPRoute/GRPCRoute) — `gatewayApi.enabled` + capability gate (`HTTPRoute`)
+16. NetworkPolicy — `networkPolicy.enabled`
+17. PodDisruptionBudget — `podDisruptionBudget.enabled`
+18. ResourceQuota — `resourceQuota.enabled`; fails closed if `hard` is empty
+19. LimitRange — `limitRange.enabled`; fails closed if `default`/`defaultRequest`/`max`/`min` are all empty
+20. ServiceAccount — `serviceAccount.create` or `serviceAccount.name`
+21. ServiceMonitor — `serviceMonitor.enabled` + capability gate
+22. PodMonitor — `podMonitor.enabled` + capability gate
+23. PrometheusRule — `prometheusRule.enabled` + capability gate
+24. CronJob — `cronJob.enabled`
+25. Pre-install Job, then post-install Job — `jobs.preInstall/postInstall.enabled`
 
 `platform.render` then appends `platform.extraObjects` (any Kind, capability-negotiated, cluster-scoped Kinds gated by `allowClusterScopedExtras`) and `platform.extraManifests` (raw maps or `tpl` strings).
 
@@ -136,6 +137,7 @@ helm-factory/
 │       ├── _ingress.yaml         # Ingress
 │       ├── _gateway-api.yaml     # Gateway API HTTPRoute/GRPCRoute
 │       ├── _hpa.yaml             # HorizontalPodAutoscaler
+│       ├── _vpa.yaml             # VerticalPodAutoscaler (kubernetes/autoscaler)
 │       ├── _pdb.yaml             # PodDisruptionBudget
 │       ├── _networkpolicy.yaml   # NetworkPolicy
 │       ├── _resourcequota.yaml   # ResourceQuota (namespace QoS governance)

@@ -50,6 +50,21 @@ autoscaling:
   maxReplicas: 5
   targetCPU: 80
 
+# updateMode: Off (recommend-only) so this coexists with autoscaling.enabled
+# above without tripping the HPA/VPA conflict guard.
+verticalAutoscaling:
+  enabled: true
+  updateMode: "Off"
+  resourcePolicy:
+    containerPolicies:
+      - containerName: "*"
+        minAllowed:
+          cpu: 50m
+          memory: 64Mi
+        maxAllowed:
+          cpu: "1"
+          memory: 512Mi
+
 podDisruptionBudget:
   enabled: true
   minAvailable: 1
@@ -150,6 +165,7 @@ capabilities:
     - cert-manager.io/v1
     - security.istio.io/v1beta1
     - monitoring.coreos.com/v1
+    - autoscaling.k8s.io/v1
 
 # The fixture ships ClusterRole/PriorityClass extras, so opt in to the
 # cluster-scoped gate (default false; the lint gate has a negative test that

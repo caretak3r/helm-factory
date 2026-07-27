@@ -107,7 +107,7 @@ fail=0
 expected_kinds() {
   case "$1" in
     minimal)  echo 3 ;;
-    full)     echo 29 ;;
+    full)     echo 30 ;;
     stateful) echo 8 ;;
     daemon)   echo 3 ;;
     *)        echo "unknown fixture: $1" >&2; return 1 ;;
@@ -350,7 +350,7 @@ if ! neg=$("$RENDER" full --set capabilities.apiVersions=null 2>&1); then
   echo "  FAIL: negative render itself failed"; echo "$neg" | tail -5; fail=1
 else
   validate_render "CRD-drop (full, no force-assume)" "$neg"
-  if grep -qE '^kind: (Certificate|HTTPRoute|GRPCRoute|PeerAuthentication|AuthorizationPolicy|ServiceMonitor|PodMonitor|PrometheusRule)$' <<<"$neg"; then
+  if grep -qE '^kind: (Certificate|HTTPRoute|GRPCRoute|PeerAuthentication|AuthorizationPolicy|ServiceMonitor|PodMonitor|PrometheusRule|VerticalPodAutoscaler)$' <<<"$neg"; then
     echo "  FAIL: a CRD-backed object rendered without a present API"; fail=1
   else
     echo "  OK: CRD-backed objects skipped"
@@ -1142,10 +1142,11 @@ else
   echo "  FAIL: helm install --dry-run=client failed for minimal fixture with force-assumed apiVersions"; echo "$out" | tail -5; fail=1
 fi
 
-# No false positives: the features registry covers 8 Kinds — 6 representatives
+# No false positives: the features registry covers 9 Kinds — 7 representatives
 # gated in _app.yaml (Certificate, PeerAuthentication, HTTPRoute, ServiceMonitor,
-# PodMonitor, PrometheusRule) plus 2 secondary Kinds gated inside their own
-# feature template (AuthorizationPolicy, GRPCRoute). The full fixture enables
+# PodMonitor, PrometheusRule, VerticalPodAutoscaler) plus 2 secondary Kinds gated
+# inside their own feature template (AuthorizationPolicy, GRPCRoute). The full
+# fixture enables
 # mtls and gatewayApi.httpRoute (not grpcRoute) and force-assumes every API
 # those enabled Kinds need, so it must stay silent.
 if out=$(notes_of full 2>&1); then
@@ -1490,6 +1491,46 @@ elif grep -q "certificate.enabled and tlsSelfSigned.enabled are both true" <<<"$
   echo "  OK: certificate + tlsSelfSigned collision rejected"
 else
   echo "  FAIL: certificate/tlsSelfSigned collision failed without the expected message"; echo "$out" | tail -3; fail=1
+fi
+
+echo "==> HPA/VPA conflict guard"
+# full fixture already has autoscaling.enabled=true (targetCPU 80) and
+# verticalAutoscaling.enabled=true with updateMode "Off" (recommend-only,
+# allowed alongside HPA). Flipping updateMode to an actively-mutating mode
+# must fail closed: HPA and VPA fighting over the same CPU/memory target is
+# a known anti-pattern.
+if out=$("$RENDER" full --set verticalAutoscaling.updateMode=Auto 2>&1); then
+  echo "  FAIL: render succeeded with autoscaling.enabled and verticalAutoscaling.updateMode=Auto both true"; fail=1
+elif grep -q "HPA and VPA fighting over the same resource" <<<"$out"; then
+  echo "  OK: HPA/VPA CPU-memory conflict rejected"
+else
+  echo "  FAIL: HPA/VPA conflict failed without the expected message"; echo "$out" | tail -3; fail=1
+fi
+
+# updateMode: Off is the escape hatch — recommend-only VPA must coexist with HPA.
+if out=$("$RENDER" full 2>&1); then
+  if grep -q '^kind: VerticalPodAutoscaler$' <<<"$out"; then
+    echo "  OK: verticalAutoscaling.updateMode=Off renders alongside autoscaling.enabled"
+  else
+    echo "  FAIL: VerticalPodAutoscaler did not render with updateMode=Off"; fail=1
+  fi
+else
+  echo "  FAIL: full fixture render failed (updateMode=Off should coexist with HPA)"; echo "$out" | tail -3; fail=1
+fi
+
+# verticalAutoscaling.updateMode is validated at template time too (defense in
+# depth beyond the values schema): an invalid value fails closed naming the
+# allowed set. --skip-schema-validation isolates the template-level guard from
+# the schema-level rejection of the same bad value.
+if out=$("$RENDER" minimal --set verticalAutoscaling.enabled=true \
+    --set verticalAutoscaling.updateMode=Bogus \
+    --api-versions autoscaling.k8s.io/v1/VerticalPodAutoscaler \
+    --skip-schema-validation 2>&1); then
+  echo "  FAIL: render succeeded with an invalid verticalAutoscaling.updateMode"; fail=1
+elif grep -q 'verticalAutoscaling.updateMode "Bogus" is invalid' <<<"$out"; then
+  echo "  OK: invalid verticalAutoscaling.updateMode rejected at template time"
+else
+  echo "  FAIL: invalid updateMode failed without the expected message"; echo "$out" | tail -3; fail=1
 fi
 
 echo "==> TLS secret name convergence (ingress <-> managed cert sources)"

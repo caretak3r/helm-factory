@@ -1,0 +1,25 @@
+{{- define "platform.vpa" -}}
+{{- if .Values.verticalAutoscaling.enabled -}}
+{{- $validModes := list "Off" "Initial" "Recreate" "Auto" -}}
+{{- if not (has .Values.verticalAutoscaling.updateMode $validModes) -}}
+{{- fail (printf "verticalAutoscaling.updateMode %q is invalid: must be one of %s." .Values.verticalAutoscaling.updateMode (join ", " $validModes)) -}}
+{{- end -}}
+apiVersion: {{ include "platform.capabilities.apiVersionForOrDefault" (list . "VerticalPodAutoscaler") }}
+kind: VerticalPodAutoscaler
+metadata:
+  name: {{ include "platform.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: {{ .Values.workload.type }}
+    name: {{ include "platform.fullname" . }}
+  updatePolicy:
+    updateMode: {{ .Values.verticalAutoscaling.updateMode | quote }}
+  {{- if .Values.verticalAutoscaling.resourcePolicy }}
+  resourcePolicy: {{- toYaml .Values.verticalAutoscaling.resourcePolicy | nindent 4 }}
+  {{- end }}
+{{- end -}}
+{{- end -}}

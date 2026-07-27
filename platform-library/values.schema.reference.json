@@ -88,6 +88,15 @@
         "maxReplicas": { "type": "integer", "minimum": 1 }
       }
     },
+    "verticalAutoscaling": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "updateMode": { "type": "string", "enum": ["Off", "Initial", "Recreate", "Auto"], "description": "VerticalPodAutoscaler spec.updatePolicy.updateMode. \"Off\" is recommend-only (no pod mutation) and is the only mode allowed alongside autoscaling.enabled (HPA) when HPA is scaling on CPU/memory." },
+        "resourcePolicy": { "type": "object", "description": "Verbatim passthrough to VerticalPodAutoscaler spec.resourcePolicy (e.g. containerPolicies)." }
+      }
+    },
     "podDisruptionBudget": {
       "type": "object",
       "additionalProperties": true,

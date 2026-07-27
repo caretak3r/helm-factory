@@ -704,6 +704,36 @@ spec:
       path: "/metrics"
 ---
 # Source: full/templates/app.yaml
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: t-full
+  namespace: default
+  labels:
+    helm.sh/chart: full-0.1.0
+    app.kubernetes.io/name: full
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/component: app
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: t-full
+  updatePolicy:
+    updateMode: "Off"
+  resourcePolicy:
+    containerPolicies:
+    - containerName: '*'
+      maxAllowed:
+        cpu: "1"
+        memory: 512Mi
+      minAllowed:
+        cpu: 50m
+        memory: 64Mi
+---
+# Source: full/templates/app.yaml
 apiVersion: v1
 kind: ServiceAccount
 metadata:
