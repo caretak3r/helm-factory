@@ -1035,8 +1035,10 @@ else
   echo "  FAIL: helm install --dry-run=client failed for full fixture with ingress.secrets"; echo "$out" | tail -5; fail=1
 fi
 
-# Existing warnings unaffected: minimal fixture has no secret/ingress config, so no WARNING at all.
-if out=$(notes_of minimal 2>&1); then
+# Existing warnings unaffected: minimal fixture has no secret/ingress config, so no
+# WARNING at all once resources are set (isolates this check from the NO RESOURCES
+# CONFIGURED warning below, which minimal fires on by default — see hf-uup).
+if out=$(notes_of minimal --set resources.requests.cpu=100m --set resources.limits.memory=128Mi 2>&1); then
   if grep -q "WARNING:" <<<"$out"; then
     echo "  FAIL: minimal fixture unexpectedly emitted a NOTES warning"; echo "$out" | tail -5; fail=1
   else
@@ -1044,6 +1046,83 @@ if out=$(notes_of minimal 2>&1); then
   fi
 else
   echo "  FAIL: helm install --dry-run=client failed for minimal fixture"; echo "$out" | tail -5; fail=1
+fi
+
+echo "==> NOTES: containers with no resources configured (hf-uup)"
+# Zero-config default: minimal fixture sets no resources anywhere, so the main
+# container is named in a WARNING (BestEffort QoS otherwise ships silently).
+if out=$(notes_of minimal 2>&1); then
+  if grep -q "NO RESOURCES CONFIGURED" <<<"$out" && grep -q "container(s) minimal have no CPU/memory" <<<"$out"; then
+    echo "  OK: zero-config minimal fixture names the main container in a NO RESOURCES CONFIGURED warning"
+  else
+    echo "  FAIL: zero-config minimal fixture did not warn about its resource-less main container"; echo "$out" | tail -5; fail=1
+  fi
+else
+  echo "  FAIL: helm install --dry-run=client failed for minimal fixture"; echo "$out" | tail -5; fail=1
+fi
+
+# Setting resources on the main container silences the warning for it (mutation test:
+# reverting this override must bring the FAIL above back).
+if out=$(notes_of minimal --set resources.requests.cpu=100m --set resources.limits.memory=128Mi 2>&1); then
+  if grep -q "NO RESOURCES CONFIGURED" <<<"$out"; then
+    echo "  FAIL: main container resources set but NO RESOURCES CONFIGURED warning still fired"; echo "$out" | tail -5; fail=1
+  else
+    echo "  OK: setting main container resources silences the warning"
+  fi
+else
+  echo "  FAIL: helm install --dry-run=client failed for minimal fixture with resources set"; echo "$out" | tail -5; fail=1
+fi
+
+# A sidecar/initContainer with no resources of its own is named too, even when the
+# main container has resources set (per-container detection, not chart-wide).
+if out=$(notes_of minimal \
+  --set resources.requests.cpu=100m \
+  --set sidecars.enabled=true \
+  --set 'sidecars.containers[0].name=log-shipper' \
+  --set 'sidecars.containers[0].image=busybox:1.36' \
+  --set initContainers.enabled=true \
+  --set 'initContainers.containers[0].name=wait-for-db' \
+  --set 'initContainers.containers[0].image=busybox:1.36' 2>&1); then
+  if grep -q "log-shipper (sidecar)" <<<"$out" && grep -q "wait-for-db (initContainer)" <<<"$out"; then
+    echo "  OK: resource-less sidecar and initContainer are both named in the warning"
+  else
+    echo "  FAIL: resource-less sidecar/initContainer were not named in the NO RESOURCES CONFIGURED warning"; echo "$out" | tail -5; fail=1
+  fi
+else
+  echo "  FAIL: helm install --dry-run=client failed for minimal fixture with sidecar/initContainer"; echo "$out" | tail -5; fail=1
+fi
+
+# Giving the sidecar and initContainer their own resources fully silences the warning.
+if out=$(notes_of minimal \
+  --set resources.requests.cpu=100m \
+  --set sidecars.enabled=true \
+  --set 'sidecars.containers[0].name=log-shipper' \
+  --set 'sidecars.containers[0].image=busybox:1.36' \
+  --set 'sidecars.containers[0].resources.requests.cpu=50m' \
+  --set initContainers.enabled=true \
+  --set 'initContainers.containers[0].name=wait-for-db' \
+  --set 'initContainers.containers[0].image=busybox:1.36' \
+  --set 'initContainers.containers[0].resources.limits.memory=64Mi' 2>&1); then
+  if grep -q "NO RESOURCES CONFIGURED" <<<"$out"; then
+    echo "  FAIL: all containers have resources set but NO RESOURCES CONFIGURED warning still fired"; echo "$out" | tail -5; fail=1
+  else
+    echo "  OK: giving every container resources silences the warning entirely"
+  fi
+else
+  echo "  FAIL: helm install --dry-run=client failed for minimal fixture with sidecar/initContainer resources set"; echo "$out" | tail -5; fail=1
+fi
+
+# No false positives: the full fixture (byte-exact golden, no resources overrides) must
+# still trip the warning for its main container — proves the check runs on every fixture,
+# not just minimal, and confirms no golden-affecting side effect crept into the generators.
+if out=$(notes_of full 2>&1); then
+  if grep -q "NO RESOURCES CONFIGURED" <<<"$out" && grep -q "container(s) full have no CPU/memory" <<<"$out"; then
+    echo "  OK: full fixture also warns about its resource-less main container"
+  else
+    echo "  FAIL: full fixture did not warn about its resource-less main container"; echo "$out" | tail -5; fail=1
+  fi
+else
+  echo "  FAIL: helm install --dry-run=client failed for full fixture"; echo "$out" | tail -5; fail=1
 fi
 
 # Invariant: `helm template` never includes NOTES content.
