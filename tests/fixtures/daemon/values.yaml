@@ -1,6 +1,7 @@
 # DaemonSet coverage fixture. Exercises: workload.type=DaemonSet,
-# initContainers, sidecars, daemonSet nodeSelector/tolerations merge, and
-# tlsSelfSigned (dev-only self-signed TLS Secret).
+# initContainers, sidecars, daemonSet nodeSelector/tolerations merge,
+# tlsSelfSigned (dev-only self-signed TLS Secret), and resizePolicy
+# passthrough on the main container plus a sidecar and an initContainer.
 #
 # NOTE on tlsSelfSigned: the generator gate also requires ingress.hostname,
 # whose library default ("app.local") satisfies it. Under `helm template`
@@ -19,12 +20,21 @@ tlsSelfSigned:
   commonName: daemon.local
   dnsNames: [daemon.local]
 
+resizePolicy:
+  - resourceName: cpu
+    restartPolicy: NotRequired
+  - resourceName: memory
+    restartPolicy: RestartContainer
+
 initContainers:
   enabled: true
   containers:
     - name: init-wait
       image: docker.io/library/busybox:1.36.1
       command: ["sh", "-c", "echo init"]
+      resizePolicy:
+        - resourceName: cpu
+          restartPolicy: NotRequired
 
 # metrics-proxy overrides one securityContext key: its own value must survive the
 # merge with the library default. log-shipper carries no securityContext at all and
@@ -40,6 +50,9 @@ sidecars:
       command: ["sh", "-c", "sleep infinity"]
       securityContext:
         runAsUser: 65532
+      resizePolicy:
+        - resourceName: memory
+          restartPolicy: RestartContainer
     - name: log-shipper
       image: docker.io/library/busybox:1.36.1
       command: ["sh", "-c", "sleep infinity"]

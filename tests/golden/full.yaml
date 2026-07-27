@@ -301,6 +301,11 @@ spec:
             - containerPort: 8080
               name: http
               protocol: TCP
+          resizePolicy:
+            - resourceName: cpu
+              restartPolicy: NotRequired
+            - resourceName: memory
+              restartPolicy: RestartContainer
           volumeMounts:
             - mountPath: /app/config
               name: config
@@ -398,6 +403,9 @@ spec:
                 requests:
                   cpu: 100m
                   memory: 128Mi
+              resizePolicy:
+                - resourceName: cpu
+                  restartPolicy: NotRequired
 ---
 # Source: full/templates/app.yaml
 apiVersion: networking.k8s.io/v1
@@ -676,6 +684,9 @@ spec:
           image: docker.io/example/app:1.2.3
           imagePullPolicy: IfNotPresent
           name: full-preinstall
+          resizePolicy:
+          - resourceName: cpu
+            restartPolicy: NotRequired
           resources:
             limits:
               cpu: 500m

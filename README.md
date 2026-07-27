@@ -472,6 +472,36 @@ resources:
     memory: 512Mi
 ```
 
+### Resize Policy
+
+In-place pod vertical scaling (`InPlacePodVerticalScaling`, GA in this
+library's supported Kubernetes window). `resizePolicy` is rendered as a
+verbatim passthrough of the native container field — a list of
+`{resourceName, restartPolicy}` — on the main workload container, every
+`sidecars.containers` entry, and every `initContainers.containers` entry.
+
+```yaml
+resizePolicy:
+  - resourceName: cpu
+    restartPolicy: NotRequired
+  - resourceName: memory
+    restartPolicy: RestartContainer
+
+sidecars:
+  enabled: true
+  containers:
+    - name: metrics-proxy
+      image: docker.io/library/busybox:1.36.1
+      resizePolicy:
+        - resourceName: memory
+          restartPolicy: RestartContainer
+```
+
+`resourceName` is `cpu` or `memory`; `restartPolicy` is `NotRequired` or
+`RestartContainer`. The hook Job (`jobs.resizePolicy`, overridable per hook
+via `jobs.preInstall.resizePolicy` / `jobs.postInstall.resizePolicy`) and the
+CronJob fallback container (also `jobs.resizePolicy`) support the same field.
+
 ### Security Context
 
 Pod and container security contexts are **enabled by default**, and the defaults

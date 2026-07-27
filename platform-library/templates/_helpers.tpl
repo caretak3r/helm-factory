@@ -426,6 +426,9 @@ spec:
       {{- if or (and $ctx.Values.resources.requests (not (empty $ctx.Values.resources.requests))) (and $ctx.Values.resources.limits (not (empty $ctx.Values.resources.limits))) }}
       resources: {{- toYaml $ctx.Values.resources | nindent 8 }}
       {{- end }}
+      {{- if $ctx.Values.resizePolicy }}
+      resizePolicy: {{- toYaml $ctx.Values.resizePolicy | nindent 8 }}
+      {{- end }}
       {{- $mounts := list -}}
       {{- if and $ctx.Values.configMap.enabled $ctx.Values.configMap.mounted }}
         {{- $configMount := dict "name" "config" "mountPath" $ctx.Values.configMap.mountPath -}}
@@ -825,6 +828,7 @@ inherits the main tag only.
 {{- $volumeMounts := default (list) $job.volumeMounts -}}
 {{- $volumes := default (list) $job.volumes -}}
 {{- $resources := coalesce $job.resources $defaults.resources -}}
+{{- $resizePolicy := coalesce $job.resizePolicy $defaults.resizePolicy -}}
 {{- $backoffLimit := default $defaults.backoffLimit $job.backoffLimit -}}
 {{- $completions := default $defaults.completions $job.completions -}}
 {{- $parallelism := default $defaults.parallelism $job.parallelism -}}
@@ -883,6 +887,9 @@ inherits the main tag only.
 {{- end }}
 {{- if $resources }}
   {{- $_ := set $mainJobContainer "resources" $resources -}}
+{{- end }}
+{{- if $resizePolicy }}
+  {{- $_ := set $mainJobContainer "resizePolicy" $resizePolicy -}}
 {{- end }}
 {{- $jobContainers := list $mainJobContainer -}}
 {{- range $sidecars }}

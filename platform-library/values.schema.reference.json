@@ -27,6 +27,19 @@
       }
     },
     "replicaCount": { "type": "integer", "minimum": 0 },
+    "resizePolicy": {
+      "type": "array",
+      "description": "Main container resizePolicy passthrough for in-place pod vertical scaling (InPlacePodVerticalScaling). Verbatim Kubernetes container field: a list of {resourceName, restartPolicy}.",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["resourceName", "restartPolicy"],
+        "properties": {
+          "resourceName": { "type": "string", "enum": ["cpu", "memory"] },
+          "restartPolicy": { "type": "string", "enum": ["NotRequired", "RestartContainer"] }
+        }
+      }
+    },
     "service": {
       "type": "object",
       "additionalProperties": true,
