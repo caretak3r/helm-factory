@@ -13,7 +13,6 @@ metadata:
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/managed-by: Helm
 automountServiceAccountToken: false
-
 ---
 # Source: stateful/templates/app.yaml
 apiVersion: v1
@@ -108,6 +107,7 @@ metadata:
     app.kubernetes.io/component: app
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/managed-by: Helm
+    platform/service-role: "headless"
 spec:
   type: ClusterIP
   clusterIP: None
@@ -233,3 +233,34 @@ spec:
         resources:
           requests:
             storage: "1Gi"
+---
+# Source: stateful/templates/app.yaml
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: t-stateful
+  namespace: default
+  labels:
+    helm.sh/chart: stateful-0.1.0
+    app.kubernetes.io/name: stateful
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/component: app
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: stateful
+      app.kubernetes.io/instance: t
+      app.kubernetes.io/component: app
+    matchExpressions:
+      - key: platform/service-role
+        operator: NotIn
+        values:
+          - headless
+  namespaceSelector:
+    matchNames:
+      - "default"
+  endpoints:
+    - port: "http"
+      path: "/metrics"

@@ -10,6 +10,12 @@ metadata:
     {{- range $k, $v := .Values.commonLabels }}
     {{ $k }}: {{ $v | quote }}
     {{- end }}
+    {{- /* Distinguishes the managed headless Service from the primary Service,
+           which otherwise carry identical label sets. The default ServiceMonitor
+           selector excludes this label so Prometheus Operator does not generate
+           duplicate scrape targets for the same pods. Emitted last so a
+           commonLabels collision cannot shadow it. */}}
+    platform/service-role: "headless"
   {{- if .Values.commonAnnotations }}
   annotations:
     {{- range $k, $v := .Values.commonAnnotations }}

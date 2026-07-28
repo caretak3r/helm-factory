@@ -208,9 +208,12 @@ resolves this automatically:
    None`, same selector and ports as the primary Service) is rendered and
    `spec.serviceName` points at it.
 
-The managed headless Service carries the standard labels, so a ServiceMonitor
-using the default selector matches it alongside the primary Service; set
-`serviceMonitor.selector` explicitly if the duplicate scrape target matters.
+The managed headless Service carries the standard labels plus
+`platform/service-role: headless`. The default ServiceMonitor selector excludes
+that label (`matchExpressions` with `NotIn`), so the primary Service is the only
+scrape target and Prometheus Operator does not duplicate the pods. Set
+`serviceMonitor.selector` only when you want a fully custom selector — that
+override replaces the default, exclusion included.
 
 ### Container Image
 

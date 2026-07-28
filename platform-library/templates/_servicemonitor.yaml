@@ -23,6 +23,14 @@ spec:
     {{- else }}
     matchLabels:
       {{- include "platform.selectorLabels" . | nindent 6 }}
+    {{- /* A StatefulSet's managed headless Service carries the same standard
+           labels as the primary Service, so matchLabels alone selects both and
+           the operator scrapes every pod twice. Exclude the headless marker. */}}
+    matchExpressions:
+      - key: platform/service-role
+        operator: NotIn
+        values:
+          - headless
     {{- end }}
   namespaceSelector:
     {{- if .Values.serviceMonitor.namespaceSelector }}

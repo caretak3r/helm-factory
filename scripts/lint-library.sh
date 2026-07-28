@@ -108,7 +108,7 @@ expected_kinds() {
   case "$1" in
     minimal)  echo 3 ;;
     full)     echo 26 ;;
-    stateful) echo 7 ;;
+    stateful) echo 8 ;;
     daemon)   echo 3 ;;
     *)        echo "unknown fixture: $1" >&2; return 1 ;;
   esac
@@ -1679,6 +1679,49 @@ if out=$("$RENDER" minimal 2>&1); then
   fi
 else
   echo "  FAIL: render failed for minimal fixture"; echo "$out" | tail -3; fail=1
+fi
+
+echo "==> ServiceMonitor does not double-match the managed headless Service"
+# Both Services carry identical standard labels, so the default matchLabels
+# selector alone selects the primary AND the headless Service — Prometheus
+# Operator then generates two scrape targets for the same pods
+# (helm-factory-75c). The headless Service is marked platform/service-role and
+# the default selector excludes it; an explicit serviceMonitor.selector still
+# replaces the whole default.
+if out=$("$RENDER" stateful 2>&1); then
+  hl=$(doc_of Service t-stateful-headless <<<"$out")
+  primary=$(doc_of Service t-stateful <<<"$out")
+  sm=$(doc_of ServiceMonitor t-stateful <<<"$out")
+  marker_ok=0; primary_clean=0; selector_ok=0
+  grep -q '^    platform/service-role: "headless"$' <<<"$hl" && marker_ok=1
+  grep -q 'platform/service-role' <<<"$primary" || primary_clean=1
+  # the exclusion must live under spec.selector, not anywhere else in the doc
+  if awk '/^  selector:$/{s=1;next} /^  [a-zA-Z]/{s=0} s' <<<"$sm" \
+       | grep -Fq -- '- key: platform/service-role' \
+    && awk '/^  selector:$/{s=1;next} /^  [a-zA-Z]/{s=0} s' <<<"$sm" \
+       | grep -Fq -- 'operator: NotIn'; then
+    selector_ok=1
+  fi
+  if [[ $marker_ok -eq 1 && $primary_clean -eq 1 && $selector_ok -eq 1 ]]; then
+    echo "  OK: headless Service marked platform/service-role and excluded by the default ServiceMonitor selector"
+  else
+    echo "  FAIL: headless marker=$marker_ok primary-unmarked=$primary_clean selector-excludes-headless=$selector_ok"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for stateful fixture"; echo "$out" | tail -3; fail=1
+fi
+
+# An explicit serviceMonitor.selector is a full override — the library must not
+# graft its exclusion onto a consumer-supplied selector.
+if out=$("$RENDER" stateful --set 'serviceMonitor.selector.matchLabels.custom=only' 2>&1); then
+  sm=$(doc_of ServiceMonitor t-stateful <<<"$out")
+  if grep -q '^      custom: only$' <<<"$sm" && ! grep -q 'platform/service-role' <<<"$sm"; then
+    echo "  OK: explicit serviceMonitor.selector replaces the default selector verbatim"
+  else
+    echo "  FAIL: explicit serviceMonitor.selector was not used verbatim"; echo "$sm"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for stateful with serviceMonitor.selector override"; echo "$out" | tail -3; fail=1
 fi
 
 if [[ $fail -ne 0 ]]; then
