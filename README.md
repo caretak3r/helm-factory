@@ -58,6 +58,24 @@ helm template my-service my-service
 
 This generates a chart already wired to the library (dependency + `import-values`, an entrypoint template, an overrides-only `values.yaml`, and a `values.schema.json`). Or do it by hand:
 
+### Keeping a consumer's `values.schema.json` in sync
+
+The scaffold copies `platform-library/values.schema.reference.json` into the
+consumer chart **once**. That copy does not follow later library releases, so a
+consumer that bumps its `platform` dependency validates against the old
+contract — new keys are rejected and removed keys stay accepted, with no
+warning. After every dependency bump, refresh the copy:
+
+```bash
+scripts/sync-consumer-schema.sh ../my-service            # copy and report what moved
+scripts/sync-consumer-schema.sh ../my-service --dry-run  # report only, write nothing
+```
+
+The script reads the chart's declared `platform` dependency version, copies the
+reference schema from this checkout over `<chart>/values.schema.json`, and
+prints the top-level values keys that were added or removed plus a truncated
+unified diff. It exits 0 and touches nothing when the copy is already in sync.
+
 ### 1. Add the dependency
 
 ```yaml
