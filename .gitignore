@@ -14,6 +14,7 @@ charts/
 *.tgz
 Chart.lock
 tests/fixtures/*/values.schema.json
+tests/.dep-cache/
 
 # Generated charts
 generated-charts/
