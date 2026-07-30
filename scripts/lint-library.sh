@@ -411,6 +411,32 @@ else
   echo "  FAIL: hook Job failed without the expected message"; echo "$out" | tail -3; fail=1
 fi
 
+echo "==> hook Job fail-closed: must define work"
+# Enabled hook with no script/scriptFile/command used to crash with a Go
+# reflect error (len of untyped nil); it must fail with a named message.
+if out=$("$RENDER" minimal --set jobs.preInstall.enabled=true \
+  --set jobs.image.repository=busybox --set jobs.image.tag=1.36 2>&1); then
+  echo "  FAIL: hook Job rendered with no script, scriptFile, or command"; fail=1
+elif grep -q "defines no work to run" <<<"$out"; then
+  echo "  OK: workless hook Job fails with actionable message"
+else
+  echo "  FAIL: workless hook Job failed without the expected message (reflect crash regression?)"; echo "$out" | tail -3; fail=1
+fi
+
+# command-only hook (no script, args unset) must render — this is the nil-$args
+# regression test: it crashed at `len $args` before the default(list) fix.
+if out=$("$RENDER" minimal --set jobs.preInstall.enabled=true \
+  --set jobs.image.repository=busybox --set jobs.image.tag=1.36 \
+  --set 'jobs.preInstall.command[0]=/bin/true' 2>&1); then
+  if grep -q "kind: Job" <<<"$out" && grep -q -- '- /bin/true' <<<"$out"; then
+    echo "  OK: command-only hook Job renders (empty args is nil-safe)"
+  else
+    echo "  FAIL: command-only hook Job rendered without the expected Job/command"; fail=1
+  fi
+else
+  echo "  FAIL: command-only hook Job failed to render"; echo "$out" | tail -3; fail=1
+fi
+
 echo "==> passthrough container image resolution"
 if out=$("$RENDER" minimal --set global.imageRegistry=mirror.example.internal \
   --set sidecars.enabled=true \
