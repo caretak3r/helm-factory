@@ -17,6 +17,17 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
   `command` set and `args` empty also no longer crashes. To run the image's own
   ENTRYPOINT, set it explicitly via `command`.
 
+### Added — NOTES warnings for weakened posture and escape hatches
+
+- `platform.notes` now warns when `containerSecurityContext` weakens the
+  hardened defaults (`privileged`, `allowPrivilegeEscalation`,
+  `runAsNonRoot=false`, `runAsUser=0`, non-NET_BIND_SERVICE `capabilities.add`,
+  `seccompProfile.type=Unconfined`), when `containerSecurityContext.enabled=false`
+  or `podSecurityContext.enabled=false` disables hardening outright, and when
+  the `mtls.allowAllPrincipals` or `allowClusterScopedExtras` escape hatches
+  are active. Warnings appear on `helm install`/`upgrade` (including
+  `--dry-run`); rendered manifests are unchanged.
+
 ## [2.1.0] - 2026-07-20
 
 Correctness batch: thirteen library defects fixed since 2.0.0, all with new
