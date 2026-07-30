@@ -272,6 +272,54 @@ else
   fi
 fi
 
+echo "==> negative render: secondary Kinds drop individually when their sibling API is served but theirs is not (hf-vh8)"
+# AuthorizationPolicy/GRPCRoute ride the PeerAuthentication/HTTPRoute wrapper
+# gate in _app.yaml but are separate CRDs negotiated on their own. The negative
+# render above (zero APIs served) does NOT catch a regression here — with zero
+# APIs served the wrapper gate closes the whole template before these secondary
+# Kinds are ever reached. These legs serve the SIBLING API only, so the wrapper
+# gate opens and the secondary Kind's own guard is what has to hold the line.
+if ! neg=$("$RENDER" full --set capabilities.apiVersions=null \
+    --api-versions security.istio.io/v1beta1/PeerAuthentication 2>&1); then
+  echo "  FAIL: partial-serving render (PeerAuthentication only) itself failed"; echo "$neg" | tail -5; fail=1
+else
+  if grep -qE '^kind: PeerAuthentication$' <<<"$neg" && ! grep -qE '^kind: AuthorizationPolicy$' <<<"$neg"; then
+    echo "  OK: AuthorizationPolicy skipped when only PeerAuthentication's API is served"
+  else
+    echo "  FAIL: expected PeerAuthentication present and AuthorizationPolicy absent"; fail=1
+  fi
+  if grep -qE '^\{\}\s*$' <<<"$neg"; then
+    echo "  FAIL: empty {} document emitted"; fail=1
+  else
+    echo "  OK: no empty documents"
+  fi
+fi
+if ! neg=$("$RENDER" full --set capabilities.apiVersions=null \
+    --set gatewayApi.grpcRoute.enabled=true \
+    --api-versions gateway.networking.k8s.io/v1/HTTPRoute 2>&1); then
+  echo "  FAIL: partial-serving render (HTTPRoute only) itself failed"; echo "$neg" | tail -5; fail=1
+else
+  if grep -qE '^kind: HTTPRoute$' <<<"$neg" && ! grep -qE '^kind: GRPCRoute$' <<<"$neg"; then
+    echo "  OK: GRPCRoute skipped when only HTTPRoute's API is served"
+  else
+    echo "  FAIL: expected HTTPRoute present and GRPCRoute absent"; fail=1
+  fi
+fi
+# Positive control: no over-skip once AuthorizationPolicy's own API is served too.
+if ! pos=$("$RENDER" full --set capabilities.apiVersions=null \
+    --api-versions security.istio.io/v1beta1/PeerAuthentication \
+    --api-versions security.istio.io/v1beta1/AuthorizationPolicy 2>&1); then
+  echo "  FAIL: positive-control render failed"; echo "$pos" | tail -5; fail=1
+else
+  if grep -qE '^kind: AuthorizationPolicy$' <<<"$pos" && \
+     grep -A1 '^kind: AuthorizationPolicy$' <<<"$pos" | grep -q '.' && \
+     grep -B1 '^kind: AuthorizationPolicy$' <<<"$pos" | grep -q '^apiVersion: security.istio.io/v1beta1$'; then
+    echo "  OK: AuthorizationPolicy renders at security.istio.io/v1beta1 once its own API is served (no over-skip)"
+  else
+    echo "  FAIL: AuthorizationPolicy did not render at the expected apiVersion once served"; fail=1
+  fi
+fi
+
 echo "==> extraManifests skips entries that render to nothing (hf-8k3)"
 # The raw escape hatch must apply the same "separator only when non-empty"
 # rule as platform.emit/extraObjects: a string manifest whose template
@@ -869,8 +917,12 @@ else
   echo "  FAIL: helm install --dry-run=client failed for minimal fixture with force-assumed apiVersions"; echo "$out" | tail -5; fail=1
 fi
 
-# No false positives: the full fixture enables all five gated features AND force-assumes
-# every one of their APIs, so it must stay silent.
+# No false positives: gatedKinds has 7 rows — 5 features gated in _app.yaml
+# (Certificate, PeerAuthentication, HTTPRoute, ServiceMonitor, PodMonitor) plus
+# 2 secondary Kinds gated inside their own feature template (AuthorizationPolicy,
+# GRPCRoute). The full fixture enables mtls and gatewayApi.httpRoute (not
+# grpcRoute) and force-assumes every API those enabled Kinds need, so it must
+# stay silent.
 if out=$(notes_of full 2>&1); then
   if grep -q "SKIPPED KINDS" <<<"$out"; then
     echo "  FAIL: full fixture warns about skipped Kinds it actually renders"; echo "$out" | tail -5; fail=1
@@ -881,18 +933,60 @@ else
   echo "  FAIL: helm install --dry-run=client failed for full fixture"; echo "$out" | tail -5; fail=1
 fi
 
-# Anti-drift: the emitter gates and the warning must read the SAME table. Every
-# capability gate in _app.yaml goes through platform.capabilities.gateOpen, and the
-# gatedKinds table has exactly one row per gate. A new gated feature added to one
-# side only would fail here instead of silently losing its warning.
-gate_sites=$(grep -c 'platform.capabilities.gateOpen' "$LIB/templates/_app.yaml" || true)
-gated_rows=$(sed -n '/define "platform.capabilities.gatedKinds"/,/^{{- end -}}/p' "$LIB/templates/_capabilities.tpl" |
-  grep -cE '^[A-Za-z]+: [A-Za-z]+$' || true)
-raw_gates=$(grep -c 'platform.capabilities.apiVersionFor' "$LIB/templates/_app.yaml" || true)
-if [[ "$gate_sites" -gt 0 && "$gate_sites" -eq "$gated_rows" && "$raw_gates" -eq 0 ]]; then
-  echo "  OK: all $gate_sites capability gates in _app.yaml are driven by the shared gatedKinds table"
+# Secondary-Kind NOTES coverage (hf-vh8): AuthorizationPolicy is gated inside
+# _mtls.yaml, not by an _app.yaml wrapper gate, but a skip must still surface
+# in NOTES like any other gated Kind. Force-assume only PeerAuthentication's
+# API (the sibling the wrapper gate checks) so mtls's wrapper gate opens and
+# renders PeerAuthentication, while AuthorizationPolicy's own guard skips it.
+if out=$(notes_of full --set 'capabilities.apiVersions={security.istio.io/v1beta1/PeerAuthentication}' 2>&1); then
+  if grep -q "SKIPPED KINDS" <<<"$out" && grep -q "AuthorizationPolicy (tried" <<<"$out"; then
+    echo "  OK: NOTES names AuthorizationPolicy in SKIPPED KINDS when its sibling API is served but its own is not"
+  else
+    echo "  FAIL: NOTES did not name the skipped secondary Kind AuthorizationPolicy"; echo "$out" | tail -5; fail=1
+  fi
 else
-  echo "  FAIL: capability gates ($gate_sites) and gatedKinds rows ($gated_rows) disagree, or _app.yaml still gates on a raw apiVersionFor ($raw_gates) — notes and emitters can drift"; fail=1
+  echo "  FAIL: helm install --dry-run=client failed for full fixture with PeerAuthentication-only force-assume"; echo "$out" | tail -5; fail=1
+fi
+
+echo "==> capability gates: _app.yaml gate set vs gatedKinds registry (name-set, hf-vh8)"
+# Anti-drift: the emitter gates and the warning must read the SAME table. Every
+# capability gate in _app.yaml goes through platform.capabilities.gateOpen, and
+# every _app.yaml gate Kind must have a gatedKinds row. Kinds gated ONLY inside
+# their own feature template (not wrapped in _app.yaml) are the documented
+# secondary-Kind set — currently AuthorizationPolicy and GRPCRoute. This is a
+# name-set comparison (not a count) so a renamed/mismatched row cannot pass, and
+# a dotted gatedKinds value (e.g. "gatewayApi.grpcRoute") matches correctly.
+# Kind names are the only "Quoted" capitalized tokens on gateOpen lines
+# ("platform.capabilities.gateOpen" itself starts lowercase).
+gate_kinds=$(grep 'platform.capabilities.gateOpen' "$LIB/templates/_app.yaml" \
+  | grep -oE '"[A-Z][A-Za-z]+"' | tr -d '"' | LC_ALL=C sort -u || true)
+gated_keys=$(sed -n '/define "platform.capabilities.gatedKinds"/,/^{{- end -}}/p' \
+  "$LIB/templates/_capabilities.tpl" | grep -oE '^[A-Za-z]+:' | tr -d ':' \
+  | LC_ALL=C sort -u || true)
+raw_gates=$(grep -c 'platform.capabilities.apiVersionFor' "$LIB/templates/_app.yaml" || true)
+secondary_expected=$(printf 'AuthorizationPolicy\nGRPCRoute\n')
+if [[ -z "$gate_kinds" ]]; then
+  echo "  FAIL: no gateOpen call sites found in _app.yaml"; fail=1
+fi
+unregistered=$(comm -23 <(printf '%s\n' "$gate_kinds") <(printf '%s\n' "$gated_keys") || true)
+if [[ -n "$unregistered" ]]; then
+  echo "  FAIL: gated in _app.yaml but missing from gatedKinds: $unregistered"; fail=1
+else
+  echo "  OK: every _app.yaml gate has a gatedKinds row"
+fi
+secondary=$(comm -13 <(printf '%s\n' "$gate_kinds") <(printf '%s\n' "$gated_keys") || true)
+if [[ "$secondary" == "$secondary_expected" ]]; then
+  echo "  OK: template-internal gates are exactly: AuthorizationPolicy GRPCRoute"
+else
+  echo "  FAIL: gatedKinds rows without an _app.yaml gate changed."
+  echo "        expected exactly {AuthorizationPolicy, GRPCRoute}, got: $(echo "$secondary" | tr '\n' ' ')"
+  echo "        New secondary Kinds must gate inside their template AND be added to this list."
+  fail=1
+fi
+if [[ "$raw_gates" -eq 0 ]]; then
+  echo "  OK: no raw apiVersionFor calls in _app.yaml"
+else
+  echo "  FAIL: _app.yaml must gate via gateOpen, found $raw_gates raw apiVersionFor call(s)"; fail=1
 fi
 
 echo "==> selector stability"
