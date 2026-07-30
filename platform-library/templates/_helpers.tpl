@@ -86,6 +86,36 @@ app.kubernetes.io/component: {{ .component }}
 {{- end }}
 
 {{/*
+platform.workloadMetadata — shared top-level metadata labels/annotations for
+the three primary workload generators (Deployment/StatefulSet/DaemonSet).
+Verbatim move of the block each generator previously inlined; emission order
+carries the specific-beats-common precedence. No right-trim on the define:
+the body starts with a newline so the call site reproduces the original
+bytes exactly. CronJob metadata is intentionally NOT unified here.
+Usage (immediately after the namespace: line):
+  {{- include "platform.workloadMetadata" . }}
+*/}}
+{{- define "platform.workloadMetadata" }}
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+    {{- range $k, $v := .Values.commonLabels }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+    {{- range $k, $v := .Values.labels }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+  {{- if or .Values.commonAnnotations .Values.annotations }}
+  annotations:
+    {{- range $k, $v := .Values.commonAnnotations }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+    {{- range $k, $v := .Values.annotations }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+
+{{/*
 Resolve an image dict (registry/repository/tag/digest) to a full reference,
 honoring global.imageRegistry. Requires digest (preferred) or tag; there is no
 `latest` fallback. digest wins when both are set.
