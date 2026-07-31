@@ -1058,6 +1058,26 @@ else
   echo "  FAIL: _app.yaml must gate via gateOpen, found $raw_gates raw apiVersionFor call(s)"; fail=1
 fi
 
+echo "==> pod policy single source: extracted helpers have no re-inlined copies"
+# 009 moved pull-secret precedence, pod securityContext, the automount/
+# enableServiceLinks pair, and workload metadata into platform.podPolicy.* /
+# platform.workloadMetadata. A re-inlined copy (e.g. a new pod-bearing
+# generator hand-rolling the block) forks policy again — the drift the
+# extraction closed. Counts are guarded with `|| true` because a zero match
+# would otherwise abort the gate under set -e.
+pull_total=$(cat "$LIB"/templates/*.tpl "$LIB"/templates/*.yaml | grep -c 'Values.global.imagePullSecrets' || true)
+psc_total=$(cat "$LIB"/templates/*.tpl "$LIB"/templates/*.yaml | grep -c 'podSecurityContext "enabled"' || true)
+# 3 = the identity helper + the two ServiceAccount OBJECT templates
+# (_helpers.tpl serviceaccount/hook-serviceaccount), which legitimately set
+# the field on the SA resource.
+amt_total=$(cat "$LIB"/templates/*.tpl "$LIB"/templates/*.yaml | grep -c 'automountServiceAccountToken: {{' || true)
+meta_calls=$(cat "$LIB"/templates/_deployment.yaml "$LIB"/templates/_statefulset.yaml "$LIB"/templates/_daemonset.yaml | grep -c 'platform.workloadMetadata' || true)
+if [[ "$pull_total" -eq 1 && "$psc_total" -eq 1 && "$amt_total" -eq 3 && "$meta_calls" -eq 3 ]]; then
+  echo "  OK: pull-secret precedence, pod securityContext, token policy, and workload metadata are single-source"
+else
+  echo "  FAIL: pod policy re-inlined somewhere (pullSecrets=$pull_total want 1, podSecurityContext=$psc_total want 1, automount=$amt_total want 3, workloadMetadata calls=$meta_calls want 3)"; fail=1
+fi
+
 echo "==> selector stability"
 # Selectors land in immutable fields (workload spec.selector) and in the Service/PDB
 # selectors. They must contain ONLY name/instance/component. A user-settable value
