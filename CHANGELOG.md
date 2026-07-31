@@ -40,6 +40,14 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
   gate's capability anti-drift check now compares gate/registry Kind
   name-sets instead of counts.
 
+### Changed — release engineering
+
+- CI/release/docs workflows now checksum-pin the helm and kubeconform
+  downloads, pin all GitHub Actions to commit SHAs, and pin
+  `check-jsonschema`; schema vendoring sources are pinned to commit SHAs.
+  Docs workflow permissions are scoped per job. New
+  `scripts/preflight-release.sh` validates tag readiness before tagging.
+
 ## [2.1.0] - 2026-07-20
 
 Correctness batch: thirteen library defects fixed since 2.0.0, all with new

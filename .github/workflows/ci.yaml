@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   lint:
     name: lint, render matrix, kubeconform, goldens
@@ -15,26 +19,30 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       # Pin helm to the version used for local development (Helm 4).
       - name: Install helm
         run: |
-          curl -fsSL https://get.helm.sh/helm-v4.2.0-linux-amd64.tar.gz | tar -xz -C /tmp
+          curl -fsSL -o /tmp/helm.tgz https://get.helm.sh/helm-v4.2.0-linux-amd64.tar.gz
+          echo "97dbeb971be4ac4b27e3839976d9564c0fb35c6f3b1da89dd1e292d236af4096  /tmp/helm.tgz" | sha256sum -c -
+          tar -xz -C /tmp -f /tmp/helm.tgz
           sudo install -m 0755 /tmp/linux-amd64/helm /usr/local/bin/helm
           helm version --short
 
       - name: Install kubeconform
         run: |
-          curl -fsSL https://github.com/yannh/kubeconform/releases/download/v0.8.0/kubeconform-linux-amd64.tar.gz | tar -xz -C /tmp kubeconform
+          curl -fsSL -o /tmp/kubeconform.tgz https://github.com/yannh/kubeconform/releases/download/v0.8.0/kubeconform-linux-amd64.tar.gz
+          echo "9bc2bffbf71f261128533edaf912153948b7ff238f9a531ae6d34466ec287883  /tmp/kubeconform.tgz" | sha256sum -c -
+          tar -xz -C /tmp -f /tmp/kubeconform.tgz kubeconform
           sudo install -m 0755 /tmp/kubeconform /usr/local/bin/kubeconform
           kubeconform -v
 
       - name: Install check-jsonschema
-        run: pipx install check-jsonschema
+        run: pipx install check-jsonschema==0.37.4
 
       - name: shellcheck
-        run: shellcheck -x scripts/*.sh tests/render.sh
+        run: shellcheck -x scripts/*.sh scripts/lib/*.sh tests/render.sh
 
       - name: helm lint
         run: helm lint platform-library/
@@ -44,3 +52,9 @@ jobs:
 
       - name: lint-library (render matrix, goldens, kubeconform, negative render, image pins)
         run: REQUIRE_KUBECONFORM=1 REQUIRE_CHECK_JSONSCHEMA=1 scripts/lint-library.sh
+
+      - name: scaffolder smoke test
+        run: |
+          scripts/new-app-chart.sh smoke --dir "$RUNNER_TEMP/smoke" --repo "file://$GITHUB_WORKSPACE/platform-library"
+          helm dependency update "$RUNNER_TEMP/smoke" >/dev/null
+          helm template smoke "$RUNNER_TEMP/smoke" | grep -q '^kind: Deployment'
