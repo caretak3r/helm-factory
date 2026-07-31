@@ -48,6 +48,18 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
   Docs workflow permissions are scoped per job. New
   `scripts/preflight-release.sh` validates tag readiness before tagging.
 
+### Fixed — extraObjects fail-closed and skip visibility
+
+- **Behavior change:** an `extraObjects` entry whose Kind is not in the
+  platform capability registry now FAILS at template time with a named error
+  (previously the object was silently dropped from the render). Set
+  `apiVersion` explicitly on the entry to render it verbatim, or use
+  `extraManifests`.
+- Registry-known `extraObjects` entries whose API the cluster does not serve
+  are still skipped (never emit an unserved apiVersion), but are now reported
+  in a `SKIPPED EXTRA OBJECTS` NOTES warning naming each `Kind/name` and the
+  apiVersions tried — the same contract tier-1 gated Kinds already have.
+
 ## [2.1.0] - 2026-07-20
 
 Correctness batch: thirteen library defects fixed since 2.0.0, all with new

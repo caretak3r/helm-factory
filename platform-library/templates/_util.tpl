@@ -76,8 +76,12 @@ skipped when its API is absent.
 {{- define "platform.extraObjects" -}}
 {{- $top := . -}}
 {{- $allowCluster := .Values.allowClusterScopedExtras | default false -}}
+{{- $registryTable := fromYaml (include "platform.capabilities.registry" $top) -}}
 {{- range $kind, $list := (.Values.extraObjects | default dict) }}
 {{- range $res := $list }}
+{{- if and (not (hasKey $registryTable $kind)) (not $res.apiVersion) -}}
+{{- fail (printf "extraObjects contains unknown Kind %q (name %q): it is not in the platform capability registry, so its apiVersion cannot be negotiated and the object would be silently dropped. Set apiVersion explicitly on the entry to render it verbatim, or move it to extraManifests." $kind ($res.name | default "")) -}}
+{{- end -}}
 {{- $clusterScoped := or (include "platform.capabilities.isClusterScoped" $kind) (and (hasKey $res "clusterScoped") $res.clusterScoped) -}}
 {{- if and $clusterScoped (not $allowCluster) -}}
 {{- fail (printf "extraObjects contains cluster-scoped Kind %q (name %q), which is refused by default. Set allowClusterScopedExtras=true to render cluster-scoped objects from extraObjects." $kind ($res.name | default "")) -}}

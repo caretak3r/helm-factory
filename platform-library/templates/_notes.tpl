@@ -22,6 +22,15 @@ Usage (consumer chart templates/NOTES.txt):
 {{- end -}}
 {{- $warnings = append $warnings (printf "SKIPPED KINDS: enabled in values but NOT rendered, because the target cluster does not serve their API: %s. NOTHING was deployed for them. Install the CRDs, or — if the CRDs exist but are invisible at render time (e.g. `helm template` without a cluster) — force-assume the API via capabilities.apiVersions or `--api-versions`." (join "; " $details)) -}}
 {{- end -}}
+{{- $skippedExtras := include "platform.capabilities.skippedExtraObjects" $top | trim -}}
+{{- if $skippedExtras -}}
+{{- $details := list -}}
+{{- range $entry := splitList " " $skippedExtras -}}
+{{- $kind := index (splitList "/" $entry) 0 -}}
+{{- $details = append $details (printf "%s (tried %s)" $entry (include "platform.capabilities.apiVersionsFor" (list $top $kind))) -}}
+{{- end -}}
+{{- $warnings = append $warnings (printf "SKIPPED EXTRA OBJECTS: listed in extraObjects but NOT rendered, because the target cluster does not serve their API: %s. NOTHING was deployed for them. Install the CRDs, force-assume the API via capabilities.apiVersions or `--api-versions`, or set apiVersion explicitly on the entry." (join "; " $details)) -}}
+{{- end -}}
 {{- if and .Values.ingress.enabled .Values.ingress.hostname (not .Values.ingress.tls) -}}
 {{- $warnings = append $warnings (printf "Ingress host %q is served over PLAIN HTTP (ingress.tls=false). Set ingress.tls=true with ingress.existingSecret, or use cert-manager via the certificate block / an ingress annotation." .Values.ingress.hostname) -}}
 {{- end -}}
