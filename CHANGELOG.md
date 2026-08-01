@@ -9,7 +9,13 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed — hook Jobs
+
+- A hook Job enabled with no `script`, `scriptFile`, or `command` now fails at
+  template time with a named error pointing at `jobs.preInstall`/`jobs.postInstall`
+  (previously: a Go `reflect` crash from the template engine). A hook Job with
+  `command` set and `args` empty also no longer crashes. To run the image's own
+  ENTRYPOINT, set it explicitly via `command`.
 
 ## [2.1.0] - 2026-07-20
 

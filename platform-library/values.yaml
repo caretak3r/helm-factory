@@ -345,6 +345,7 @@ exports:
       # `image:` block (digest is inherited only when the repository is the
       # same). The effective image must resolve to a tag or digest, or
       # rendering fails.
+      # A hook Job must define its work: set script, scriptFile, or command.
       image:
         repository: ""
         tag: ""

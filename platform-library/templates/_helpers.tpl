@@ -747,8 +747,8 @@ inherits the main tag only.
   {{- fail (printf "platform-library: hook Job %q resolves to an image with no tag and no digest. Set jobs.image.tag/digest (or the per-job image.tag/digest), or pin the main image via image.tag/image.digest to inherit. Floating \"latest\" is no longer defaulted." $type) -}}
 {{- end }}
 {{- $pullPolicy := $imageCfg.pullPolicy | default "IfNotPresent" -}}
-{{- $command := coalesce $job.command nil -}}
-{{- $args := coalesce $job.args nil -}}
+{{- $command := default (list) $job.command -}}
+{{- $args := default (list) $job.args -}}
 {{- $env := default (list) $job.env -}}
 {{- $volumeMounts := default (list) $job.volumeMounts -}}
 {{- $volumes := default (list) $job.volumes -}}
@@ -759,6 +759,10 @@ inherits the main tag only.
 {{- $restartPolicy := default $defaults.restartPolicy $job.restartPolicy -}}
 {{- $activeDeadlineSeconds := default $defaults.activeDeadlineSeconds $job.activeDeadlineSeconds -}}
 {{- $useScript := or $job.script $job.scriptFile -}}
+{{- if and (not $useScript) (not $command) }}
+  {{- $jobsKey := ternary "preInstall" "postInstall" (eq $type "preinstall") -}}
+  {{- fail (printf "platform-library: jobs.%s is enabled but defines no work to run: script, scriptFile, and command are all empty. Set jobs.%s.script (inline script), jobs.%s.scriptFile (script file in the consumer chart), or jobs.%s.command. To run the image's own ENTRYPOINT, state it explicitly via jobs.%s.command." $jobsKey $jobsKey $jobsKey $jobsKey $jobsKey) -}}
+{{- end }}
 {{- if and $useScript (not $command) }}
   {{- $command = list "/bin/sh" "/scripts/script.sh" -}}
 {{- end }}
