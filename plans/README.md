@@ -16,7 +16,7 @@ Status values: `planned` → `in progress` → `landed` (PR merged).
 | [004](004-imageref-registry-guard.md) | imageRef: stop double-prefixing the registry (both call paths) | helm-factory-wvy | P2 / S / LOW | planned |
 | [005](005-capability-gate-secondary-kinds.md) | Capability-gate AuthorizationPolicy and GRPCRoute | helm-factory-vh8 | P1 / M / MED | landed (PR #57 → 5dc79f6) |
 | [006](006-gate-render-speed.md) | Cache the fixture dependency build (~97% of gate render overhead) | helm-factory-jgg | P2 / M / MED | landed (PR #58 → aeb1a69) |
-| [007](007-gate-validation-coverage.md) | Close the gate's validation gaps (kubeconform everywhere, no silent PASS) | helm-factory-bkv | P2 / M / MED | in progress ([PR #63](https://github.com/caretak3r/helm-factory/pull/63) open, CI green — awaiting review/merge) |
+| [007](007-gate-validation-coverage.md) | Close the gate's validation gaps (kubeconform everywhere, no silent PASS) | helm-factory-bkv | P2 / M / MED | landed (PR #63 → 16e6212) |
 | [008](008-supply-chain-ci-hardening.md) | Supply-chain / CI hardening | hf-ocq | P2 / M / LOW-MED | landed (PR #59 → b3f85bd) |
 | [009](009-podpolicy-extraction.md) | Pod-policy + workload-metadata extraction (zero golden diffs) | hf-s41 | P2 / M / LOW | landed (PR #61 → a6e1aff) |
 | [010](010-capability-registry-unification.md) | Unify capability representations into one feature registry | helm-factory-cfm | P2 / L / MEDIUM | planned |
@@ -39,6 +39,8 @@ for #60 and #61 (`==> PASS`, exit 0); CI green on every merge.
 - 008 → [#59](https://github.com/caretak3r/helm-factory/pull/59) → `b3f85bd`
 - 003 → [#60](https://github.com/caretak3r/helm-factory/pull/60) → `3419a79`
 - 009 → [#61](https://github.com/caretak3r/helm-factory/pull/61) → `a6e1aff`
+- 007 → [#63](https://github.com/caretak3r/helm-factory/pull/63) → `16e6212`
+  (merged 2026-08-01, after the 2026-07-31 batch; bead helm-factory-bkv closed)
 
 Beads closed to match: helm-factory-87x, helm-factory-jgg, helm-factory-mik,
 helm-factory-vh8, hf-ocq, hf-gra, hf-s41.
