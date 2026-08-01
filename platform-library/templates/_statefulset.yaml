@@ -4,23 +4,7 @@ kind: StatefulSet
 metadata:
   name: {{ include "platform.fullname" . }}
   namespace: {{ .Release.Namespace }}
-  labels:
-    {{- include "platform.labels" . | nindent 4 }}
-    {{- range $k, $v := .Values.commonLabels }}
-    {{ $k }}: {{ $v | quote }}
-    {{- end }}
-    {{- range $k, $v := .Values.labels }}
-    {{ $k }}: {{ $v | quote }}
-    {{- end }}
-  {{- if or .Values.commonAnnotations .Values.annotations }}
-  annotations:
-    {{- range $k, $v := .Values.commonAnnotations }}
-    {{ $k }}: {{ $v | quote }}
-    {{- end }}
-    {{- range $k, $v := .Values.annotations }}
-    {{ $k }}: {{ $v | quote }}
-    {{- end }}
-  {{- end }}
+  {{- include "platform.workloadMetadata" . }}
 spec:
   serviceName: {{ include "platform.statefulset.serviceName" . }}
   {{- if not .Values.autoscaling.enabled }}

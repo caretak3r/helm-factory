@@ -86,6 +86,36 @@ app.kubernetes.io/component: {{ .component }}
 {{- end }}
 
 {{/*
+platform.workloadMetadata — shared top-level metadata labels/annotations for
+the three primary workload generators (Deployment/StatefulSet/DaemonSet).
+Verbatim move of the block each generator previously inlined; emission order
+carries the specific-beats-common precedence. No right-trim on the define:
+the body starts with a newline so the call site reproduces the original
+bytes exactly. CronJob metadata is intentionally NOT unified here.
+Usage (immediately after the namespace: line):
+  {{- include "platform.workloadMetadata" . }}
+*/}}
+{{- define "platform.workloadMetadata" }}
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+    {{- range $k, $v := .Values.commonLabels }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+    {{- range $k, $v := .Values.labels }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+  {{- if or .Values.commonAnnotations .Values.annotations }}
+  annotations:
+    {{- range $k, $v := .Values.commonAnnotations }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+    {{- range $k, $v := .Values.annotations }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+
+{{/*
 Resolve an image dict (registry/repository/tag/digest) to a full reference,
 honoring global.imageRegistry. Requires digest (preferred) or tag; there is no
 `latest` fallback. digest wins when both are set.
@@ -177,6 +207,65 @@ Usage: include "platform.hardenContainers" (list $ctx $containers)
 {{- end }}
 {{- toYaml $hardened -}}
 {{- end }}
+
+{{/*
+platform.podPolicy.identity — pod-level SA-token and service-link policy
+shared by every pod-bearing generator. serviceAccountName intentionally
+stays at each call site: hook Jobs use the distinct hook ServiceAccount
+(platform.hookServiceAccountName) and must never share the release SA name.
+Never empty, so call sites pipe through nindent.
+Usage: {{- include "platform.podPolicy.identity" $ctx | nindent 2 }}
+*/}}
+{{- define "platform.podPolicy.identity" -}}
+automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken | default false }}
+enableServiceLinks: {{ .Values.enableServiceLinks | default false }}
+{{- end -}}
+
+{{/*
+platform.podPolicy.securityContext — pod securityContext from
+.Values.podSecurityContext (minus the enabled flag). Emits NOTHING when
+disabled. Because of that, call sites must NOT pipe through nindent (an
+empty string through nindent leaves a whitespace-only line); the field
+indentation is passed as the second list element instead, and keys render
+two columns deeper.
+Usage: {{- include "platform.podPolicy.securityContext" (list $ctx 2) }}
+*/}}
+{{- define "platform.podPolicy.securityContext" -}}
+{{- $ctx := index . 0 -}}
+{{- $indent := index . 1 -}}
+{{- if $ctx.Values.podSecurityContext.enabled -}}
+{{- printf "securityContext:" | nindent $indent -}}
+{{- omit $ctx.Values.podSecurityContext "enabled" | toYaml | nindent (add $indent 2 | int) -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+platform.podPolicy.imagePullSecrets — merged pull secrets:
+global.imagePullSecrets first, then image.pullSecrets, uniq keeping the
+first occurrence so global entries stay ahead of image ones. Emits NOTHING
+when the merged list is empty — same call convention as
+podPolicy.securityContext (indent argument, no nindent at the call site).
+Usage: {{- include "platform.podPolicy.imagePullSecrets" (list $ctx 2) }}
+*/}}
+{{- define "platform.podPolicy.imagePullSecrets" -}}
+{{- $ctx := index . 0 -}}
+{{- $indent := index . 1 -}}
+{{- $pullSecrets := list -}}
+{{- range $ctx.Values.global.imagePullSecrets -}}
+{{- $pullSecrets = append $pullSecrets . -}}
+{{- end -}}
+{{- range $ctx.Values.image.pullSecrets -}}
+{{- $pullSecrets = append $pullSecrets . -}}
+{{- end -}}
+{{- /* uniq keeps the first occurrence: global entries stay ahead of image ones */ -}}
+{{- $pullSecrets = $pullSecrets | uniq -}}
+{{- if gt (len $pullSecrets) 0 -}}
+{{- printf "imagePullSecrets:" | nindent $indent -}}
+{{- range $pullSecrets -}}
+{{- printf "- name: %v" . | nindent (add $indent 2 | int) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
 
 {{/*
 Render environment variables from map or slice inputs
@@ -285,26 +374,9 @@ metadata:
   {{- end }}
 spec:
   serviceAccountName: {{ include "platform.serviceAccountName" $ctx }}
-  automountServiceAccountToken: {{ $ctx.Values.serviceAccount.automountServiceAccountToken | default false }}
-  enableServiceLinks: {{ $ctx.Values.enableServiceLinks | default false }}
-  {{- $pullSecrets := list -}}
-  {{- range $ctx.Values.global.imagePullSecrets }}
-    {{- $pullSecrets = append $pullSecrets . -}}
-  {{- end }}
-  {{- range $ctx.Values.image.pullSecrets }}
-    {{- $pullSecrets = append $pullSecrets . -}}
-  {{- end }}
-  {{- /* uniq keeps the first occurrence: global entries stay ahead of image ones */ -}}
-  {{- $pullSecrets = $pullSecrets | uniq -}}
-  {{- if gt (len $pullSecrets) 0 }}
-  imagePullSecrets:
-    {{- range $name := $pullSecrets }}
-    - name: {{ $name }}
-    {{- end }}
-  {{- end }}
-  {{- if $ctx.Values.podSecurityContext.enabled }}
-  securityContext: {{- omit $ctx.Values.podSecurityContext "enabled" | toYaml | nindent 4 }}
-  {{- end }}
+  {{- include "platform.podPolicy.identity" $ctx | nindent 2 }}
+  {{- include "platform.podPolicy.imagePullSecrets" (list $ctx 2) }}
+  {{- include "platform.podPolicy.securityContext" (list $ctx 2) }}
   {{- if and $ctx.Values.initContainers.enabled $ctx.Values.initContainers.containers }}
   initContainers: {{- include "platform.hardenContainers" (list $ctx $ctx.Values.initContainers.containers) | nindent 4 }}
   {{- end }}
@@ -843,26 +915,9 @@ spec:
     spec:
       restartPolicy: {{ $restartPolicy }}
       serviceAccountName: {{ include "platform.hookServiceAccountName" (list $ctx $type) }}
-      automountServiceAccountToken: {{ $ctx.Values.serviceAccount.automountServiceAccountToken | default false }}
-      enableServiceLinks: {{ $ctx.Values.enableServiceLinks | default false }}
-      {{- if $ctx.Values.podSecurityContext.enabled }}
-      securityContext: {{- omit $ctx.Values.podSecurityContext "enabled" | toYaml | nindent 8 }}
-      {{- end }}
-      {{- $hookPullSecrets := list -}}
-      {{- range $ctx.Values.global.imagePullSecrets }}
-        {{- $hookPullSecrets = append $hookPullSecrets . -}}
-      {{- end }}
-      {{- range $ctx.Values.image.pullSecrets }}
-        {{- $hookPullSecrets = append $hookPullSecrets . -}}
-      {{- end }}
-      {{- /* uniq keeps the first occurrence: global entries stay ahead of image ones */ -}}
-      {{- $hookPullSecrets = $hookPullSecrets | uniq -}}
-      {{- if gt (len $hookPullSecrets) 0 }}
-      imagePullSecrets:
-        {{- range $hookPullSecrets }}
-        - name: {{ . }}
-        {{- end }}
-      {{- end }}
+      {{- include "platform.podPolicy.identity" $ctx | nindent 6 }}
+      {{- include "platform.podPolicy.securityContext" (list $ctx 6) }}
+      {{- include "platform.podPolicy.imagePullSecrets" (list $ctx 6) }}
       {{- if gt (len $initContainers) 0 }}
       initContainers: {{- include "platform.hardenContainers" (list $ctx $initContainers) | nindent 8 }}
       {{- end }}
