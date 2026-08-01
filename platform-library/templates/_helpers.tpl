@@ -130,7 +130,7 @@ Takes (dict "ctx" $ "image" <dict> "path" "<values path, for fail messages>").
 {{- end }}
 {{- $global := .ctx.Values.global.imageRegistry | default "" -}}
 {{- $registry := ternary $global ($img.registry | default "") (ne $global "") -}}
-{{- if $registry }}
+{{- if and $registry (not (hasPrefix (printf "%s/" $registry) $repository)) }}
   {{- $repository = printf "%s/%s" $registry $repository -}}
 {{- end }}
 {{- if $img.digest }}
@@ -807,7 +807,7 @@ inherits the main tag only.
     {{- $registry = $ctx.Values.image.registry -}}
   {{- end }}
 {{- end }}
-{{- if and $registry $imageCfg.repository (not (hasPrefix $imageCfg.repository (printf "%s/" $registry))) }}
+{{- if and $registry $imageCfg.repository (not (hasPrefix (printf "%s/" $registry) $imageCfg.repository)) }}
   {{- $_ := set $imageCfg "repository" (printf "%s/%s" $registry (trimPrefix "/" $imageCfg.repository)) -}}
 {{- end }}
 {{- $image := "" -}}

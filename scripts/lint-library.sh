@@ -633,6 +633,49 @@ else
   echo "  FAIL: repository-less dict sidecar image failed without the expected message"; echo "$out" | tail -3; fail=1
 fi
 
+echo "==> image registry double-prefix guard"
+# A repository that already carries the registry host must not get it again.
+if out=$("$RENDER" minimal --set image.repository=docker.io/library/busybox \
+  --set image.tag=1.36 2>&1); then
+  validate_render "qualified main repository (no double prefix)" "$out"
+  if grep -q "image: docker.io/library/busybox:1.36" <<<"$out" &&
+     ! grep -q "docker.io/docker.io" <<<"$out"; then
+    echo "  OK: qualified main repository is not double-prefixed"
+  else
+    echo "  FAIL: main image path double-prefixed the registry"; grep "image:" <<<"$out" | head -3; fail=1
+  fi
+else
+  echo "  FAIL: render failed for main double-prefix check"; echo "$out" | tail -3; fail=1
+fi
+
+# Same for the hook Job image resolution path.
+if out=$("$RENDER" minimal --set jobs.preInstall.enabled=true \
+  --set jobs.preInstall.script='echo hi' \
+  --set jobs.image.repository=docker.io/library/busybox --set jobs.image.tag=1.36 2>&1); then
+  validate_render "qualified hook Job repository (no double prefix)" "$out"
+  if grep -q "image: docker.io/library/busybox:1.36" <<<"$out" &&
+     ! grep -q "docker.io/docker.io" <<<"$out"; then
+    echo "  OK: qualified hook Job repository is not double-prefixed"
+  else
+    echo "  FAIL: hook Job image path double-prefixed the registry"; grep "image:" <<<"$out" | head -3; fail=1
+  fi
+else
+  echo "  FAIL: render failed for hook double-prefix check"; echo "$out" | tail -3; fail=1
+fi
+
+# The guard must not suppress LEGITIMATE prefixing: an unqualified repository
+# still gets the registry.
+if out=$("$RENDER" minimal 2>&1); then
+  validate_render "unqualified repository keeps its registry prefix" "$out"
+  if grep -q "image: docker.io/example/minimal:1.0.0" <<<"$out"; then
+    echo "  OK: unqualified repository still receives the registry prefix"
+  else
+    echo "  FAIL: unqualified repository lost its registry prefix"; grep "image:" <<<"$out" | head -3; fail=1
+  fi
+else
+  echo "  FAIL: render failed for baseline prefix check"; echo "$out" | tail -3; fail=1
+fi
+
 echo "==> schema enforcement (helm-side): invalid values must fail"
 if out=$("$RENDER" minimal --set workload.type=deployment 2>&1); then
   echo "  FAIL: render succeeded with workload.type=deployment (schema not enforced)"; fail=1

@@ -9,6 +9,17 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
 
 ## [Unreleased]
 
+### Fixed — image resolution
+
+- `platform.imageRef` no longer double-prefixes the registry when
+  `image.repository` (or a dict-form sidecar/init/hook repository) already
+  starts with the resolved registry host — e.g. `docker.io/library/busybox`
+  with the default `image.registry: docker.io` now renders
+  `docker.io/library/busybox:<tag>`, not `docker.io/docker.io/...`. The hook
+  Job path had a prefix guard with inverted `hasPrefix` arguments; both paths
+  now share the same (correct) semantics. Unqualified repositories are
+  prefixed exactly as before.
+
 ### Fixed — hook Jobs
 
 - A hook Job enabled with no `script`, `scriptFile`, or `command` now fails at
