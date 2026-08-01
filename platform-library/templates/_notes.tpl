@@ -34,6 +34,50 @@ Usage (consumer chart templates/NOTES.txt):
 {{- if not (empty .Values.ingress.secrets) -}}
 {{- $warnings = append $warnings "ingress.secrets contains inline TLS cert/key material in values (DISCOURAGED). Prefer cert-manager (certificate block) or a pre-created Secret via ingress.existingSecret." -}}
 {{- end -}}
+{{- $csc := .Values.containerSecurityContext | default dict -}}
+{{- if not $csc.enabled -}}
+{{- $warnings = append $warnings "containerSecurityContext.enabled=false disables the per-container hardening defaults (runAsNonRoot, readOnlyRootFilesystem, allowPrivilegeEscalation=false, capabilities drop ALL, seccompProfile RuntimeDefault) for EVERY container in the release. The pod no longer meets the PSS restricted profile. Re-enable it and override individual keys instead." -}}
+{{- else -}}
+{{- $weakened := list -}}
+{{- if $csc.privileged -}}
+{{- $weakened = append $weakened "privileged=true (disables all container isolation)" -}}
+{{- end -}}
+{{- if $csc.allowPrivilegeEscalation -}}
+{{- $weakened = append $weakened "allowPrivilegeEscalation=true" -}}
+{{- end -}}
+{{- if and (hasKey $csc "runAsNonRoot") (not $csc.runAsNonRoot) -}}
+{{- $weakened = append $weakened "runAsNonRoot=false" -}}
+{{- end -}}
+{{- if and (hasKey $csc "runAsUser") (eq (int $csc.runAsUser) 0) -}}
+{{- $weakened = append $weakened "runAsUser=0 (root)" -}}
+{{- end -}}
+{{- if and $csc.seccompProfile (eq ($csc.seccompProfile.type | default "") "Unconfined") -}}
+{{- $weakened = append $weakened "seccompProfile.type=Unconfined" -}}
+{{- end -}}
+{{- $badCaps := list -}}
+{{- if $csc.capabilities -}}
+{{- range $cap := ($csc.capabilities.add | default list) -}}
+{{- if ne (printf "%v" $cap) "NET_BIND_SERVICE" -}}
+{{- $badCaps = append $badCaps (printf "%v" $cap) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- if $badCaps -}}
+{{- $weakened = append $weakened (printf "capabilities.add grants %s (PSS restricted allows only NET_BIND_SERVICE)" (join ", " $badCaps)) -}}
+{{- end -}}
+{{- if $weakened -}}
+{{- $warnings = append $warnings (printf "containerSecurityContext WEAKENS the default hardened posture: %s. The pod may fail PSS-restricted admission or run with elevated privilege — make sure this is intentional and reviewed." (join "; " $weakened)) -}}
+{{- end -}}
+{{- end -}}
+{{- if not .Values.podSecurityContext.enabled -}}
+{{- $warnings = append $warnings "podSecurityContext.enabled=false removes the pod-level hardening defaults (fsGroup, runAsNonRoot, seccompProfile RuntimeDefault). The pod no longer meets the PSS restricted profile." -}}
+{{- end -}}
+{{- if and .Values.mtls.enabled .Values.mtls.allowAllPrincipals (empty (.Values.mtls.allowedPrincipals | default list)) -}}
+{{- $warnings = append $warnings "mtls.allowAllPrincipals=true authorizes the wildcard principal cluster.local/ns/*/sa/*: any workload in the mesh may call this service (mTLS identity without meaningful authorization). List explicit principals under mtls.allowedPrincipals when possible." -}}
+{{- end -}}
+{{- if .Values.allowClusterScopedExtras -}}
+{{- $warnings = append $warnings "allowClusterScopedExtras=true: extraObjects may render cluster-scoped Kinds (ClusterRole, PriorityClass, StorageClass, webhooks, ...). Cluster-scoped objects outlive the namespace and affect the whole cluster — keep them least-privilege and reviewed." -}}
+{{- end -}}
 {{- $extrasYaml := printf "%s\n%s\n%s\n%s\n%s" (toYaml (.Values.extraObjects | default dict)) (toYaml (.Values.extraManifests | default list)) (toYaml (.Values.extraVolumes | default list)) (toYaml (.Values.sidecars | default dict)) (toYaml (.Values.initContainers | default dict)) -}}
 {{- if contains "hostPath:" $extrasYaml -}}
 {{- $warnings = append $warnings "extraObjects/extraManifests/extraVolumes/sidecars contain a hostPath volume. hostPath breaks pod isolation and violates the PSS restricted profile — make sure this is intentional and reviewed." -}}

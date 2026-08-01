@@ -790,6 +790,52 @@ else
   echo "  FAIL: helm template failed for stateful fixture"; echo "$out" | tail -5; fail=1
 fi
 
+echo "==> NOTES warnings: weakened security posture and active escape hatches"
+# privileged=true renders (valid opt-out) but must be loudly warned.
+if out=$(notes_of minimal --set containerSecurityContext.privileged=true 2>&1); then
+  if grep -q "containerSecurityContext WEAKENS" <<<"$out" &&
+     grep -q "privileged=true" <<<"$out"; then
+    echo "  OK: privileged=true emits the posture-weakening NOTES warning"
+  else
+    echo "  FAIL: privileged=true did not emit the posture-weakening NOTES warning"; echo "$out" | tail -5; fail=1
+  fi
+else
+  echo "  FAIL: helm install --dry-run=client failed for minimal with privileged=true"; echo "$out" | tail -5; fail=1
+fi
+
+# Disabling the whole hardening block is the biggest hammer — dedicated warning.
+if out=$(notes_of minimal --set containerSecurityContext.enabled=false 2>&1); then
+  if grep -q "containerSecurityContext.enabled=false disables" <<<"$out"; then
+    echo "  OK: containerSecurityContext.enabled=false emits the hardening-disabled NOTES warning"
+  else
+    echo "  FAIL: containerSecurityContext.enabled=false did not emit the expected NOTES warning"; echo "$out" | tail -5; fail=1
+  fi
+else
+  echo "  FAIL: helm install --dry-run=client failed for minimal with hardening disabled"; echo "$out" | tail -5; fail=1
+fi
+
+# Wildcard principal escape hatch (same values shape as the render-path test above).
+if out=$(notes_of full --set mtls.allowedPrincipals=null --set mtls.allowAllPrincipals=true 2>&1); then
+  if grep -q "allowAllPrincipals=true authorizes the wildcard principal" <<<"$out"; then
+    echo "  OK: mtls.allowAllPrincipals=true emits the wildcard-principal NOTES warning"
+  else
+    echo "  FAIL: mtls.allowAllPrincipals=true did not emit the wildcard-principal NOTES warning"; echo "$out" | tail -5; fail=1
+  fi
+else
+  echo "  FAIL: helm install --dry-run=client failed for full with allowAllPrincipals"; echo "$out" | tail -5; fail=1
+fi
+
+# Cluster-scoped extras escape hatch (full fixture sets allowClusterScopedExtras=true).
+if out=$(notes_of full 2>&1); then
+  if grep -q "allowClusterScopedExtras=true" <<<"$out"; then
+    echo "  OK: allowClusterScopedExtras=true emits the escape-hatch NOTES warning"
+  else
+    echo "  FAIL: allowClusterScopedExtras=true did not emit the escape-hatch NOTES warning"; echo "$out" | tail -5; fail=1
+  fi
+else
+  echo "  FAIL: helm install --dry-run=client failed for full fixture"; echo "$out" | tail -5; fail=1
+fi
+
 echo "==> NOTES: Kinds enabled in values but skipped by capability gating"
 # A CRD-backed Kind whose API is neither served nor force-assumed renders NOTHING.
 # Without a warning the operator believes cert-manager Certificates or ServiceMonitors
