@@ -13,13 +13,13 @@ Status values: `planned` → `in progress` → `landed` (PR merged).
 | [001](001-security-posture-warnings.md) | NOTES warnings for weakened security posture and active escape hatches | helm-factory-mik | P1 / S / LOW | landed (PR #56 → 7ea708f) |
 | [002](002-hook-job-named-error.md) | Hook Job without work fails with a named error, not a reflect crash | helm-factory-87x | P1 / S / LOW | landed (PR #55 → 8a6aba8) |
 | [003](003-extraobjects-fail-closed.md) | extraObjects: fail closed on unknown Kinds | hf-gra | P1 / M / MEDIUM | landed (PR #60 → 3419a79) |
-| [004](004-imageref-registry-guard.md) | imageRef: stop double-prefixing the registry (both call paths) | helm-factory-wvy | P2 / S / LOW | planned |
+| [004](004-imageref-registry-guard.md) | imageRef: stop double-prefixing the registry (both call paths) | helm-factory-wvy | P2 / S / LOW | landed (PR #64 → b682ad6) |
 | [005](005-capability-gate-secondary-kinds.md) | Capability-gate AuthorizationPolicy and GRPCRoute | helm-factory-vh8 | P1 / M / MED | landed (PR #57 → 5dc79f6) |
 | [006](006-gate-render-speed.md) | Cache the fixture dependency build (~97% of gate render overhead) | helm-factory-jgg | P2 / M / MED | landed (PR #58 → aeb1a69) |
 | [007](007-gate-validation-coverage.md) | Close the gate's validation gaps (kubeconform everywhere, no silent PASS) | helm-factory-bkv | P2 / M / MED | landed (PR #63 → 16e6212) |
 | [008](008-supply-chain-ci-hardening.md) | Supply-chain / CI hardening | hf-ocq | P2 / M / LOW-MED | landed (PR #59 → b3f85bd) |
 | [009](009-podpolicy-extraction.md) | Pod-policy + workload-metadata extraction (zero golden diffs) | hf-s41 | P2 / M / LOW | landed (PR #61 → a6e1aff) |
-| [010](010-capability-registry-unification.md) | Unify capability representations into one feature registry | helm-factory-cfm | P2 / L / MEDIUM | planned |
+| [010](010-capability-registry-unification.md) | Unify capability representations into one feature registry | helm-factory-cfm | P2 / L / MEDIUM | landed (PR #65 → 285b2aa) |
 
 ## Landed PRs (this uplift batch — all merged 2026-07-31)
 
@@ -41,9 +41,18 @@ for #60 and #61 (`==> PASS`, exit 0); CI green on every merge.
 - 009 → [#61](https://github.com/caretak3r/helm-factory/pull/61) → `a6e1aff`
 - 007 → [#63](https://github.com/caretak3r/helm-factory/pull/63) → `16e6212`
   (merged 2026-08-01, after the 2026-07-31 batch; bead helm-factory-bkv closed)
+- 004 → [#64](https://github.com/caretak3r/helm-factory/pull/64) → `b682ad6`
+  (merged 2026-08-01; GNHF-executed, Companion-reviewed; bead helm-factory-wvy closed)
+- 010 → [#65](https://github.com/caretak3r/helm-factory/pull/65) → `285b2aa`
+  (merged 2026-08-01 after rebase onto #64 — shared `scripts/lint-library.sh` +
+  `CHANGELOG.md` hunks rebased clean; GNHF-executed in 3 phase commits plus one
+  review fix `4f031a1` un-deadening the duplicate-Kind anti-drift probe,
+  mutation M8 proven RED; bead helm-factory-cfm closed. Closes the principals
+  fail-open window opened by 005: mtls is now atomic.)
 
 Beads closed to match: helm-factory-87x, helm-factory-jgg, helm-factory-mik,
-helm-factory-vh8, hf-ocq, hf-gra, hf-s41.
+helm-factory-vh8, hf-ocq, hf-gra, hf-s41, helm-factory-wvy, helm-factory-cfm.
+All ten uplift plans are landed; this index is complete.
 
 ## Sequencing constraints
 
