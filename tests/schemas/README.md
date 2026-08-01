@@ -5,7 +5,7 @@ Everything under this directory is fetched from upstream by
 network requests for schema data. `scripts/lint-library.sh` validates
 against these local copies only; it makes zero network requests.
 
-Last refreshed: **2026-07-10** for Kubernetes 1.34 1.35 1.36
+Last refreshed: **2026-07-30** for Kubernetes 1.34 1.35 1.36
 (see `scripts/lib/schema-manifest.sh` for the authoritative version/Kind
 list this snapshot covers).
 
@@ -41,8 +41,8 @@ under `tests/schemas/`.
 
 | Source | Upstream | Variant |
 | --- | --- | --- |
-| Core Kubernetes schemas | `https://cdn.jsdelivr.net/gh/yannh/kubernetes-json-schema@master` | `{version}-standalone-strict` |
-| CRD schemas | `https://cdn.jsdelivr.net/gh/datreeio/CRDs-catalog@main` | n/a |
+| Core Kubernetes schemas | `https://cdn.jsdelivr.net/gh/yannh/kubernetes-json-schema@c8f4e61c63bc529749125ac566bccc6986e08d45` | `{version}-standalone-strict` |
+| CRD schemas | `https://cdn.jsdelivr.net/gh/datreeio/CRDs-catalog@dcaa31aa03082906c0325a7a0ee7d5191e9cbe24` | n/a |
 
 Only the schema stems/paths listed in `scripts/lib/schema-manifest.sh` are
 vendored — the subset actually exercised by `tests/fixtures/*` across the

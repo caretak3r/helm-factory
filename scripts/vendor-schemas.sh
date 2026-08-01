@@ -25,8 +25,10 @@ CRD_DIR="$SCHEMA_DIR/crd"
 # shellcheck source=scripts/lib/schema-manifest.sh
 source "$REPO_ROOT/scripts/lib/schema-manifest.sh"
 
-NATIVE_SOURCE_BASE='https://cdn.jsdelivr.net/gh/yannh/kubernetes-json-schema@master'
-CRD_SOURCE_BASE='https://cdn.jsdelivr.net/gh/datreeio/CRDs-catalog@main'
+# Pinned 2026-07-30 (master); bump deliberately, then re-run this script.
+NATIVE_SOURCE_BASE='https://cdn.jsdelivr.net/gh/yannh/kubernetes-json-schema@c8f4e61c63bc529749125ac566bccc6986e08d45'
+# Pinned 2026-07-30 (main); bump deliberately, then re-run this script.
+CRD_SOURCE_BASE='https://cdn.jsdelivr.net/gh/datreeio/CRDs-catalog@dcaa31aa03082906c0325a7a0ee7d5191e9cbe24'
 
 fetch_json() {
   local url="$1" dest="$2"
@@ -117,8 +119,8 @@ under \`tests/schemas/\`.
 
 | Source | Upstream | Variant |
 | --- | --- | --- |
-| Core Kubernetes schemas | \`https://cdn.jsdelivr.net/gh/yannh/kubernetes-json-schema@master\` | \`{version}-standalone-strict\` |
-| CRD schemas | \`https://cdn.jsdelivr.net/gh/datreeio/CRDs-catalog@main\` | n/a |
+| Core Kubernetes schemas | \`$NATIVE_SOURCE_BASE\` | \`{version}-standalone-strict\` |
+| CRD schemas | \`$CRD_SOURCE_BASE\` | n/a |
 
 Only the schema stems/paths listed in \`scripts/lib/schema-manifest.sh\` are
 vendored — the subset actually exercised by \`tests/fixtures/*\` across the

@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2034  # source-only library: vars are consumed by the
+# scripts that `source` this file (scripts/lint-library.sh,
+# scripts/vendor-schemas.sh), not referenced directly here.
 # Shared manifest for kubeconform schema vendoring — sourced by
 # scripts/lint-library.sh (which validates against the vendored copies) and
 # scripts/vendor-schemas.sh (which (re)fetches them). Keeping both in one file
