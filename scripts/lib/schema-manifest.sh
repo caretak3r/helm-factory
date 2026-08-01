@@ -55,9 +55,14 @@ NATIVE_SCHEMA_KINDS=(
 # Istio.
 CRD_SCHEMA_PATHS=(
   security.istio.io/authorizationpolicy_v1beta1
+  security.istio.io/authorizationpolicy_v1
   cert-manager.io/certificate_v1
   gateway.networking.k8s.io/httproute_v1
+  gateway.networking.k8s.io/httproute_v1beta1
+  gateway.networking.k8s.io/grpcroute_v1
+  gateway.networking.k8s.io/grpcroute_v1alpha2
   security.istio.io/peerauthentication_v1beta1
+  security.istio.io/peerauthentication_v1
   monitoring.coreos.com/podmonitor_v1
   monitoring.coreos.com/servicemonitor_v1
 )

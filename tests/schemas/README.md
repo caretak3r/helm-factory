@@ -5,7 +5,7 @@ Everything under this directory is fetched from upstream by
 network requests for schema data. `scripts/lint-library.sh` validates
 against these local copies only; it makes zero network requests.
 
-Last refreshed: **2026-07-30** for Kubernetes 1.34 1.35 1.36
+Last refreshed: **2026-08-01** for Kubernetes 1.34 1.35 1.36
 (see `scripts/lib/schema-manifest.sh` for the authoritative version/Kind
 list this snapshot covers).
 
