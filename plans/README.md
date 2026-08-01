@@ -16,7 +16,7 @@ Status values: `planned` → `in progress` → `landed` (PR merged).
 | [004](004-imageref-registry-guard.md) | imageRef: stop double-prefixing the registry (both call paths) | helm-factory-wvy | P2 / S / LOW | planned |
 | [005](005-capability-gate-secondary-kinds.md) | Capability-gate AuthorizationPolicy and GRPCRoute | helm-factory-vh8 | P1 / M / MED | landed (PR #57 → 5dc79f6) |
 | [006](006-gate-render-speed.md) | Cache the fixture dependency build (~97% of gate render overhead) | helm-factory-jgg | P2 / M / MED | landed (PR #58 → aeb1a69) |
-| [007](007-gate-validation-coverage.md) | Close the gate's validation gaps (kubeconform everywhere, no silent PASS) | helm-factory-bkv | P2 / M / MED | in progress (dispatched 2026-07-31; 005 + 006 landed) |
+| [007](007-gate-validation-coverage.md) | Close the gate's validation gaps (kubeconform everywhere, no silent PASS) | helm-factory-bkv | P2 / M / MED | in progress ([PR #63](https://github.com/caretak3r/helm-factory/pull/63) open, CI green — awaiting review/merge) |
 | [008](008-supply-chain-ci-hardening.md) | Supply-chain / CI hardening | hf-ocq | P2 / M / LOW-MED | landed (PR #59 → b3f85bd) |
 | [009](009-podpolicy-extraction.md) | Pod-policy + workload-metadata extraction (zero golden diffs) | hf-s41 | P2 / M / LOW | landed (PR #61 → a6e1aff) |
 | [010](010-capability-registry-unification.md) | Unify capability representations into one feature registry | helm-factory-cfm | P2 / L / MEDIUM | planned |
