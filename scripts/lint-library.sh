@@ -624,6 +624,39 @@ else
   echo "  FAIL: gate=false failed without the expected message"; echo "$out" | tail -3; fail=1
 fi
 
+# extraObjects with a Kind the registry does not know must fail closed, not
+# silently drop the object.
+if out=$("$RENDER" minimal --set-json 'extraObjects={"WidgetFrobber":[{"name":"w1"}]}' 2>&1); then
+  echo "  FAIL: render succeeded with an unknown extraObjects Kind (silent drop)"; fail=1
+elif grep -q 'unknown Kind "WidgetFrobber"' <<<"$out"; then
+  echo "  OK: unknown extraObjects Kind fails closed with actionable message"
+else
+  echo "  FAIL: unknown extraObjects Kind failed without the expected message"; echo "$out" | tail -3; fail=1
+fi
+
+# An explicit per-entry apiVersion is the documented escape: renders verbatim.
+if out=$("$RENDER" minimal --set-json 'extraObjects={"WidgetFrobber":[{"name":"w1","apiVersion":"widgets.example.io/v1","spec":{"size":1}}]}' 2>&1); then
+  if grep -q "kind: WidgetFrobber" <<<"$out" && grep -q "apiVersion: widgets.example.io/v1" <<<"$out"; then
+    echo "  OK: unknown Kind with explicit apiVersion renders verbatim"
+  else
+    echo "  FAIL: pinned unknown Kind did not render as specified"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for pinned unknown extraObjects Kind"; echo "$out" | tail -3; fail=1
+fi
+
+# Known CRD Kind whose API is unserved still SKIPS (invariant 2) — the render
+# must succeed and must not contain the object.
+if out=$("$RENDER" minimal --set-json 'extraObjects={"VirtualService":[{"name":"vs1"}]}' 2>&1); then
+  if grep -q "kind: VirtualService" <<<"$out"; then
+    echo "  FAIL: unserved VirtualService extraObject rendered anyway"; fail=1
+  else
+    echo "  OK: unserved registry Kind in extraObjects is skipped from manifests"
+  fi
+else
+  echo "  FAIL: render failed for unserved extraObjects Kind"; echo "$out" | tail -3; fail=1
+fi
+
 # secret.existingSecret conflicts with inline material.
 if out=$("$RENDER" stateful --set secret.existingSecret=preexisting 2>&1); then
   echo "  FAIL: render succeeded with secret.existingSecret + secret.stringData"; fail=1
@@ -946,6 +979,42 @@ if out=$(notes_of full --set 'capabilities.apiVersions={security.istio.io/v1beta
   fi
 else
   echo "  FAIL: helm install --dry-run=client failed for full fixture with PeerAuthentication-only force-assume"; echo "$out" | tail -5; fail=1
+fi
+
+# The skip above must be VISIBLE: unserved extraObjects entries get their own
+# NOTES warning naming Kind/name and the apiVersions tried.
+if out=$(notes_of minimal --set-json 'extraObjects={"VirtualService":[{"name":"vs1"}]}' 2>&1); then
+  if grep -q "SKIPPED EXTRA OBJECTS" <<<"$out" &&
+     grep -qF "VirtualService/vs1 (tried networking.istio.io/v1, networking.istio.io/v1beta1, networking.istio.io/v1alpha3)" <<<"$out"; then
+    echo "  OK: unserved extraObjects entry is named in a NOTES warning with the apiVersions tried"
+  else
+    echo "  FAIL: unserved extraObjects entry produced no naming NOTES warning"; echo "$out" | tail -5; fail=1
+  fi
+else
+  echo "  FAIL: helm install --dry-run=client failed for minimal with unserved extraObject"; echo "$out" | tail -5; fail=1
+fi
+
+# Force-assuming the API closes the gap: the object renders, warning disappears.
+if out=$(notes_of minimal --set-json 'extraObjects={"VirtualService":[{"name":"vs1"}]}' \
+  --set 'capabilities.apiVersions[0]=networking.istio.io/v1' 2>&1); then
+  if grep -q "SKIPPED EXTRA OBJECTS" <<<"$out"; then
+    echo "  FAIL: force-assumed extraObjects API still reported as skipped"; echo "$out" | tail -5; fail=1
+  else
+    echo "  OK: force-assumed apiVersion suppresses the skipped-extras warning"
+  fi
+else
+  echo "  FAIL: helm install --dry-run=client failed for minimal with force-assumed extraObject API"; echo "$out" | tail -5; fail=1
+fi
+
+# No false positives: full's extraObjects are all stable built-ins.
+if out=$(notes_of full 2>&1); then
+  if grep -q "SKIPPED EXTRA OBJECTS" <<<"$out"; then
+    echo "  FAIL: full fixture warns about skipped extraObjects it actually renders"; echo "$out" | tail -5; fail=1
+  else
+    echo "  OK: full fixture (stable extraObjects) emits no skipped-extras warning"
+  fi
+else
+  echo "  FAIL: helm install --dry-run=client failed for full fixture"; echo "$out" | tail -5; fail=1
 fi
 
 echo "==> capability gates: _app.yaml gate set vs gatedKinds registry (name-set, hf-vh8)"

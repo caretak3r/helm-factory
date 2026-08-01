@@ -325,6 +325,30 @@ Usage: include "platform.capabilities.skippedKinds" $top
 {{- end -}}
 
 {{/*
+platform.capabilities.skippedExtraObjects — space-delimited "Kind/name" entries
+from .Values.extraObjects that are in the capability registry but whose API is
+neither served nor force-assumed and that carry no explicit apiVersion, so
+platform.genericResource rendered NOTHING for them. The tier-2 mirror of
+platform.capabilities.skippedKinds; platform.notes turns it into a WARNING.
+Usage: include "platform.capabilities.skippedExtraObjects" $top
+*/}}
+{{- define "platform.capabilities.skippedExtraObjects" -}}
+{{- $top := . -}}
+{{- $registry := fromYaml (include "platform.capabilities.registry" $top) -}}
+{{- $skipped := list -}}
+{{- range $kind, $list := ($top.Values.extraObjects | default dict) -}}
+{{- if and (hasKey $registry $kind) (not (include "platform.capabilities.isStable" (list $top $kind))) (not (include "platform.capabilities.apiVersionFor" (list $top $kind))) -}}
+{{- range $res := $list -}}
+{{- if not $res.apiVersion -}}
+{{- $skipped = append $skipped (printf "%s/%s" $kind ($res.name | default "")) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- join " " $skipped -}}
+{{- end -}}
+
+{{/*
 platform.capabilities.clusterScoped — space-delimited set of cluster-scoped
 Kinds, used by the generic renderer to decide whether to stamp a namespace.
 */}}

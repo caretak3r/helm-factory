@@ -653,6 +653,9 @@ exports:
     # PriorityClass, StorageClass, ...) in extraObjects are refused by default:
     # a namespace-scoped app chart granting itself cluster-wide objects should
     # be a deliberate, reviewed decision. Set true to allow them.
+    # Kinds must exist in the platform capability registry; unknown Kinds fail at
+    # template time unless the entry sets apiVersion explicitly (rendered verbatim).
+    # Registry Kinds whose API the cluster does not serve are skipped with a NOTES warning.
     allowClusterScopedExtras: false
     extraObjects: {}
 
