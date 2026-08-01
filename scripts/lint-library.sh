@@ -362,22 +362,30 @@ else
   fi
 fi
 
-echo "==> negative render: secondary Kinds drop individually when their sibling API is served but theirs is not (hf-vh8)"
+echo "==> negative render: partially-served features honor their composition policy (hf-vh8)"
 # AuthorizationPolicy/GRPCRoute ride the PeerAuthentication/HTTPRoute wrapper
 # gate in _app.yaml but are separate CRDs negotiated on their own. The negative
 # render above (zero APIs served) does NOT catch a regression here — with zero
 # APIs served the wrapper gate closes the whole template before these secondary
-# Kinds are ever reached. These legs serve the SIBLING API only, so the wrapper
-# gate opens and the secondary Kind's own guard is what has to hold the line.
+# Kinds are ever reached. These legs serve the SIBLING API only, so the partial
+# case is what has to hold the line, per the feature's composition policy.
+#
+# mtls is composition: atomic (plan 010, supersedes plan 005's per-Kind skip
+# assertion here). Rendering PeerAuthentication without the AuthorizationPolicy
+# that carries allowedPrincipals is MORE permissive than rendering neither, so
+# the whole pair must drop — this leg is strictly more fail-closed than the
+# "PeerAuthentication present, AuthorizationPolicy absent" it replaces.
 if ! neg=$("$RENDER" full --set capabilities.apiVersions=null \
     --api-versions security.istio.io/v1beta1/PeerAuthentication 2>&1); then
   echo "  FAIL: partial-serving render (PeerAuthentication only) itself failed"; echo "$neg" | tail -5; fail=1
 else
   validate_render "partial-serving (PeerAuthentication only)" "$neg"
-  if grep -qE '^kind: PeerAuthentication$' <<<"$neg" && ! grep -qE '^kind: AuthorizationPolicy$' <<<"$neg"; then
-    echo "  OK: AuthorizationPolicy skipped when only PeerAuthentication's API is served"
+  if grep -qE '^kind: (PeerAuthentication|AuthorizationPolicy)$' <<<"$neg"; then
+    echo "  FAIL: atomic mtls rendered a half-pair when only PeerAuthentication's API is served"
+    echo "        (an unrestricted PeerAuthentication without its principal-restricting"
+    echo "        AuthorizationPolicy is fail-OPEN; the whole feature must skip)"; fail=1
   else
-    echo "  FAIL: expected PeerAuthentication present and AuthorizationPolicy absent"; fail=1
+    echo "  OK: atomic mtls skips both Kinds when only PeerAuthentication's API is served"
   fi
   if grep -qE '^\{\}\s*$' <<<"$neg"; then
     echo "  FAIL: empty {} document emitted"; fail=1
@@ -404,12 +412,16 @@ if ! pos=$("$RENDER" full --set capabilities.apiVersions=null \
   echo "  FAIL: positive-control render failed"; echo "$pos" | tail -5; fail=1
 else
   validate_render "positive control (PeerAuthentication + AuthorizationPolicy served)" "$pos"
-  if grep -qE '^kind: AuthorizationPolicy$' <<<"$pos" && \
+  if grep -qE '^kind: PeerAuthentication$' <<<"$pos" && \
+     grep -qE '^kind: AuthorizationPolicy$' <<<"$pos" && \
      grep -A1 '^kind: AuthorizationPolicy$' <<<"$pos" | grep -q '.' && \
      grep -B1 '^kind: AuthorizationPolicy$' <<<"$pos" | grep -q '^apiVersion: security.istio.io/v1beta1$'; then
-    echo "  OK: AuthorizationPolicy renders at security.istio.io/v1beta1 once its own API is served (no over-skip)"
+    echo "  OK: atomic mtls renders BOTH Kinds once both APIs are served"
+    echo "      (no over-skip; AuthorizationPolicy negotiated to security.istio.io/v1beta1)"
   else
-    echo "  FAIL: AuthorizationPolicy did not render at the expected apiVersion once served"; fail=1
+    echo "  FAIL: expected BOTH PeerAuthentication and AuthorizationPolicy (the latter at"
+    echo "        security.istio.io/v1beta1) once both APIs are served — atomic composition"
+    echo "        must hold the pair back only while an API is genuinely missing"; fail=1
   fi
 fi
 
@@ -1112,12 +1124,12 @@ else
   echo "  FAIL: helm install --dry-run=client failed for minimal fixture with force-assumed apiVersions"; echo "$out" | tail -5; fail=1
 fi
 
-# No false positives: gatedKinds has 7 rows — 5 features gated in _app.yaml
-# (Certificate, PeerAuthentication, HTTPRoute, ServiceMonitor, PodMonitor) plus
-# 2 secondary Kinds gated inside their own feature template (AuthorizationPolicy,
-# GRPCRoute). The full fixture enables mtls and gatewayApi.httpRoute (not
-# grpcRoute) and force-assumes every API those enabled Kinds need, so it must
-# stay silent.
+# No false positives: the features registry covers 7 Kinds — 5 representatives
+# gated in _app.yaml (Certificate, PeerAuthentication, HTTPRoute, ServiceMonitor,
+# PodMonitor) plus 2 secondary Kinds gated inside their own feature template
+# (AuthorizationPolicy, GRPCRoute). The full fixture enables mtls and
+# gatewayApi.httpRoute (not grpcRoute) and force-assumes every API those enabled
+# Kinds need, so it must stay silent.
 if out=$(notes_of full 2>&1); then
   if grep -q "SKIPPED KINDS" <<<"$out"; then
     echo "  FAIL: full fixture warns about skipped Kinds it actually renders"; echo "$out" | tail -5; fail=1
@@ -1128,16 +1140,39 @@ else
   echo "  FAIL: helm install --dry-run=client failed for full fixture"; echo "$out" | tail -5; fail=1
 fi
 
-# Secondary-Kind NOTES coverage (hf-vh8): AuthorizationPolicy is gated inside
-# _mtls.yaml, not by an _app.yaml wrapper gate, but a skip must still surface
-# in NOTES like any other gated Kind. Force-assume only PeerAuthentication's
-# API (the sibling the wrapper gate checks) so mtls's wrapper gate opens and
-# renders PeerAuthentication, while AuthorizationPolicy's own guard skips it.
-if out=$(notes_of full --set 'capabilities.apiVersions={security.istio.io/v1beta1/PeerAuthentication}' 2>&1); then
-  if grep -q "SKIPPED KINDS" <<<"$out" && grep -q "AuthorizationPolicy (tried" <<<"$out"; then
-    echo "  OK: NOTES names AuthorizationPolicy in SKIPPED KINDS when its sibling API is served but its own is not"
+# Atomic set, nothing served: an enabled mtls feature with no force-assume has
+# neither API. BOTH Kinds of the set must be named — a warning that mentions only
+# the representative reads as "PeerAuthentication is missing" and leaves the
+# operator believing the AuthorizationPolicy carrying allowedPrincipals deployed.
+if out=$(notes_of minimal --set mtls.enabled=true --set mtls.allowAllPrincipals=true 2>&1); then
+  if grep -q "SKIPPED KINDS" <<<"$out" &&
+     grep -q "PeerAuthentication (tried" <<<"$out" &&
+     grep -q "AuthorizationPolicy (tried" <<<"$out"; then
+    echo "  OK: NOTES names both Kinds of the atomic mtls set when neither API is served"
   else
-    echo "  FAIL: NOTES did not name the skipped secondary Kind AuthorizationPolicy"; echo "$out" | tail -5; fail=1
+    echo "  FAIL: NOTES did not name both PeerAuthentication and AuthorizationPolicy as skipped"; echo "$out" | tail -5; fail=1
+  fi
+else
+  echo "  FAIL: helm install --dry-run=client failed for minimal fixture with mtls enabled"; echo "$out" | tail -5; fail=1
+fi
+
+# Secondary-Kind NOTES coverage (hf-vh8, extended by plan 010): AuthorizationPolicy
+# has no _app.yaml wrapper gate of its own, but a skip must still surface in NOTES
+# like any other gated Kind. Force-assume only PeerAuthentication's API: mtls is
+# atomic, so the missing AuthorizationPolicy API holds the whole feature back —
+# and the HELD-BACK Kind has to be named too. PeerAuthentication's own API IS
+# served here, so it is the atomic expansion in skippedKinds, and nothing else,
+# that puts it in the warning; without it the operator sees a PeerAuthentication
+# the cluster can serve, no warning about it, and no object.
+if out=$(notes_of full --set 'capabilities.apiVersions={security.istio.io/v1beta1/PeerAuthentication}' 2>&1); then
+  if grep -q "SKIPPED KINDS" <<<"$out" &&
+     grep -q "AuthorizationPolicy (tried" <<<"$out" &&
+     grep -q "PeerAuthentication (tried" <<<"$out"; then
+    echo "  OK: NOTES names BOTH mtls Kinds when only PeerAuthentication's API is served"
+    echo "      (the served-but-held-back half of an atomic set is reported, not silent)"
+  else
+    echo "  FAIL: NOTES did not name both the skipped secondary Kind AuthorizationPolicy and"
+    echo "        the served-but-held-back PeerAuthentication"; echo "$out" | tail -5; fail=1
   fi
 else
   echo "  FAIL: helm install --dry-run=client failed for full fixture with PeerAuthentication-only force-assume"; echo "$out" | tail -5; fail=1
@@ -1179,39 +1214,106 @@ else
   echo "  FAIL: helm install --dry-run=client failed for full fixture"; echo "$out" | tail -5; fail=1
 fi
 
-echo "==> capability gates: _app.yaml gate set vs gatedKinds registry (name-set, hf-vh8)"
-# Anti-drift: the emitter gates and the warning must read the SAME table. Every
-# capability gate in _app.yaml goes through platform.capabilities.gateOpen, and
-# every _app.yaml gate Kind must have a gatedKinds row. Kinds gated ONLY inside
-# their own feature template (not wrapped in _app.yaml) are the documented
-# secondary-Kind set — currently AuthorizationPolicy and GRPCRoute. This is a
-# name-set comparison (not a count) so a renamed/mismatched row cannot pass, and
-# a dotted gatedKinds value (e.g. "gatewayApi.grpcRoute") matches correctly.
+echo "==> capability anti-drift: features registry vs gate sites vs emitters (content, hf-vh8)"
+# platform.capabilities.features is the ONE place that knows which Kinds a gated
+# feature emits. Counting gate sites against table rows (pre-005) could not see a
+# renamed row; 005's name-set check could, but only against a HARDCODED secondary
+# set. These checks compare CONTENT in every direction and derive the secondary
+# set from the registry itself, so a Kind emitted by a generator but missing from
+# its feature's row — the bug class behind AuthorizationPolicy/GRPCRoute — is
+# structurally detectable. The registry's literal-YAML shape is load-bearing for
+# this sed/grep parser; the define's comment in _capabilities.tpl says so.
+feat_block=$(sed -n '/define "platform.capabilities.features"/,/^{{- end -}}/p' \
+  "$LIB/templates/_capabilities.tpl" || true)
+# Every Kind of every feature, and the representatives (first Kind of each row).
+feat_all_kinds_raw=$(grep -oE 'kinds: \[[^]]+\]' <<<"$feat_block" | sed 's/kinds: //' \
+  | tr -d '[] ' | tr ',' '\n' | LC_ALL=C sort || true)
+feat_all_kinds=$(LC_ALL=C uniq <<<"$feat_all_kinds_raw" || true)
+feat_rep_kinds=$(grep -oE 'kinds: \[[^]]+\]' <<<"$feat_block" \
+  | sed -E 's/kinds: \[([^],]+).*/\1/' | LC_ALL=C sort -u || true)
 # Kind names are the only "Quoted" capitalized tokens on gateOpen lines
 # ("platform.capabilities.gateOpen" itself starts lowercase).
 gate_kinds=$(grep 'platform.capabilities.gateOpen' "$LIB/templates/_app.yaml" \
   | grep -oE '"[A-Z][A-Za-z]+"' | tr -d '"' | LC_ALL=C sort -u || true)
-gated_keys=$(sed -n '/define "platform.capabilities.gatedKinds"/,/^{{- end -}}/p' \
-  "$LIB/templates/_capabilities.tpl" | grep -oE '^[A-Za-z]+:' | tr -d ':' \
-  | LC_ALL=C sort -u || true)
+# Kinds a generator negotiates STRICTLY on its own (apiVersionFor, not
+# ...OrDefault): exactly the secondary Kinds that gate inside their template.
+emitter_gated_kinds=$(grep -hoE 'apiVersionFor" \(list \. "[A-Z][A-Za-z]+"' "$LIB"/templates/_*.yaml \
+  | grep -oE '"[A-Z][A-Za-z]+"$' | tr -d '"' | LC_ALL=C sort -u || true)
 raw_gates=$(grep -c 'platform.capabilities.apiVersionFor' "$LIB/templates/_app.yaml" || true)
-secondary_expected=$(printf 'AuthorizationPolicy\nGRPCRoute\n')
-if [[ -z "$gate_kinds" ]]; then
-  echo "  FAIL: no gateOpen call sites found in _app.yaml"; fail=1
+if [[ -z "$feat_all_kinds" || -z "$feat_rep_kinds" || -z "$gate_kinds" ]]; then
+  echo "  FAIL: could not parse the features registry or the _app.yaml gate sites"
+  echo "        (literal-YAML shape contract broken, or no gateOpen call sites)"; fail=1
 fi
-unregistered=$(comm -23 <(printf '%s\n' "$gate_kinds") <(printf '%s\n' "$gated_keys") || true)
-if [[ -n "$unregistered" ]]; then
-  echo "  FAIL: gated in _app.yaml but missing from gatedKinds: $unregistered"; fail=1
+registry_fail=0
+# Every feature declares exactly one composition policy, spelled one of the two
+# ways platform.capabilities.kindAvailable understands. A typo'd or missing
+# policy fails closed at render time, but only for a values combination that
+# actually enables that feature — catch it statically instead.
+feat_rows=$(grep -cE '^  kinds: \[' <<<"$feat_block" || true)
+feat_comps=$(grep -cE '^  composition: (atomic|independent)$' <<<"$feat_block" || true)
+if [[ "$feat_rows" -gt 0 && "$feat_comps" -eq "$feat_rows" ]]; then
+  echo "  OK: all $feat_rows features declare a valid composition policy (atomic|independent)"
 else
-  echo "  OK: every _app.yaml gate has a gatedKinds row"
+  echo "  FAIL: features registry has $feat_rows Kind set(s) but $feat_comps valid composition"
+  echo "        line(s) — each feature needs exactly one 'composition: atomic' or"
+  echo "        'composition: independent'"
+  registry_fail=1
 fi
-secondary=$(comm -13 <(printf '%s\n' "$gate_kinds") <(printf '%s\n' "$gated_keys") || true)
-if [[ "$secondary" == "$secondary_expected" ]]; then
-  echo "  OK: template-internal gates are exactly: AuthorizationPolicy GRPCRoute"
+feat_dupes=$(LC_ALL=C uniq -d <<<"$feat_all_kinds_raw" || true)
+if [[ -n "$feat_dupes" ]]; then
+  echo "  FAIL: Kind(s) registered under more than one feature: $(tr '\n' ' ' <<<"$feat_dupes")"
+  registry_fail=1
 else
-  echo "  FAIL: gatedKinds rows without an _app.yaml gate changed."
-  echo "        expected exactly {AuthorizationPolicy, GRPCRoute}, got: $(echo "$secondary" | tr '\n' ' ')"
-  echo "        New secondary Kinds must gate inside their template AND be added to this list."
+  echo "  OK: every registered Kind belongs to exactly one feature"
+fi
+# Representatives are gated in _app.yaml; secondaries are gated in their generator.
+for reg_kind in $feat_rep_kinds; do
+  if ! grep -q "platform.capabilities.gateOpen\" (list . \"$reg_kind\")" "$LIB/templates/_app.yaml"; then
+    echo "  FAIL: representative Kind $reg_kind has no gateOpen site in _app.yaml"
+    registry_fail=1
+  fi
+done
+feat_secondary=$(comm -23 <(printf '%s\n' "$feat_all_kinds") <(printf '%s\n' "$feat_rep_kinds") || true)
+for reg_kind in $feat_secondary; do
+  if grep -q "platform.capabilities.gateOpen\" (list . \"$reg_kind\")" "$LIB/templates/_app.yaml"; then
+    echo "  FAIL: secondary Kind $reg_kind has an _app.yaml gate site; secondary Kinds"
+    echo "        gate inside their own generator (make it a representative instead)"
+    registry_fail=1
+  fi
+  if ! grep -qw "$reg_kind" <<<"$emitter_gated_kinds"; then
+    echo "  FAIL: secondary Kind $reg_kind is registered but no generator negotiates it"
+    echo "        with the strict platform.capabilities.apiVersionFor — it would ride"
+    echo "        its sibling's gate and emit an apiVersion the cluster may not serve"
+    registry_fail=1
+  fi
+done
+# Every registered Kind must actually be emitted by a generator.
+for reg_kind in $feat_all_kinds; do
+  if ! grep -qE "^kind: $reg_kind\$" "$LIB"/templates/_*.yaml; then
+    echo "  FAIL: features registry lists $reg_kind but no generator emits it"
+    registry_fail=1
+  fi
+done
+# Reverse direction: every gate site and every strictly-negotiated emitter Kind
+# must be registered.
+for reg_kind in $gate_kinds; do
+  if ! grep -qw "$reg_kind" <<<"$feat_all_kinds"; then
+    echo "  FAIL: _app.yaml gates on $reg_kind, which is not in the features registry"
+    registry_fail=1
+  fi
+done
+for reg_kind in $emitter_gated_kinds; do
+  if ! grep -qw "$reg_kind" <<<"$feat_all_kinds"; then
+    echo "  FAIL: a generator strictly negotiates $reg_kind, which is not in the features"
+    echo "        registry — its skip would never reach NOTES SKIPPED KINDS"
+    registry_fail=1
+  fi
+done
+if [[ "$registry_fail" -eq 0 ]]; then
+  echo "  OK: registry <-> gate sites <-> emitters agree in both directions"
+  echo "      (representatives gate in _app.yaml: $(tr '\n' ' ' <<<"$feat_rep_kinds"))"
+  echo "      (secondaries gate in their generator: $(tr '\n' ' ' <<<"$feat_secondary"))"
+else
   fail=1
 fi
 if [[ "$raw_gates" -eq 0 ]]; then

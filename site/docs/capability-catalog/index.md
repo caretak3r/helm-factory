@@ -89,19 +89,29 @@ Rendered only when the CRD's API is served or force-assumed.
 ## Tier-1 gated Kinds → values block
 
 Five CRD-backed Kinds are wired into `platform.app` behind a two-part gate (feature
-flag plus capability). One table, `platform.capabilities.gatedKinds`, is the single
+flag plus capability). One registry, `platform.capabilities.features`, is the single
 source of truth for both the emitter gate and the NOTES warning, so a gated feature
 can't be enabled in one and forgotten in the other. When it's enabled but the API
 is absent, `platform.app` renders nothing and `platform.notes` prints a visible
 WARNING.
 
-| Kind | Enabling values block |
-|---|---|
-| Certificate | `certificate` |
-| PeerAuthentication | `mtls` |
-| HTTPRoute | `gatewayApi` |
-| ServiceMonitor | `serviceMonitor` |
-| PodMonitor | `podMonitor` |
+Each row also declares every Kind the feature's generator can emit and a
+composition policy. `atomic` means all-or-nothing: `mtls` renders only when BOTH
+`PeerAuthentication` and `AuthorizationPolicy` are available, because a
+`PeerAuthentication` without its principal-restricting `AuthorizationPolicy` is
+more permissive than neither. `independent` means per-Kind: a `gatewayApi`
+cluster serving `HTTPRoute` but not `GRPCRoute` gets the route it can serve.
+Secondary Kinds gate inside their own generator rather than at the
+`platform.app` call site, but they are registry members, so their skips reach the
+NOTES warning too.
+
+| Kind | Enabling values block | Composition |
+|---|---|---|
+| Certificate | `certificate` | atomic |
+| PeerAuthentication, AuthorizationPolicy | `mtls` | atomic |
+| HTTPRoute, GRPCRoute | `gatewayApi` (`gatewayApi.grpcRoute` for GRPCRoute) | independent |
+| ServiceMonitor | `serviceMonitor` | atomic |
+| PodMonitor | `podMonitor` | atomic |
 
 ## Cluster-scoped Kinds
 
