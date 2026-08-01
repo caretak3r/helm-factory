@@ -1226,8 +1226,9 @@ echo "==> capability anti-drift: features registry vs gate sites vs emitters (co
 feat_block=$(sed -n '/define "platform.capabilities.features"/,/^{{- end -}}/p' \
   "$LIB/templates/_capabilities.tpl" || true)
 # Every Kind of every feature, and the representatives (first Kind of each row).
-feat_all_kinds=$(grep -oE 'kinds: \[[^]]+\]' <<<"$feat_block" | sed 's/kinds: //' \
-  | tr -d '[] ' | tr ',' '\n' | LC_ALL=C sort -u || true)
+feat_all_kinds_raw=$(grep -oE 'kinds: \[[^]]+\]' <<<"$feat_block" | sed 's/kinds: //' \
+  | tr -d '[] ' | tr ',' '\n' | LC_ALL=C sort || true)
+feat_all_kinds=$(LC_ALL=C uniq <<<"$feat_all_kinds_raw" || true)
 feat_rep_kinds=$(grep -oE 'kinds: \[[^]]+\]' <<<"$feat_block" \
   | sed -E 's/kinds: \[([^],]+).*/\1/' | LC_ALL=C sort -u || true)
 # Kind names are the only "Quoted" capitalized tokens on gateOpen lines
@@ -1258,7 +1259,7 @@ else
   echo "        'composition: independent'"
   registry_fail=1
 fi
-feat_dupes=$(LC_ALL=C uniq -d <<<"$feat_all_kinds" || true)
+feat_dupes=$(LC_ALL=C uniq -d <<<"$feat_all_kinds_raw" || true)
 if [[ -n "$feat_dupes" ]]; then
   echo "  FAIL: Kind(s) registered under more than one feature: $(tr '\n' ' ' <<<"$feat_dupes")"
   registry_fail=1
