@@ -250,22 +250,58 @@ Usage: include "platform.capabilities.apiVersionsFor" (list $top "Certificate")
 {{- end -}}
 
 {{/*
-platform.capabilities.gatedKinds — the CRD-backed Kinds platform.app skips when
-their API is not served, mapped to the values block that enables each one. Single
-source of truth: the emitter gates (platform.capabilities.gateOpen) and the NOTES
-warning (platform.capabilities.skippedKinds) both read this table, so a gated
-feature cannot be wired into one and forgotten in the other. The values block may
-be a dotted path (e.g. "gatewayApi.grpcRoute") for a feature nested under another
-gate — see platform.capabilities.featureEnabled, which every segment must satisfy.
+platform.capabilities.features — the single source of truth for gated features:
+the values block that enables each one (the top-level key IS the values key), the
+FULL set of Kinds its generator can emit (first Kind = representative, used at the
+_app.yaml gate site), and the composition policy:
+  atomic      — all-or-nothing: the feature renders only when EVERY Kind in the
+                set has a served/force-assumed API (fail closed: e.g.
+                PeerAuthentication without AuthorizationPolicy would drop the
+                principal restriction and be MORE permissive).
+  independent — per-Kind skip: each Kind renders iff requested by its own
+                sub-block AND its API is available.
+Optional `requires` maps a Kind to the values path that must be enabled for it to
+be REQUESTED, when that differs from the feature key; the path is walked by
+platform.capabilities.featureEnabled, which demands .enabled at EVERY segment.
+Only Kinds with their own sub-block need an entry — every other Kind is requested
+whenever the feature block is enabled.
+The body must stay LITERAL YAML in exactly this shape — the lint gate parses it
+with sed/grep (anti-drift content check).
 */}}
-{{- define "platform.capabilities.gatedKinds" -}}
-Certificate: certificate
-PeerAuthentication: mtls
-AuthorizationPolicy: mtls
-HTTPRoute: gatewayApi
-GRPCRoute: gatewayApi.grpcRoute
-ServiceMonitor: serviceMonitor
-PodMonitor: podMonitor
+{{- define "platform.capabilities.features" -}}
+certificate:
+  composition: atomic
+  kinds: [Certificate]
+mtls:
+  composition: atomic
+  kinds: [PeerAuthentication, AuthorizationPolicy]
+gatewayApi:
+  composition: independent
+  kinds: [HTTPRoute, GRPCRoute]
+  requires:
+    GRPCRoute: gatewayApi.grpcRoute
+serviceMonitor:
+  composition: atomic
+  kinds: [ServiceMonitor]
+podMonitor:
+  composition: atomic
+  kinds: [PodMonitor]
+{{- end -}}
+
+{{/*
+platform.capabilities.kindRequires — the values path whose .enabled makes a gated
+Kind REQUESTED: the owning feature's key, or its `requires` override. Empty when
+the Kind is not in the features registry.
+Usage: include "platform.capabilities.kindRequires" (list $top "GRPCRoute")
+*/}}
+{{- define "platform.capabilities.kindRequires" -}}
+{{- $top := index . 0 -}}
+{{- $kind := index . 1 -}}
+{{- range $name, $feature := fromYaml (include "platform.capabilities.features" $top) -}}
+  {{- if has $kind $feature.kinds -}}
+    {{- (index ($feature.requires | default dict) $kind) | default $name -}}
+  {{- end -}}
+{{- end -}}
 {{- end -}}
 
 {{/*
@@ -301,9 +337,10 @@ Usage: {{- if include "platform.capabilities.gateOpen" (list . "Certificate") }}
 {{- define "platform.capabilities.gateOpen" -}}
 {{- $top := index . 0 -}}
 {{- $kind := index . 1 -}}
-{{- $gated := fromYaml (include "platform.capabilities.gatedKinds" $top) -}}
-{{- $valuesKey := index $gated $kind -}}
-{{- if and (include "platform.capabilities.featureEnabled" (list $top $valuesKey)) (include "platform.capabilities.apiVersionFor" (list $top $kind)) -}}true{{- end -}}
+{{- $valuesKey := include "platform.capabilities.kindRequires" (list $top $kind) -}}
+{{- if $valuesKey -}}
+  {{- if and (include "platform.capabilities.featureEnabled" (list $top $valuesKey)) (include "platform.capabilities.apiVersionFor" (list $top $kind)) -}}true{{- end -}}
+{{- end -}}
 {{- end -}}
 
 {{/*
@@ -311,17 +348,25 @@ platform.capabilities.skippedKinds — the complement of gateOpen: a space-delim
 list of Kinds that are enabled in values but whose API is neither served nor
 force-assumed, so platform.app rendered NOTHING for them. platform.notes turns
 this into an operator-visible WARNING; silence here is what makes the gap silent.
+Derived from platform.capabilities.features: every requested Kind of every
+feature, not just the representative one, so a secondary Kind that skips on its
+own (AuthorizationPolicy, GRPCRoute) is warned about like any other. Sorted so
+the warning text is stable regardless of registry order.
 Usage: include "platform.capabilities.skippedKinds" $top
 */}}
 {{- define "platform.capabilities.skippedKinds" -}}
 {{- $top := . -}}
 {{- $skipped := list -}}
-{{- range $kind, $valuesKey := fromYaml (include "platform.capabilities.gatedKinds" $top) -}}
-  {{- if and (include "platform.capabilities.featureEnabled" (list $top $valuesKey)) (not (include "platform.capabilities.apiVersionFor" (list $top $kind))) -}}
-    {{- $skipped = append $skipped $kind -}}
+{{- range $name, $feature := fromYaml (include "platform.capabilities.features" $top) -}}
+  {{- $requires := $feature.requires | default dict -}}
+  {{- range $kind := $feature.kinds -}}
+    {{- $valuesKey := (index $requires $kind) | default $name -}}
+    {{- if and (include "platform.capabilities.featureEnabled" (list $top $valuesKey)) (not (include "platform.capabilities.apiVersionFor" (list $top $kind))) -}}
+      {{- $skipped = append $skipped $kind -}}
+    {{- end -}}
   {{- end -}}
 {{- end -}}
-{{- join " " $skipped -}}
+{{- join " " (sortAlpha $skipped) -}}
 {{- end -}}
 
 {{/*

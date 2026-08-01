@@ -1112,12 +1112,12 @@ else
   echo "  FAIL: helm install --dry-run=client failed for minimal fixture with force-assumed apiVersions"; echo "$out" | tail -5; fail=1
 fi
 
-# No false positives: gatedKinds has 7 rows — 5 features gated in _app.yaml
-# (Certificate, PeerAuthentication, HTTPRoute, ServiceMonitor, PodMonitor) plus
-# 2 secondary Kinds gated inside their own feature template (AuthorizationPolicy,
-# GRPCRoute). The full fixture enables mtls and gatewayApi.httpRoute (not
-# grpcRoute) and force-assumes every API those enabled Kinds need, so it must
-# stay silent.
+# No false positives: the features registry covers 7 Kinds — 5 representatives
+# gated in _app.yaml (Certificate, PeerAuthentication, HTTPRoute, ServiceMonitor,
+# PodMonitor) plus 2 secondary Kinds gated inside their own feature template
+# (AuthorizationPolicy, GRPCRoute). The full fixture enables mtls and
+# gatewayApi.httpRoute (not grpcRoute) and force-assumes every API those enabled
+# Kinds need, so it must stay silent.
 if out=$(notes_of full 2>&1); then
   if grep -q "SKIPPED KINDS" <<<"$out"; then
     echo "  FAIL: full fixture warns about skipped Kinds it actually renders"; echo "$out" | tail -5; fail=1
@@ -1179,39 +1179,91 @@ else
   echo "  FAIL: helm install --dry-run=client failed for full fixture"; echo "$out" | tail -5; fail=1
 fi
 
-echo "==> capability gates: _app.yaml gate set vs gatedKinds registry (name-set, hf-vh8)"
-# Anti-drift: the emitter gates and the warning must read the SAME table. Every
-# capability gate in _app.yaml goes through platform.capabilities.gateOpen, and
-# every _app.yaml gate Kind must have a gatedKinds row. Kinds gated ONLY inside
-# their own feature template (not wrapped in _app.yaml) are the documented
-# secondary-Kind set — currently AuthorizationPolicy and GRPCRoute. This is a
-# name-set comparison (not a count) so a renamed/mismatched row cannot pass, and
-# a dotted gatedKinds value (e.g. "gatewayApi.grpcRoute") matches correctly.
+echo "==> capability anti-drift: features registry vs gate sites vs emitters (content, hf-vh8)"
+# platform.capabilities.features is the ONE place that knows which Kinds a gated
+# feature emits. Counting gate sites against table rows (pre-005) could not see a
+# renamed row; 005's name-set check could, but only against a HARDCODED secondary
+# set. These checks compare CONTENT in every direction and derive the secondary
+# set from the registry itself, so a Kind emitted by a generator but missing from
+# its feature's row — the bug class behind AuthorizationPolicy/GRPCRoute — is
+# structurally detectable. The registry's literal-YAML shape is load-bearing for
+# this sed/grep parser; the define's comment in _capabilities.tpl says so.
+feat_block=$(sed -n '/define "platform.capabilities.features"/,/^{{- end -}}/p' \
+  "$LIB/templates/_capabilities.tpl" || true)
+# Every Kind of every feature, and the representatives (first Kind of each row).
+feat_all_kinds=$(grep -oE 'kinds: \[[^]]+\]' <<<"$feat_block" | sed 's/kinds: //' \
+  | tr -d '[] ' | tr ',' '\n' | LC_ALL=C sort -u || true)
+feat_rep_kinds=$(grep -oE 'kinds: \[[^]]+\]' <<<"$feat_block" \
+  | sed -E 's/kinds: \[([^],]+).*/\1/' | LC_ALL=C sort -u || true)
 # Kind names are the only "Quoted" capitalized tokens on gateOpen lines
 # ("platform.capabilities.gateOpen" itself starts lowercase).
 gate_kinds=$(grep 'platform.capabilities.gateOpen' "$LIB/templates/_app.yaml" \
   | grep -oE '"[A-Z][A-Za-z]+"' | tr -d '"' | LC_ALL=C sort -u || true)
-gated_keys=$(sed -n '/define "platform.capabilities.gatedKinds"/,/^{{- end -}}/p' \
-  "$LIB/templates/_capabilities.tpl" | grep -oE '^[A-Za-z]+:' | tr -d ':' \
-  | LC_ALL=C sort -u || true)
+# Kinds a generator negotiates STRICTLY on its own (apiVersionFor, not
+# ...OrDefault): exactly the secondary Kinds that gate inside their template.
+emitter_gated_kinds=$(grep -hoE 'apiVersionFor" \(list \. "[A-Z][A-Za-z]+"' "$LIB"/templates/_*.yaml \
+  | grep -oE '"[A-Z][A-Za-z]+"$' | tr -d '"' | LC_ALL=C sort -u || true)
 raw_gates=$(grep -c 'platform.capabilities.apiVersionFor' "$LIB/templates/_app.yaml" || true)
-secondary_expected=$(printf 'AuthorizationPolicy\nGRPCRoute\n')
-if [[ -z "$gate_kinds" ]]; then
-  echo "  FAIL: no gateOpen call sites found in _app.yaml"; fail=1
+if [[ -z "$feat_all_kinds" || -z "$feat_rep_kinds" || -z "$gate_kinds" ]]; then
+  echo "  FAIL: could not parse the features registry or the _app.yaml gate sites"
+  echo "        (literal-YAML shape contract broken, or no gateOpen call sites)"; fail=1
 fi
-unregistered=$(comm -23 <(printf '%s\n' "$gate_kinds") <(printf '%s\n' "$gated_keys") || true)
-if [[ -n "$unregistered" ]]; then
-  echo "  FAIL: gated in _app.yaml but missing from gatedKinds: $unregistered"; fail=1
+registry_fail=0
+feat_dupes=$(LC_ALL=C uniq -d <<<"$feat_all_kinds" || true)
+if [[ -n "$feat_dupes" ]]; then
+  echo "  FAIL: Kind(s) registered under more than one feature: $(tr '\n' ' ' <<<"$feat_dupes")"
+  registry_fail=1
 else
-  echo "  OK: every _app.yaml gate has a gatedKinds row"
+  echo "  OK: every registered Kind belongs to exactly one feature"
 fi
-secondary=$(comm -13 <(printf '%s\n' "$gate_kinds") <(printf '%s\n' "$gated_keys") || true)
-if [[ "$secondary" == "$secondary_expected" ]]; then
-  echo "  OK: template-internal gates are exactly: AuthorizationPolicy GRPCRoute"
+# Representatives are gated in _app.yaml; secondaries are gated in their generator.
+for reg_kind in $feat_rep_kinds; do
+  if ! grep -q "platform.capabilities.gateOpen\" (list . \"$reg_kind\")" "$LIB/templates/_app.yaml"; then
+    echo "  FAIL: representative Kind $reg_kind has no gateOpen site in _app.yaml"
+    registry_fail=1
+  fi
+done
+feat_secondary=$(comm -23 <(printf '%s\n' "$feat_all_kinds") <(printf '%s\n' "$feat_rep_kinds") || true)
+for reg_kind in $feat_secondary; do
+  if grep -q "platform.capabilities.gateOpen\" (list . \"$reg_kind\")" "$LIB/templates/_app.yaml"; then
+    echo "  FAIL: secondary Kind $reg_kind has an _app.yaml gate site; secondary Kinds"
+    echo "        gate inside their own generator (make it a representative instead)"
+    registry_fail=1
+  fi
+  if ! grep -qw "$reg_kind" <<<"$emitter_gated_kinds"; then
+    echo "  FAIL: secondary Kind $reg_kind is registered but no generator negotiates it"
+    echo "        with the strict platform.capabilities.apiVersionFor — it would ride"
+    echo "        its sibling's gate and emit an apiVersion the cluster may not serve"
+    registry_fail=1
+  fi
+done
+# Every registered Kind must actually be emitted by a generator.
+for reg_kind in $feat_all_kinds; do
+  if ! grep -qE "^kind: $reg_kind\$" "$LIB"/templates/_*.yaml; then
+    echo "  FAIL: features registry lists $reg_kind but no generator emits it"
+    registry_fail=1
+  fi
+done
+# Reverse direction: every gate site and every strictly-negotiated emitter Kind
+# must be registered.
+for reg_kind in $gate_kinds; do
+  if ! grep -qw "$reg_kind" <<<"$feat_all_kinds"; then
+    echo "  FAIL: _app.yaml gates on $reg_kind, which is not in the features registry"
+    registry_fail=1
+  fi
+done
+for reg_kind in $emitter_gated_kinds; do
+  if ! grep -qw "$reg_kind" <<<"$feat_all_kinds"; then
+    echo "  FAIL: a generator strictly negotiates $reg_kind, which is not in the features"
+    echo "        registry — its skip would never reach NOTES SKIPPED KINDS"
+    registry_fail=1
+  fi
+done
+if [[ "$registry_fail" -eq 0 ]]; then
+  echo "  OK: registry <-> gate sites <-> emitters agree in both directions"
+  echo "      (representatives gate in _app.yaml: $(tr '\n' ' ' <<<"$feat_rep_kinds"))"
+  echo "      (secondaries gate in their generator: $(tr '\n' ' ' <<<"$feat_secondary"))"
 else
-  echo "  FAIL: gatedKinds rows without an _app.yaml gate changed."
-  echo "        expected exactly {AuthorizationPolicy, GRPCRoute}, got: $(echo "$secondary" | tr '\n' ' ')"
-  echo "        New secondary Kinds must gate inside their template AND be added to this list."
   fail=1
 fi
 if [[ "$raw_gates" -eq 0 ]]; then
