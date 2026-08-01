@@ -412,12 +412,16 @@ if ! pos=$("$RENDER" full --set capabilities.apiVersions=null \
   echo "  FAIL: positive-control render failed"; echo "$pos" | tail -5; fail=1
 else
   validate_render "positive control (PeerAuthentication + AuthorizationPolicy served)" "$pos"
-  if grep -qE '^kind: AuthorizationPolicy$' <<<"$pos" && \
+  if grep -qE '^kind: PeerAuthentication$' <<<"$pos" && \
+     grep -qE '^kind: AuthorizationPolicy$' <<<"$pos" && \
      grep -A1 '^kind: AuthorizationPolicy$' <<<"$pos" | grep -q '.' && \
      grep -B1 '^kind: AuthorizationPolicy$' <<<"$pos" | grep -q '^apiVersion: security.istio.io/v1beta1$'; then
-    echo "  OK: AuthorizationPolicy renders at security.istio.io/v1beta1 once its own API is served (no over-skip)"
+    echo "  OK: atomic mtls renders BOTH Kinds once both APIs are served"
+    echo "      (no over-skip; AuthorizationPolicy negotiated to security.istio.io/v1beta1)"
   else
-    echo "  FAIL: AuthorizationPolicy did not render at the expected apiVersion once served"; fail=1
+    echo "  FAIL: expected BOTH PeerAuthentication and AuthorizationPolicy (the latter at"
+    echo "        security.istio.io/v1beta1) once both APIs are served — atomic composition"
+    echo "        must hold the pair back only while an API is genuinely missing"; fail=1
   fi
 fi
 
@@ -1136,16 +1140,39 @@ else
   echo "  FAIL: helm install --dry-run=client failed for full fixture"; echo "$out" | tail -5; fail=1
 fi
 
-# Secondary-Kind NOTES coverage (hf-vh8): AuthorizationPolicy has no _app.yaml
-# wrapper gate of its own, but a skip must still surface in NOTES like any other
-# gated Kind. Force-assume only PeerAuthentication's API: mtls is atomic, so the
-# missing AuthorizationPolicy API holds the whole feature back and NOTES has to
-# name it as the reason nothing deployed.
-if out=$(notes_of full --set 'capabilities.apiVersions={security.istio.io/v1beta1/PeerAuthentication}' 2>&1); then
-  if grep -q "SKIPPED KINDS" <<<"$out" && grep -q "AuthorizationPolicy (tried" <<<"$out"; then
-    echo "  OK: NOTES names AuthorizationPolicy in SKIPPED KINDS when its sibling API is served but its own is not"
+# Atomic set, nothing served: an enabled mtls feature with no force-assume has
+# neither API. BOTH Kinds of the set must be named — a warning that mentions only
+# the representative reads as "PeerAuthentication is missing" and leaves the
+# operator believing the AuthorizationPolicy carrying allowedPrincipals deployed.
+if out=$(notes_of minimal --set mtls.enabled=true --set mtls.allowAllPrincipals=true 2>&1); then
+  if grep -q "SKIPPED KINDS" <<<"$out" &&
+     grep -q "PeerAuthentication (tried" <<<"$out" &&
+     grep -q "AuthorizationPolicy (tried" <<<"$out"; then
+    echo "  OK: NOTES names both Kinds of the atomic mtls set when neither API is served"
   else
-    echo "  FAIL: NOTES did not name the skipped secondary Kind AuthorizationPolicy"; echo "$out" | tail -5; fail=1
+    echo "  FAIL: NOTES did not name both PeerAuthentication and AuthorizationPolicy as skipped"; echo "$out" | tail -5; fail=1
+  fi
+else
+  echo "  FAIL: helm install --dry-run=client failed for minimal fixture with mtls enabled"; echo "$out" | tail -5; fail=1
+fi
+
+# Secondary-Kind NOTES coverage (hf-vh8, extended by plan 010): AuthorizationPolicy
+# has no _app.yaml wrapper gate of its own, but a skip must still surface in NOTES
+# like any other gated Kind. Force-assume only PeerAuthentication's API: mtls is
+# atomic, so the missing AuthorizationPolicy API holds the whole feature back —
+# and the HELD-BACK Kind has to be named too. PeerAuthentication's own API IS
+# served here, so it is the atomic expansion in skippedKinds, and nothing else,
+# that puts it in the warning; without it the operator sees a PeerAuthentication
+# the cluster can serve, no warning about it, and no object.
+if out=$(notes_of full --set 'capabilities.apiVersions={security.istio.io/v1beta1/PeerAuthentication}' 2>&1); then
+  if grep -q "SKIPPED KINDS" <<<"$out" &&
+     grep -q "AuthorizationPolicy (tried" <<<"$out" &&
+     grep -q "PeerAuthentication (tried" <<<"$out"; then
+    echo "  OK: NOTES names BOTH mtls Kinds when only PeerAuthentication's API is served"
+    echo "      (the served-but-held-back half of an atomic set is reported, not silent)"
+  else
+    echo "  FAIL: NOTES did not name both the skipped secondary Kind AuthorizationPolicy and"
+    echo "        the served-but-held-back PeerAuthentication"; echo "$out" | tail -5; fail=1
   fi
 else
   echo "  FAIL: helm install --dry-run=client failed for full fixture with PeerAuthentication-only force-assume"; echo "$out" | tail -5; fail=1
@@ -1217,6 +1244,20 @@ if [[ -z "$feat_all_kinds" || -z "$feat_rep_kinds" || -z "$gate_kinds" ]]; then
   echo "        (literal-YAML shape contract broken, or no gateOpen call sites)"; fail=1
 fi
 registry_fail=0
+# Every feature declares exactly one composition policy, spelled one of the two
+# ways platform.capabilities.kindAvailable understands. A typo'd or missing
+# policy fails closed at render time, but only for a values combination that
+# actually enables that feature — catch it statically instead.
+feat_rows=$(grep -cE '^  kinds: \[' <<<"$feat_block" || true)
+feat_comps=$(grep -cE '^  composition: (atomic|independent)$' <<<"$feat_block" || true)
+if [[ "$feat_rows" -gt 0 && "$feat_comps" -eq "$feat_rows" ]]; then
+  echo "  OK: all $feat_rows features declare a valid composition policy (atomic|independent)"
+else
+  echo "  FAIL: features registry has $feat_rows Kind set(s) but $feat_comps valid composition"
+  echo "        line(s) — each feature needs exactly one 'composition: atomic' or"
+  echo "        'composition: independent'"
+  registry_fail=1
+fi
 feat_dupes=$(LC_ALL=C uniq -d <<<"$feat_all_kinds" || true)
 if [[ -n "$feat_dupes" ]]; then
   echo "  FAIL: Kind(s) registered under more than one feature: $(tr '\n' ' ' <<<"$feat_dupes")"

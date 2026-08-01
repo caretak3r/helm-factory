@@ -47,9 +47,23 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
   CRDs, the objects are now skipped (and named in the NOTES `SKIPPED KINDS`
   warning) instead of rendering an apiVersion the cluster does not serve and
   failing at apply time. Explicit `gatewayApi.apiVersion` /
-  `gatewayApi.grpcRoute.apiVersion` overrides still force emission. The lint
-  gate's capability anti-drift check now compares gate/registry Kind
-  name-sets instead of counts.
+  `gatewayApi.grpcRoute.apiVersion` overrides still force emission.
+
+### Changed — capability gating
+
+- Capability gating is now driven by a single structured feature registry
+  (`platform.capabilities.features`) declaring each feature's full emitted
+  Kind set and a composition policy. `mtls` is atomic: on clusters that serve
+  `PeerAuthentication` but not `AuthorizationPolicy`, the whole mTLS pair is
+  now skipped (fail closed) instead of rendering a `PeerAuthentication`
+  without its principal-restricting `AuthorizationPolicy`. `gatewayApi` routes
+  negotiate per Kind. The NOTES `SKIPPED KINDS` warning now covers secondary
+  Kinds (`AuthorizationPolicy`, `GRPCRoute`), including atomic Kinds held back
+  by a missing partner API. The lint gate's capability anti-drift check now
+  compares registry, gate sites and emitters by CONTENT in both directions
+  (superseding the earlier count and name-set comparisons), so a Kind added to
+  a generator but not to its feature's row is structurally detectable.
+  (plans/010, follows plans/005.)
 
 ### Changed — release engineering
 

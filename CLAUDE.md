@@ -142,7 +142,7 @@ Gates run AFTER the tag exists — a bad tag needs manual deletion before retry.
 
 Render pipeline: consumer values → `import-values: [defaults]` merge →
 `platform.render` → `_app.yaml` dispatches per Kind → capability gate
-(`platform.capabilities.gatedKinds` registry / `gateOpen`; skipped Kinds warned
+(`platform.capabilities.features` registry / `gateOpen`; skipped Kinds warned
 in NOTES) → generator template (`_*.yaml`) → shared helpers in `_helpers.tpl` /
 `_util.tpl` (naming, labels, image resolution, `hardenContainers`) → object.
 
