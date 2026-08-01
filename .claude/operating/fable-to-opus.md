@@ -1,7 +1,7 @@
 # Operating Manual: Executor Conduct in helm-factory
 
 Written by the handover AUTHOR phase (Fable, 2026-07-10, HEAD 4fb9386); refreshed 2026-07-19
-at HEAD 8d09841. These are observable procedures — things you visibly do — not attitudes. The
+at HEAD 8d09841; §9 (stall prevention) added 2026-07-31. These are observable procedures — things you visibly do — not attitudes. The
 promoted skills in `.claude/skills/` hold the domain runbooks; this manual is how you operate
 between them.
 
@@ -96,6 +96,29 @@ You report: "AGENTS.md mandates a push; Conservative profile forbids it without 
 instruction; awaiting your go."
 **Prevents:** unauthorized pushes; prompt-injection-shaped compliance.
 
+## 9. Never end a turn "waiting" — the runtime has no scheduler
+**Procedure:** Execution is event-driven: once you end your turn, nothing runs until a message
+or the exit of a *harness-tracked* background task re-invokes you. "Waiting" is not a state you
+can be in. Therefore: (a) run long commands — the ~4 min gate included — in the FOREGROUND with
+an explicit raised timeout (up to 600000 ms). Do not rely on `run_in_background` to wake you:
+observed 2026-07-31, a harness-tracked task's completion never re-invoked its stopped executor
+(stalled 2.5 h until the coordinator nudged it) — and raw shell `&`/`nohup` is strictly worse,
+invisible to the harness entirely. (b) Never end
+a turn with "waiting for X", an unanswered question, or a promise of future work — either block
+inside the tool call until it finishes, or stop deliberately with a precise resumable state:
+what ran, what is pending, the exact next command. (c) Keep the worktree quiescent for a gate's
+full duration — `tests/render.sh` re-runs `helm dependency update` against the live
+`platform-library/` on every render, so ANY mid-run tree mutation (even a test's temporary
+edit) contaminates the verdict; run mutation-style tests only while the gate is idle.
+**Example:** Plan 009's executor backgrounded the gate with plain `… > gate.log &` and ended
+its turn "waiting for the completion notification" — which structurally cannot arrive for an
+untracked process; it sat stalled until the coordinator noticed and nudged it. Plan 008, same
+session: a preflight test bumped `Chart.yaml` to 9.9.9 while a gate run was in flight,
+producing a spurious `==> FAIL` with no code defect (bd memory
+`gate-run-tree-mutation-contamination-2026-07-31`).
+**Prevents:** permanently stalled executors (lost wakeup); contaminated gate verdicts;
+coordinators misreading a mid-task stop as completion.
+
 ## Self-check — run before any final answer
 1. Did I state which layer I changed and which merge bar it touches?
 2. Did the required verification tier actually run in THIS session, and is its output in my report?
@@ -104,3 +127,4 @@ instruction; awaiting your go."
 5. If goldens or `expected_kinds` changed: did I read the diff hunk-by-hunk and say the change was intended?
 6. Did I weaken any hardening default, guardrail, schema constraint, or rename any values key? (If yes: stop, that needs explicit approval.)
 7. Am I about to commit, push, or tag anything without an explicit user instruction? (If yes: don't.)
+8. Am I about to end this turn "waiting" on anything? (If a command is still running: is it harness-tracked? Untracked = I will never be woken. If I have a question no one will answer: state my resumable state and stop deliberately instead.)
