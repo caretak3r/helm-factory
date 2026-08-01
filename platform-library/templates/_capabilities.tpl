@@ -254,14 +254,42 @@ platform.capabilities.gatedKinds — the CRD-backed Kinds platform.app skips whe
 their API is not served, mapped to the values block that enables each one. Single
 source of truth: the emitter gates (platform.capabilities.gateOpen) and the NOTES
 warning (platform.capabilities.skippedKinds) both read this table, so a gated
-feature cannot be wired into one and forgotten in the other.
+feature cannot be wired into one and forgotten in the other. The values block may
+be a dotted path (e.g. "gatewayApi.grpcRoute") for a feature nested under another
+gate — see platform.capabilities.featureEnabled, which every segment must satisfy.
 */}}
 {{- define "platform.capabilities.gatedKinds" -}}
 Certificate: certificate
 PeerAuthentication: mtls
+AuthorizationPolicy: mtls
 HTTPRoute: gatewayApi
+GRPCRoute: gatewayApi.grpcRoute
 ServiceMonitor: serviceMonitor
 PodMonitor: podMonitor
+{{- end -}}
+
+{{/*
+platform.capabilities.featureEnabled — "true" (else "") when the values block
+at a (possibly dotted) path is enabled. Every segment must be a map with a
+truthy .enabled: "gatewayApi.grpcRoute" requires gatewayApi.enabled AND
+gatewayApi.grpcRoute.enabled, mirroring the template nesting.
+Usage: include "platform.capabilities.featureEnabled" (list . "gatewayApi.grpcRoute")
+*/}}
+{{- define "platform.capabilities.featureEnabled" -}}
+{{- $top := index . 0 -}}
+{{- $node := $top.Values -}}
+{{- $on := true -}}
+{{- range $seg := splitList "." (index . 1) -}}
+  {{- if $on -}}
+    {{- if kindIs "map" $node -}}
+      {{- $node = (index $node $seg) | default dict -}}
+      {{- if not $node.enabled -}}{{- $on = false -}}{{- end -}}
+    {{- else -}}
+      {{- $on = false -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+{{- if $on -}}true{{- end -}}
 {{- end -}}
 
 {{/*
@@ -274,8 +302,8 @@ Usage: {{- if include "platform.capabilities.gateOpen" (list . "Certificate") }}
 {{- $top := index . 0 -}}
 {{- $kind := index . 1 -}}
 {{- $gated := fromYaml (include "platform.capabilities.gatedKinds" $top) -}}
-{{- $block := (index $top.Values (index $gated $kind)) | default dict -}}
-{{- if and $block.enabled (include "platform.capabilities.apiVersionFor" (list $top $kind)) -}}true{{- end -}}
+{{- $valuesKey := index $gated $kind -}}
+{{- if and (include "platform.capabilities.featureEnabled" (list $top $valuesKey)) (include "platform.capabilities.apiVersionFor" (list $top $kind)) -}}true{{- end -}}
 {{- end -}}
 
 {{/*
@@ -289,8 +317,7 @@ Usage: include "platform.capabilities.skippedKinds" $top
 {{- $top := . -}}
 {{- $skipped := list -}}
 {{- range $kind, $valuesKey := fromYaml (include "platform.capabilities.gatedKinds" $top) -}}
-  {{- $block := (index $top.Values $valuesKey) | default dict -}}
-  {{- if and $block.enabled (not (include "platform.capabilities.apiVersionFor" (list $top $kind))) -}}
+  {{- if and (include "platform.capabilities.featureEnabled" (list $top $valuesKey)) (not (include "platform.capabilities.apiVersionFor" (list $top $kind))) -}}
     {{- $skipped = append $skipped $kind -}}
   {{- end -}}
 {{- end -}}

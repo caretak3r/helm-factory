@@ -116,7 +116,10 @@ spec:
 {{- if $grpc.enabled -}}
 {{- $grpcName := default (printf "%s-grpc" $fullName) $grpc.name -}}
 {{- $grpcName = $grpcName | trunc 63 | trimSuffix "-" -}}
-{{- $grpcApiVersion := coalesce $grpc.apiVersion $gw.apiVersion (include "platform.capabilities.apiVersionForOrDefault" (list . "GRPCRoute")) -}}
+{{- /* Explicit apiVersion overrides force emission; otherwise negotiate
+       GRPCRoute's own API (HTTPRoute availability does not prove GRPCRoute —
+       they are separate CRDs). Empty means skip; NOTES warns via gatedKinds. */ -}}
+{{- $grpcApiVersion := coalesce $grpc.apiVersion $gw.apiVersion (include "platform.capabilities.apiVersionFor" (list . "GRPCRoute")) -}}
 {{- $parentRefs := $grpc.parentRefs | default (list) -}}
 {{- if not (gt (len $parentRefs) 0) }}
   {{- $parentRefs = $baseParentRefs -}}
@@ -150,6 +153,7 @@ spec:
 {{- if $grpc.specOverrides }}
   {{- $spec = mergeOverwrite (deepCopy $spec) $grpc.specOverrides -}}
 {{- end }}
+{{- if $grpcApiVersion }}
 ---
 apiVersion: {{ $grpcApiVersion }}
 kind: GRPCRoute
@@ -182,6 +186,7 @@ metadata:
   {{- end }}
 spec:
 {{ toYaml $spec | nindent 2 }}
+{{- end }}
 {{- end }}
 {{- end }}
 {{- end }}

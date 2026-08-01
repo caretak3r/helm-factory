@@ -28,6 +28,18 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
   are active. Warnings appear on `helm install`/`upgrade` (including
   `--dry-run`); rendered manifests are unchanged.
 
+### Fixed — capability negotiation
+
+- `AuthorizationPolicy` and `GRPCRoute` are now capability-negotiated
+  individually instead of riding the `PeerAuthentication`/`HTTPRoute` gates.
+  **Behavior change:** on clusters that serve the sibling API but not these
+  CRDs, the objects are now skipped (and named in the NOTES `SKIPPED KINDS`
+  warning) instead of rendering an apiVersion the cluster does not serve and
+  failing at apply time. Explicit `gatewayApi.apiVersion` /
+  `gatewayApi.grpcRoute.apiVersion` overrides still force emission. The lint
+  gate's capability anti-drift check now compares gate/registry Kind
+  name-sets instead of counts.
+
 ## [2.1.0] - 2026-07-20
 
 Correctness batch: thirteen library defects fixed since 2.0.0, all with new
