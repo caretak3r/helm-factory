@@ -118,7 +118,10 @@ spec:
 {{- $grpcName = $grpcName | trunc 63 | trimSuffix "-" -}}
 {{- /* Explicit apiVersion overrides force emission; otherwise negotiate
        GRPCRoute's own API (HTTPRoute availability does not prove GRPCRoute —
-       they are separate CRDs). Empty means skip; NOTES warns via gatedKinds. */ -}}
+       they are separate CRDs). This per-Kind skip IS the mechanism behind
+       gatewayApi's composition: independent policy in
+       platform.capabilities.features; empty means skip, and NOTES warns via the
+       registry's Kind set. */ -}}
 {{- $grpcApiVersion := coalesce $grpc.apiVersion $gw.apiVersion (include "platform.capabilities.apiVersionFor" (list . "GRPCRoute")) -}}
 {{- $parentRefs := $grpc.parentRefs | default (list) -}}
 {{- if not (gt (len $parentRefs) 0) }}

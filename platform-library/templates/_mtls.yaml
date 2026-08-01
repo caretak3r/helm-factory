@@ -23,10 +23,12 @@ spec:
   selector:
     matchLabels:
       {{- include "platform.selectorLabels" . | nindent 6 }}
-{{- /* AuthorizationPolicy is a SEPARATE CRD from PeerAuthentication; the
-       wrapper gate proved only the latter. Skip-if-absent per the
-       apiVersionFor doctrine — a skipped Kind surfaces in NOTES via the
-       gatedKinds row added alongside this guard. */}}
+{{- /* AuthorizationPolicy is a SEPARATE CRD from PeerAuthentication. The mtls
+       feature is composition: atomic in platform.capabilities.features, so the
+       wrapper gate has already proved BOTH APIs and this guard is now
+       defense-in-depth: it keeps the per-Kind skip-if-absent doctrine local to
+       the emitter should the feature ever be re-declared independent. A skipped
+       Kind surfaces in NOTES via the registry's Kind set. */}}
 {{- $authzApi := include "platform.capabilities.apiVersionFor" (list . "AuthorizationPolicy") -}}
 {{- if $authzApi }}
 ---

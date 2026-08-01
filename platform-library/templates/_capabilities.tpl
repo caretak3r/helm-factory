@@ -329,9 +329,44 @@ Usage: include "platform.capabilities.featureEnabled" (list . "gatewayApi.grpcRo
 {{- end -}}
 
 {{/*
+platform.capabilities.kindAvailable — "true" (else "") when every API the owning
+feature's composition policy requires for a Kind is served or force-assumed:
+  atomic      — the WHOLE Kind set must be available; one missing API holds the
+                whole feature back, because a half-rendered set is more
+                permissive than no set at all (PeerAuthentication without its
+                AuthorizationPolicy drops the principal restriction).
+  independent — only the queried Kind's own API matters.
+Empty for an unregistered Kind. This is the availability half of gateOpen, and
+platform.capabilities.skippedKinds is its exact per-Kind complement, so a Kind
+held back by its partner is reported in NOTES rather than silently missing.
+Usage: include "platform.capabilities.kindAvailable" (list $top "AuthorizationPolicy")
+*/}}
+{{- define "platform.capabilities.kindAvailable" -}}
+{{- $top := index . 0 -}}
+{{- $kind := index . 1 -}}
+{{- range $name, $feature := fromYaml (include "platform.capabilities.features" $top) -}}
+  {{- if has $kind $feature.kinds -}}
+    {{- $probe := list $kind -}}
+    {{- if eq $feature.composition "atomic" -}}
+      {{- $probe = $feature.kinds -}}
+    {{- else if ne $feature.composition "independent" -}}
+      {{- fail (printf "platform.capabilities.features: feature %q declares composition %q; expected \"atomic\" or \"independent\"." $name $feature.composition) -}}
+    {{- end -}}
+    {{- $available := true -}}
+    {{- range $probeKind := $probe -}}
+      {{- if not (include "platform.capabilities.apiVersionFor" (list $top $probeKind)) -}}
+        {{- $available = false -}}
+      {{- end -}}
+    {{- end -}}
+    {{- if $available -}}true{{- end -}}
+  {{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 platform.capabilities.gateOpen — "true" (else "") when a gated feature is enabled
-in values AND its API is available (served or force-assumed). This is the emitter
-gate used by platform.app.
+in values AND the APIs its composition policy requires for this Kind are
+available (served or force-assumed). This is the emitter gate used by platform.app.
 Usage: {{- if include "platform.capabilities.gateOpen" (list . "Certificate") }}
 */}}
 {{- define "platform.capabilities.gateOpen" -}}
@@ -339,7 +374,7 @@ Usage: {{- if include "platform.capabilities.gateOpen" (list . "Certificate") }}
 {{- $kind := index . 1 -}}
 {{- $valuesKey := include "platform.capabilities.kindRequires" (list $top $kind) -}}
 {{- if $valuesKey -}}
-  {{- if and (include "platform.capabilities.featureEnabled" (list $top $valuesKey)) (include "platform.capabilities.apiVersionFor" (list $top $kind)) -}}true{{- end -}}
+  {{- if and (include "platform.capabilities.featureEnabled" (list $top $valuesKey)) (include "platform.capabilities.kindAvailable" (list $top $kind)) -}}true{{- end -}}
 {{- end -}}
 {{- end -}}
 
@@ -350,7 +385,10 @@ force-assumed, so platform.app rendered NOTHING for them. platform.notes turns
 this into an operator-visible WARNING; silence here is what makes the gap silent.
 Derived from platform.capabilities.features: every requested Kind of every
 feature, not just the representative one, so a secondary Kind that skips on its
-own (AuthorizationPolicy, GRPCRoute) is warned about like any other. Sorted so
+own (AuthorizationPolicy, GRPCRoute) is warned about like any other. The test is
+the exact complement of gateOpen, so an atomic Kind whose OWN API is served but
+whose partner's is not is reported too — the operator has to see that
+PeerAuthentication did not deploy and that its partner held it back. Sorted so
 the warning text is stable regardless of registry order.
 Usage: include "platform.capabilities.skippedKinds" $top
 */}}
@@ -361,7 +399,7 @@ Usage: include "platform.capabilities.skippedKinds" $top
   {{- $requires := $feature.requires | default dict -}}
   {{- range $kind := $feature.kinds -}}
     {{- $valuesKey := (index $requires $kind) | default $name -}}
-    {{- if and (include "platform.capabilities.featureEnabled" (list $top $valuesKey)) (not (include "platform.capabilities.apiVersionFor" (list $top $kind))) -}}
+    {{- if and (include "platform.capabilities.featureEnabled" (list $top $valuesKey)) (not (include "platform.capabilities.kindAvailable" (list $top $kind))) -}}
       {{- $skipped = append $skipped $kind -}}
     {{- end -}}
   {{- end -}}

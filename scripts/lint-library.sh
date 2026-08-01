@@ -362,22 +362,30 @@ else
   fi
 fi
 
-echo "==> negative render: secondary Kinds drop individually when their sibling API is served but theirs is not (hf-vh8)"
+echo "==> negative render: partially-served features honor their composition policy (hf-vh8)"
 # AuthorizationPolicy/GRPCRoute ride the PeerAuthentication/HTTPRoute wrapper
 # gate in _app.yaml but are separate CRDs negotiated on their own. The negative
 # render above (zero APIs served) does NOT catch a regression here — with zero
 # APIs served the wrapper gate closes the whole template before these secondary
-# Kinds are ever reached. These legs serve the SIBLING API only, so the wrapper
-# gate opens and the secondary Kind's own guard is what has to hold the line.
+# Kinds are ever reached. These legs serve the SIBLING API only, so the partial
+# case is what has to hold the line, per the feature's composition policy.
+#
+# mtls is composition: atomic (plan 010, supersedes plan 005's per-Kind skip
+# assertion here). Rendering PeerAuthentication without the AuthorizationPolicy
+# that carries allowedPrincipals is MORE permissive than rendering neither, so
+# the whole pair must drop — this leg is strictly more fail-closed than the
+# "PeerAuthentication present, AuthorizationPolicy absent" it replaces.
 if ! neg=$("$RENDER" full --set capabilities.apiVersions=null \
     --api-versions security.istio.io/v1beta1/PeerAuthentication 2>&1); then
   echo "  FAIL: partial-serving render (PeerAuthentication only) itself failed"; echo "$neg" | tail -5; fail=1
 else
   validate_render "partial-serving (PeerAuthentication only)" "$neg"
-  if grep -qE '^kind: PeerAuthentication$' <<<"$neg" && ! grep -qE '^kind: AuthorizationPolicy$' <<<"$neg"; then
-    echo "  OK: AuthorizationPolicy skipped when only PeerAuthentication's API is served"
+  if grep -qE '^kind: (PeerAuthentication|AuthorizationPolicy)$' <<<"$neg"; then
+    echo "  FAIL: atomic mtls rendered a half-pair when only PeerAuthentication's API is served"
+    echo "        (an unrestricted PeerAuthentication without its principal-restricting"
+    echo "        AuthorizationPolicy is fail-OPEN; the whole feature must skip)"; fail=1
   else
-    echo "  FAIL: expected PeerAuthentication present and AuthorizationPolicy absent"; fail=1
+    echo "  OK: atomic mtls skips both Kinds when only PeerAuthentication's API is served"
   fi
   if grep -qE '^\{\}\s*$' <<<"$neg"; then
     echo "  FAIL: empty {} document emitted"; fail=1
@@ -1128,11 +1136,11 @@ else
   echo "  FAIL: helm install --dry-run=client failed for full fixture"; echo "$out" | tail -5; fail=1
 fi
 
-# Secondary-Kind NOTES coverage (hf-vh8): AuthorizationPolicy is gated inside
-# _mtls.yaml, not by an _app.yaml wrapper gate, but a skip must still surface
-# in NOTES like any other gated Kind. Force-assume only PeerAuthentication's
-# API (the sibling the wrapper gate checks) so mtls's wrapper gate opens and
-# renders PeerAuthentication, while AuthorizationPolicy's own guard skips it.
+# Secondary-Kind NOTES coverage (hf-vh8): AuthorizationPolicy has no _app.yaml
+# wrapper gate of its own, but a skip must still surface in NOTES like any other
+# gated Kind. Force-assume only PeerAuthentication's API: mtls is atomic, so the
+# missing AuthorizationPolicy API holds the whole feature back and NOTES has to
+# name it as the reason nothing deployed.
 if out=$(notes_of full --set 'capabilities.apiVersions={security.istio.io/v1beta1/PeerAuthentication}' 2>&1); then
   if grep -q "SKIPPED KINDS" <<<"$out" && grep -q "AuthorizationPolicy (tried" <<<"$out"; then
     echo "  OK: NOTES names AuthorizationPolicy in SKIPPED KINDS when its sibling API is served but its own is not"
