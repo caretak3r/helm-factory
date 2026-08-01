@@ -25,6 +25,7 @@
 #   REQUIRE_CHECK_JSONSCHEMA=1 scripts/lint-library.sh  # fail if check-jsonschema missing (CI)
 #   FIXTURES=minimal scripts/lint-library.sh       # fast local loop: subset of fixtures
 #   FIXTURES="full stateful" KUBE_VERSIONS=1.36 scripts/lint-library.sh  # subset of both
+#   ALLOW_MISSING_VALIDATORS=1 scripts/lint-library.sh  # explicit degraded run, see below
 #
 # FIXTURES and KUBE_VERSIONS accept space-separated subsets for a fast local
 # feedback loop; both default to the full CI matrix (all four fixtures × the
@@ -39,6 +40,17 @@
 # the bare gate before push. KUBE_VERSIONS entries must be inside the vendored
 # schema window; anything else has no kubeconform schemas and fails fast here
 # rather than confusingly mid-run.
+#
+# A missing kubeconform/check-jsonschema binary FAILS the gate by default —
+# it would otherwise silently downgrade every schema-validation leg to a
+# thin no-op PASS. REQUIRE_KUBECONFORM=1/REQUIRE_CHECK_JSONSCHEMA=1 (CI's
+# knobs) always fail on a missing tool. Everywhere else, ALLOW_MISSING_VALIDATORS=1
+# is the one explicit escape hatch for a deliberately degraded run (e.g. a
+# workstation without kubeconform installed yet): the missing-tool FAIL
+# downgrades to a WARN, and the run says so in its own final line —
+# "==> DEGRADED PASS (missing: ...)" (or "==> DEGRADED PASS (subset, missing:
+# ...)") — which never collides with the bare "==> PASS" a full-coverage run
+# produces, so a degraded run can never masquerade as gate evidence.
 # =============================================================================
 set -euo pipefail
 
@@ -134,6 +146,74 @@ doc_of() {
   '
 }
 
+# validate_render <label> <rendered-yaml> [kube-version] [allow-missing]
+# Schema-checks a successful guardrail render with kubeconform against the
+# vendored schemas. MUST be called from the parent shell (never inside a
+# $(...) substitution) so fail=1 propagates. Pass allow-missing=1 ONLY for
+# legs that render a Kind the vendored catalog cannot supply a schema for
+# (documented at the call site), never to paper over a real schema mismatch.
+validate_render() {
+  local label="$1" rendered="$2" kv="${3:-$GOLDEN_KUBE_VERSION}" allow_missing="${4:-0}"
+  if [[ "$have_kubeconform" != "1" ]]; then return 0; fi
+  local kc_extra_args=()
+  if [[ "$allow_missing" == "1" ]]; then kc_extra_args=(-ignore-missing-schemas); fi
+  local kc_out
+  if kc_out=$(kubeconform -strict -summary \
+        -kubernetes-version "$kv.0" \
+        -schema-location "$NATIVE_SCHEMA_LOCATION" \
+        -schema-location "$CRD_SCHEMA_LOCATION" \
+        "${kc_extra_args[@]}" <<<"$rendered" 2>&1); then
+    :
+  else
+    printf '%s\n' "$kc_out"
+    echo "  FAIL: kubeconform ($label)"; fail=1
+  fi
+}
+
+# check_golden <fixture> <kube-version> <rendered> — diffs a normalized
+# render against its golden. Uses tests/golden/<fixture>@<kv>.yaml when
+# present (the escape hatch for a future K8s version whose render
+# legitimately diverges), otherwise the base tests/golden/<fixture>.yaml —
+# a free cross-version identity assertion today because 1.34/1.35/1.36
+# render byte-identically. UPDATE_GOLDEN=1 writes ONLY the base golden (at
+# GOLDEN_KUBE_VERSION) and refreshes an override file that ALREADY exists;
+# it never creates a new override — creating one is a deliberate manual act
+# (cp the diverging version's normalized render, with review). MUST be
+# called from the parent shell (never inside $(...)) so fail=1 propagates.
+check_golden() {
+  local fx="$1" kv="$2" rendered="$3"
+  local override="$GOLDEN_DIR/$fx@$kv.yaml"
+  local golden="$GOLDEN_DIR/$fx.yaml" label="base ($fx.yaml)"
+  if [[ -f "$override" ]]; then
+    golden="$override"; label="override ($fx@$kv.yaml)"
+  fi
+
+  if [[ "${UPDATE_GOLDEN:-0}" == "1" ]]; then
+    if [[ "$kv" == "$GOLDEN_KUBE_VERSION" ]]; then
+      mkdir -p "$GOLDEN_DIR"
+      printf '%s\n' "$rendered" > "$GOLDEN_DIR/$fx.yaml"
+      echo "  k8s $kv: updated $GOLDEN_DIR/$fx.yaml"
+      return 0
+    elif [[ -f "$override" ]]; then
+      printf '%s\n' "$rendered" > "$override"
+      echo "  k8s $kv: updated $override"
+      return 0
+    fi
+    # Non-canonical version with no existing override: fall through to a
+    # plain diff below — UPDATE_GOLDEN never creates a new override file.
+  fi
+
+  if [[ ! -f "$golden" ]]; then
+    echo "  k8s $kv: FAIL — missing golden $golden"
+    fail=1
+  elif diff -u "$golden" <(printf '%s\n' "$rendered"); then
+    echo "  k8s $kv: OK (matches $label)"
+  else
+    echo "  k8s $kv: FAIL — $fx at k8s $kv drifted from $label (run UPDATE_GOLDEN=1 to accept, or if this is legitimate cross-version divergence create tests/golden/$fx@$kv.yaml manually from this render)"
+    fail=1
+  fi
+}
+
 echo "==> helm lint $LIB"
 helm lint "$LIB"
 
@@ -144,14 +224,28 @@ else
   echo "WARN: jq not installed - JSON parse check skipped (metaschema check below covers it when check-jsonschema is present)"
 fi
 
+# A missing validator must never silently downgrade a run to a thin PASS: by
+# default a missing tool FAILS the gate. ALLOW_MISSING_VALIDATORS=1 is the
+# explicit escape hatch for a deliberately degraded run (e.g. a workstation
+# without kubeconform installed yet) — it downgrades the missing-tool FAIL to
+# a WARN, but the run's own final line says so ("==> DEGRADED PASS
+# (missing: ...)"), never the bare "==> PASS" a full-coverage run gets.
+# REQUIRE_KUBECONFORM/REQUIRE_CHECK_JSONSCHEMA (CI's normal knobs) always win:
+# they FAIL regardless of ALLOW_MISSING_VALIDATORS.
+degraded=""
+
 have_kubeconform=0
 if command -v kubeconform >/dev/null 2>&1; then
   have_kubeconform=1
 elif [[ "${REQUIRE_KUBECONFORM:-0}" == "1" ]]; then
   echo "FAIL: kubeconform is required (REQUIRE_KUBECONFORM=1) but not installed"
   fail=1
+elif [[ "${ALLOW_MISSING_VALIDATORS:-0}" == "1" ]]; then
+  echo "WARN: kubeconform not installed — schema validation SKIPPED (ALLOW_MISSING_VALIDATORS=1)"
+  degraded="${degraded}kubeconform "
 else
-  echo "WARN: kubeconform not installed — schema validation SKIPPED (set REQUIRE_KUBECONFORM=1 to fail instead)"
+  echo "FAIL: kubeconform not installed — schema validation would be silently skipped. Install kubeconform, or set ALLOW_MISSING_VALIDATORS=1 for an explicit degraded run (ends '==> DEGRADED PASS', never '==> PASS')."
+  fail=1
 fi
 
 have_check_jsonschema=0
@@ -160,8 +254,12 @@ if command -v check-jsonschema >/dev/null 2>&1; then
 elif [[ "${REQUIRE_CHECK_JSONSCHEMA:-0}" == "1" ]]; then
   echo "FAIL: check-jsonschema is required (REQUIRE_CHECK_JSONSCHEMA=1) but not installed"
   fail=1
+elif [[ "${ALLOW_MISSING_VALIDATORS:-0}" == "1" ]]; then
+  echo "WARN: check-jsonschema not installed — values schema validation SKIPPED (ALLOW_MISSING_VALIDATORS=1)"
+  degraded="${degraded}check-jsonschema "
 else
-  echo "WARN: check-jsonschema not installed - values schema validation SKIPPED (set REQUIRE_CHECK_JSONSCHEMA=1 to fail instead)"
+  echo "FAIL: check-jsonschema not installed — values schema validation would be silently skipped. Install check-jsonschema, or set ALLOW_MISSING_VALIDATORS=1 for an explicit degraded run (ends '==> DEGRADED PASS', never '==> PASS')."
+  fail=1
 fi
 
 if [[ "$have_check_jsonschema" == "1" ]]; then
@@ -215,31 +313,16 @@ for fx in "${FIXTURES[@]}"; do
           echo "  k8s $kv: FAIL — kubeconform"; fail=1
         fi
       fi
+
+      # Pin every version's render to the golden, not just GOLDEN_KUBE_VERSION
+      # (see check_golden above): a version-specific render drift is a real
+      # regression the gate should catch, not something only the canonical
+      # version happens to see.
+      check_golden "$fx" "$kv" "$(normalize_render <<<"$out")"
     else
       echo "  k8s $kv: FAIL"; echo "$out" | tail -5; fail=1
     fi
   done
-
-  if ! raw=$("$RENDER" "$fx" --kube-version "$GOLDEN_KUBE_VERSION" 2>/dev/null); then
-    echo "==> golden snapshot: $fx — FAIL (render failed)"; fail=1
-    continue
-  fi
-  rendered=$(normalize_render <<<"$raw")
-
-  echo "==> golden snapshot: $fx (k8s $GOLDEN_KUBE_VERSION)"
-  if [[ "${UPDATE_GOLDEN:-0}" == "1" ]]; then
-    mkdir -p "$GOLDEN_DIR"
-    printf '%s\n' "$rendered" > "$GOLDEN_DIR/$fx.yaml"
-    echo "  updated $GOLDEN_DIR/$fx.yaml"
-  elif [[ ! -f "$GOLDEN_DIR/$fx.yaml" ]]; then
-    echo "  FAIL: missing golden $GOLDEN_DIR/$fx.yaml (run: UPDATE_GOLDEN=1 scripts/lint-library.sh)"
-    fail=1
-  elif diff -u "$GOLDEN_DIR/$fx.yaml" <(printf '%s\n' "$rendered"); then
-    echo "  OK: matches golden"
-  else
-    echo "  FAIL: rendered output drifted from golden (run: UPDATE_GOLDEN=1 scripts/lint-library.sh to accept)"
-    fail=1
-  fi
 done
 
 # Fast local loop (hf-3p0): a FIXTURES/KUBE_VERSIONS subset covers only the
@@ -249,7 +332,13 @@ done
 # summary line says so. The bare invocation (and CI) always runs it in full.
 if [[ -n "$FIXTURES_ENV" || -n "$KUBE_VERSIONS_ENV" ]]; then
   echo "==> guardrail + negative-render suite: SKIPPED (FIXTURES/KUBE_VERSIONS subset — run bare scripts/lint-library.sh for the full gate)"
-  if [[ $fail -eq 0 ]]; then echo "==> PASS (subset)"; else echo "==> FAIL"; fi
+  if [[ $fail -ne 0 ]]; then
+    echo "==> FAIL"
+  elif [[ -n "$degraded" ]]; then
+    echo "==> DEGRADED PASS (subset, missing: ${degraded% })"
+  else
+    echo "==> PASS (subset)"
+  fi
   exit $fail
 fi
 
@@ -260,6 +349,7 @@ echo "==> negative render: CRDs must drop without force-assume (full fixture)"
 if ! neg=$("$RENDER" full --set capabilities.apiVersions=null 2>&1); then
   echo "  FAIL: negative render itself failed"; echo "$neg" | tail -5; fail=1
 else
+  validate_render "CRD-drop (full, no force-assume)" "$neg"
   if grep -qE '^kind: (Certificate|HTTPRoute|GRPCRoute|PeerAuthentication|AuthorizationPolicy|ServiceMonitor|PodMonitor)$' <<<"$neg"; then
     echo "  FAIL: a CRD-backed object rendered without a present API"; fail=1
   else
@@ -283,6 +373,7 @@ if ! neg=$("$RENDER" full --set capabilities.apiVersions=null \
     --api-versions security.istio.io/v1beta1/PeerAuthentication 2>&1); then
   echo "  FAIL: partial-serving render (PeerAuthentication only) itself failed"; echo "$neg" | tail -5; fail=1
 else
+  validate_render "partial-serving (PeerAuthentication only)" "$neg"
   if grep -qE '^kind: PeerAuthentication$' <<<"$neg" && ! grep -qE '^kind: AuthorizationPolicy$' <<<"$neg"; then
     echo "  OK: AuthorizationPolicy skipped when only PeerAuthentication's API is served"
   else
@@ -299,6 +390,7 @@ if ! neg=$("$RENDER" full --set capabilities.apiVersions=null \
     --api-versions gateway.networking.k8s.io/v1/HTTPRoute 2>&1); then
   echo "  FAIL: partial-serving render (HTTPRoute only) itself failed"; echo "$neg" | tail -5; fail=1
 else
+  validate_render "partial-serving (HTTPRoute only)" "$neg"
   if grep -qE '^kind: HTTPRoute$' <<<"$neg" && ! grep -qE '^kind: GRPCRoute$' <<<"$neg"; then
     echo "  OK: GRPCRoute skipped when only HTTPRoute's API is served"
   else
@@ -311,6 +403,7 @@ if ! pos=$("$RENDER" full --set capabilities.apiVersions=null \
     --api-versions security.istio.io/v1beta1/AuthorizationPolicy 2>&1); then
   echo "  FAIL: positive-control render failed"; echo "$pos" | tail -5; fail=1
 else
+  validate_render "positive control (PeerAuthentication + AuthorizationPolicy served)" "$pos"
   if grep -qE '^kind: AuthorizationPolicy$' <<<"$pos" && \
      grep -A1 '^kind: AuthorizationPolicy$' <<<"$pos" | grep -q '.' && \
      grep -B1 '^kind: AuthorizationPolicy$' <<<"$pos" | grep -q '^apiVersion: security.istio.io/v1beta1$'; then
@@ -328,6 +421,7 @@ echo "==> extraManifests skips entries that render to nothing (hf-8k3)"
 # live ConfigMap makes exactly 4 document separators — an unguarded generator
 # emits 6 (one stray per empty entry).
 if out=$("$RENDER" minimal --set-json 'extraManifests=["{{- if false }}never{{- end }}", {}, {"apiVersion":"v1","kind":"ConfigMap","metadata":{"name":"em-live"},"data":{"k":"v"}}]' 2>&1); then
+  validate_render "extraManifests empty-entry skip" "$out"
   seps=$(grep -c '^---' <<<"$out" || true)
   if [[ "$seps" != "4" ]]; then
     echo "  FAIL: expected 4 document separators (3 minimal kinds + live ConfigMap), got $seps — an extraManifests entry that renders to nothing emitted a stray document"; fail=1
@@ -352,6 +446,7 @@ check_rollout_checksum() {
   local fixture="$1" annotation="$2"
   local out
   if out=$("$RENDER" "$fixture" 2>&1); then
+    validate_render "rollout checksum ($fixture $annotation)" "$out"
     if grep -q "$annotation:" <<<"$out"; then
       echo "  OK: $fixture pod template carries $annotation"
     else
@@ -373,6 +468,7 @@ if out=$("$RENDER" minimal \
     --set 'global.imagePullSecrets[1]=global-only' \
     --set 'image.pullSecrets[0]=shared-pull' \
     --set 'image.pullSecrets[1]=image-only' 2>&1); then
+  validate_render "imagePullSecrets dedupe (minimal)" "$out"
   got=$(doc_of Deployment t-minimal <<<"$out" |
         awk '/^ *imagePullSecrets:$/ { inblk = 1; next }
              inblk { if ($1 == "-") print $3; else exit }' | paste -sd, -)
@@ -390,6 +486,7 @@ fi
 if out=$("$RENDER" full \
     --set 'global.imagePullSecrets[0]=shared-pull' \
     --set 'image.pullSecrets[0]=shared-pull' 2>&1); then
+  validate_render "imagePullSecrets dedupe (full, per-site)" "$out"
   got=$(grep -c 'name: shared-pull' <<<"$out" || true)
   if [[ "$got" -eq 3 ]]; then
     echo "  OK: workload, CronJob, and hook Job pod specs each list the shared secret once"
@@ -410,6 +507,7 @@ check_no_rolling_update() {
   local fixture="$1" label="$2"; shift 2
   local out
   if out=$("$RENDER" "$fixture" "$@" 2>&1); then
+    validate_render "updateStrategy compatibility ($label)" "$out"
     if grep -q 'rollingUpdate' <<<"$out"; then
       echo "  FAIL: $label still emits rollingUpdate — the API server would reject this object"; fail=1
     else
@@ -425,6 +523,7 @@ check_no_rolling_update daemon "DaemonSet updateStrategy.type=OnDelete" --set da
 
 # ...and the stripping must not over-reach: the RollingUpdate default keeps its tuning.
 if out=$("$RENDER" minimal 2>&1); then
+  validate_render "default RollingUpdate strategy (minimal)" "$out"
   if grep -q 'maxSurge' <<<"$out"; then
     echo "  OK: default RollingUpdate strategy keeps its rollingUpdate block"
   else
@@ -444,11 +543,15 @@ else
 fi
 
 digest="sha256:1111111111111111111111111111111111111111111111111111111111111111"
-if "$RENDER" minimal --set image.tag= --set image.digest="$digest" 2>/dev/null | \
-   grep -q "image: docker.io/example/minimal@$digest"; then
-  echo "  OK: digest-only pin renders repo@digest"
+if out=$("$RENDER" minimal --set image.tag= --set image.digest="$digest" 2>&1); then
+  validate_render "digest-only image pin" "$out"
+  if grep -q "image: docker.io/example/minimal@$digest" <<<"$out"; then
+    echo "  OK: digest-only pin renders repo@digest"
+  else
+    echo "  FAIL: digest-only pin did not render repo@digest"; fail=1
+  fi
 else
-  echo "  FAIL: digest-only pin did not render repo@digest"; fail=1
+  echo "  FAIL: render failed for digest-only pin check"; echo "$out" | tail -3; fail=1
 fi
 
 if out=$("$RENDER" full --set image.tag= --set image.digest="$digest" --set jobs.image.repository=example/other 2>&1); then
@@ -476,6 +579,7 @@ fi
 if out=$("$RENDER" minimal --set jobs.preInstall.enabled=true \
   --set jobs.image.repository=busybox --set jobs.image.tag=1.36 \
   --set 'jobs.preInstall.command[0]=/bin/true' 2>&1); then
+  validate_render "command-only hook Job (nil-args)" "$out"
   if grep -q "kind: Job" <<<"$out" && grep -q -- '- /bin/true' <<<"$out"; then
     echo "  OK: command-only hook Job renders (empty args is nil-safe)"
   else
@@ -493,6 +597,7 @@ if out=$("$RENDER" minimal --set global.imageRegistry=mirror.example.internal \
   --set 'sidecars.containers[0].image.tag=9.9.9' \
   --set 'sidecars.containers[1].name=plain' \
   --set 'sidecars.containers[1].image=docker.io/library/busybox:1.36.1' 2>&1); then
+  validate_render "passthrough container image resolution" "$out"
   if grep -A1 "image: mirror.example.internal/org/sidecar:9.9.9" <<<"$out" | \
      grep -q "imagePullPolicy: IfNotPresent"; then
     echo "  OK: dict sidecar image resolves through global.imageRegistry with the default pull policy"
@@ -608,11 +713,15 @@ else
 fi
 
 # Explicit opt-in restores the wildcard principal.
-if out=$("$RENDER" full --set mtls.allowedPrincipals=null --set mtls.allowAllPrincipals=true 2>&1) &&
-   grep -q 'cluster.local/ns/\*/sa/\*' <<<"$out"; then
-  echo "  OK: mtls.allowAllPrincipals=true renders the wildcard principal"
+if out=$("$RENDER" full --set mtls.allowedPrincipals=null --set mtls.allowAllPrincipals=true 2>&1); then
+  validate_render "mtls.allowAllPrincipals=true" "$out"
+  if grep -q 'cluster.local/ns/\*/sa/\*' <<<"$out"; then
+    echo "  OK: mtls.allowAllPrincipals=true renders the wildcard principal"
+  else
+    echo "  FAIL: mtls.allowAllPrincipals=true did not render the wildcard principal"; fail=1
+  fi
 else
-  echo "  FAIL: mtls.allowAllPrincipals=true did not render the wildcard principal"; fail=1
+  echo "  FAIL: render failed for mtls.allowAllPrincipals=true check"; echo "$out" | tail -3; fail=1
 fi
 
 # Cluster-scoped extraObjects are refused unless explicitly allowed.
@@ -636,6 +745,10 @@ fi
 
 # An explicit per-entry apiVersion is the documented escape: renders verbatim.
 if out=$("$RENDER" minimal --set-json 'extraObjects={"WidgetFrobber":[{"name":"w1","apiVersion":"widgets.example.io/v1","spec":{"size":1}}]}' 2>&1); then
+  # WidgetFrobber/widgets.example.io is a fictional Kind for this test — no
+  # catalog will ever ship a schema for it, so this is the one legitimate
+  # allow-missing leg (everything else validates against a real schema).
+  validate_render "extraObjects unknown Kind + explicit apiVersion" "$out" "$GOLDEN_KUBE_VERSION" 1
   if grep -q "kind: WidgetFrobber" <<<"$out" && grep -q "apiVersion: widgets.example.io/v1" <<<"$out"; then
     echo "  OK: unknown Kind with explicit apiVersion renders verbatim"
   else
@@ -648,6 +761,7 @@ fi
 # Known CRD Kind whose API is unserved still SKIPS (invariant 2) — the render
 # must succeed and must not contain the object.
 if out=$("$RENDER" minimal --set-json 'extraObjects={"VirtualService":[{"name":"vs1"}]}' 2>&1); then
+  validate_render "unserved registry Kind in extraObjects (VirtualService skipped)" "$out"
   if grep -q "kind: VirtualService" <<<"$out"; then
     echo "  FAIL: unserved VirtualService extraObject rendered anyway"; fail=1
   else
@@ -669,6 +783,7 @@ fi
 # secret.existingSecret suppresses the chart-managed Secret.
 if out=$("$RENDER" stateful --set secret.existingSecret=preexisting \
   --set secret.stringData=null 2>&1); then
+  validate_render "secret.existingSecret suppresses managed Secret" "$out"
   secret_count=$(grep -c '^kind: Secret' <<<"$out" || true)
   if [[ "$secret_count" -eq 0 ]]; then
     echo "  OK: existingSecret suppresses the chart-managed Secret"
@@ -693,6 +808,7 @@ check_hardened_containers() {
   local fixture="$1" label="$2" want="$3"; shift 3
   local out got
   if out=$("$RENDER" "$fixture" "$@" 2>&1); then
+    validate_render "container hardening posture ($label)" "$out"
     got=$(grep -c 'allowPrivilegeEscalation: false' <<<"$out" || true)
     if [[ "$got" -eq "$want" ]]; then
       echo "  OK: $label — $got/$want containers hardened"
@@ -725,6 +841,7 @@ check_hardened_containers minimal "containerSecurityContext.enabled=false" 0 \
 # The daemon fixture renders metrics-proxy (runAsUser 65532) ahead of a bare
 # log-shipper, plus init-wait and the main container on the default 1001.
 if out=$("$RENDER" daemon 2>&1); then
+  validate_render "securityContext merge-direction (daemon)" "$out"
   overridden=$(grep -c 'runAsUser: 65532' <<<"$out" || true)
   defaulted=$(grep -c 'runAsUser: 1001' <<<"$out" || true)
   if [[ "$overridden" -eq 1 && "$defaulted" -eq 3 ]]; then
@@ -770,6 +887,7 @@ check_hook_ordering() {
   if ! out=$("$RENDER" full "$@" 2>&1); then
     echo "  FAIL: render failed for $label"; echo "$out" | tail -3; fail=1; return
   fi
+  validate_render "hook Job dependency ordering ($label)" "$out"
   table=$(hook_table <<<"$out")
   job_w=$(hook_weight_of "Job/t-full-preinstall" <<<"$table")
   cm_w=$(hook_weight_of "ConfigMap/t-full-preinstall-script" <<<"$table")
@@ -802,6 +920,7 @@ check_hook_ordering "jobs.preInstall.hookWeight=-20" --set jobs.preInstall.hookW
 # run after the normal resources exist, and hook-annotating it would orphan it from
 # the release (Helm does not track hook resources).
 if out=$("$RENDER" full --set jobs.postInstall.enabled=true --set jobs.postInstall.script='echo hi' 2>&1); then
+  validate_render "post-install script ConfigMap stays normal resource" "$out"
   post_hk=$(hook_table <<<"$out" | awk '$1 == "ConfigMap/t-full-postinstall-script" { print $2 }')
   if [[ "$post_hk" == "nohook" ]]; then
     echo "  OK: post-install script ConfigMap stays a release-tracked normal resource"
@@ -1084,6 +1203,7 @@ echo "==> selector stability"
 # such as commonLabels leaking in here means changing that label orphans the running
 # pods — and on workloads it makes helm upgrade fail outright.
 if out=$("$RENDER" minimal --set service.enabled=true --set commonLabels.canary=leak 2>&1); then
+  validate_render "selector stability (commonLabels leak)" "$out"
   # Every selector/matchLabels block must be free of the canary label. Extract each
   # selector block (selector: or matchLabels: through the next dedent) and grep it.
   leaked=$(awk '
@@ -1106,6 +1226,7 @@ fi
 # an identical name+instance pair, so without a distinct component they would be
 # matched too — routing live traffic to batch pods and skewing the disruption budget.
 if out=$("$RENDER" full 2>&1); then
+  validate_render "component separation (CronJob/hook-Job vs main workload)" "$out"
   cron_component=$(grep -c 'app.kubernetes.io/component: cronjob' <<<"$out" || true)
   hook_component=$(grep -c 'app.kubernetes.io/component: preinstall' <<<"$out" || true)
   if [ "$cron_component" -gt 0 ] && [ "$hook_component" -gt 0 ]; then
@@ -1136,6 +1257,7 @@ if out=$("$RENDER" full \
     --set gatewayApi.httpRoute.annotations.precedence=http \
     --set gatewayApi.grpcRoute.enabled=true \
     --set gatewayApi.grpcRoute.annotations.precedence=grpc 2>&1); then
+  validate_render "annotation precedence (Ingress/HTTPRoute/GRPCRoute)" "$out"
   ing=$(grep -c 'precedence: "ingress"' <<<"$out" || true)
   http=$(grep -c 'precedence: "http"' <<<"$out" || true)
   grpc=$(grep -c 'precedence: "grpc"' <<<"$out" || true)
@@ -1160,6 +1282,7 @@ if out=$("$RENDER" full --set capabilities.apiVersions=null \
     --set gatewayApi.grpcRoute.enabled=true \
     --api-versions gateway.networking.k8s.io/v1beta1/HTTPRoute \
     --api-versions gateway.networking.k8s.io/v1alpha2/GRPCRoute 2>&1); then
+  validate_render "Gateway API negotiation (pre-1.0: HTTPRoute v1beta1, GRPCRoute v1alpha2)" "$out"
   http_api=$(grep -B1 '^kind: HTTPRoute$' <<<"$out" | grep '^apiVersion:' || true)
   grpc_api=$(grep -B1 '^kind: GRPCRoute$' <<<"$out" | grep '^apiVersion:' || true)
   if [[ "$http_api" == "apiVersion: gateway.networking.k8s.io/v1beta1" \
@@ -1173,6 +1296,7 @@ else
 fi
 if out=$("$RENDER" full --set capabilities.apiVersions=null \
     --api-versions gateway.networking.k8s.io/v1/HTTPRoute 2>&1); then
+  validate_render "Gateway API negotiation (v1 served)" "$out"
   http_api=$(grep -B1 '^kind: HTTPRoute$' <<<"$out" | grep '^apiVersion:' || true)
   if [[ "$http_api" == "apiVersion: gateway.networking.k8s.io/v1" ]]; then
     echo "  OK: HTTPRoute still negotiates v1 when v1 is served"
@@ -1183,6 +1307,7 @@ else
   echo "  FAIL: render failed for v1 negotiation check"; echo "$out" | tail -3; fail=1
 fi
 if out=$("$RENDER" full --set gatewayApi.apiVersion=gateway.networking.k8s.io/v1beta1 2>&1); then
+  validate_render "Gateway API negotiation (explicit override)" "$out"
   http_api=$(grep -B1 '^kind: HTTPRoute$' <<<"$out" | grep '^apiVersion:' || true)
   if [[ "$http_api" == "apiVersion: gateway.networking.k8s.io/v1beta1" ]]; then
     echo "  OK: explicit gatewayApi.apiVersion override still wins over negotiation"
@@ -1217,6 +1342,7 @@ ingress_tls_secret_of() {
 }
 if out=$("$RENDER" daemon --set ingress.enabled=true --set ingress.tls=true \
   --set service.enabled=true 2>&1); then
+  validate_render "TLS secret convergence (daemon, tlsSelfSigned)" "$out"
   # kind+type keyed: the name of the (single) kubernetes.io/tls Secret document.
   tls_secret=$(awk '
     function flush() { if (kd == "Secret" && tls) print nm; kd = ""; nm = ""; tls = 0 }
@@ -1238,6 +1364,7 @@ fi
 # Same convergence for cert-manager: the Ingress default must equal the
 # Certificate's spec.secretName (full fixture has certificate.enabled=true).
 if out=$("$RENDER" full --set ingress.tls=true 2>&1); then
+  validate_render "TLS secret convergence (full, cert-manager Certificate)" "$out"
   cert_secret=$(doc_of Certificate t-full-tls <<<"$out" | awk '/^  secretName: /{print $2; exit}')
   ing_secret=$(ingress_tls_secret_of t-full <<<"$out")
   if [[ -n "$cert_secret" && "$ing_secret" == "$cert_secret" ]]; then
@@ -1252,6 +1379,7 @@ fi
 # ingress.existingSecret still beats every managed default.
 if out=$("$RENDER" daemon --set ingress.enabled=true --set ingress.tls=true \
   --set service.enabled=true --set ingress.existingSecret=byo-tls 2>&1); then
+  validate_render "TLS secret convergence (ingress.existingSecret override)" "$out"
   ing_secret=$(ingress_tls_secret_of t-daemon <<<"$out")
   if [[ "$ing_secret" == "byo-tls" ]]; then
     echo "  OK: ingress.existingSecret overrides the managed TLS secret name"
@@ -1265,6 +1393,7 @@ fi
 # No managed cert source: the conventional "<hostname>-tls" fallback is kept
 # (consumer provisions it; library default hostname is app.local).
 if out=$("$RENDER" minimal --set ingress.enabled=true --set ingress.tls=true 2>&1); then
+  validate_render "TLS secret convergence (no managed cert source, fallback)" "$out"
   ing_secret=$(ingress_tls_secret_of t-minimal <<<"$out")
   if [[ "$ing_secret" == "app.local-tls" ]]; then
     echo "  OK: without a managed cert source the <hostname>-tls fallback is preserved"
@@ -1287,6 +1416,7 @@ echo "==> Cross-field guards (ExternalName / certificate.issuer / dangling backe
 # and ports/selector are meaningless for it).
 if out=$("$RENDER" minimal --set service.type=ExternalName \
   --set service.externalName=db.example.com 2>&1); then
+  validate_render "ExternalName Service (valid render)" "$out"
   svc_doc=$(doc_of Service t-minimal <<<"$out")
   if grep -q '^  externalName: db.example.com$' <<<"$svc_doc" \
     && ! grep -q '^  selector:' <<<"$svc_doc" && ! grep -q '^  ports:' <<<"$svc_doc"; then
@@ -1335,6 +1465,7 @@ fi
 if out=$("$RENDER" full --set service.enabled=false --set ingress.enabled=false \
   --set 'gatewayApi.httpRoute.backendRefs[0].name=other' \
   --set 'gatewayApi.httpRoute.backendRefs[0].port=8080' 2>&1); then
+  validate_render "HTTPRoute explicit backendRefs (no release Service)" "$out"
   echo "  OK: explicit HTTPRoute backendRefs render without the release Service"
 else
   echo "  FAIL: explicit backendRefs must not require service.enabled"; echo "$out" | tail -3; fail=1
@@ -1354,6 +1485,7 @@ statefulset_service_name_of() {
   doc_of StatefulSet t-stateful | awk '/^  serviceName: /{print $2; exit}'
 }
 if out=$("$RENDER" stateful 2>&1); then
+  validate_render "StatefulSet governing headless Service (default)" "$out"
   svc_name=$(statefulset_service_name_of <<<"$out")
   if [[ "$svc_name" == *-headless && "$(headless_service_of "$out" "$svc_name")" == "yes" ]]; then
     echo "  OK: default StatefulSet render governs via managed headless Service ($svc_name)"
@@ -1366,6 +1498,7 @@ fi
 
 # Explicit statefulSet.serviceName is consumer-managed: used verbatim, no managed Service.
 if out=$("$RENDER" stateful --set statefulSet.serviceName=byo-headless 2>&1); then
+  validate_render "StatefulSet governing headless Service (explicit serviceName)" "$out"
   svc_name=$(statefulset_service_name_of <<<"$out")
   extra=$(grep -c '^  name: .*-headless$' <<<"$out" || true)
   if [[ "$svc_name" == "byo-headless" && "$extra" -eq 0 ]]; then
@@ -1379,6 +1512,7 @@ fi
 
 # A primary Service that is already headless (clusterIP: None) governs directly.
 if out=$("$RENDER" stateful --set service.clusterIP=None 2>&1); then
+  validate_render "StatefulSet governing headless Service (primary Service already headless)" "$out"
   svc_name=$(statefulset_service_name_of <<<"$out")
   extra=$(grep -c '^  name: .*-headless$' <<<"$out" || true)
   if [[ "$svc_name" != *-headless && "$extra" -eq 0 && "$(headless_service_of "$out" "$svc_name")" == "yes" ]]; then
@@ -1392,6 +1526,7 @@ fi
 
 # Non-StatefulSet workloads never get the managed headless Service.
 if out=$("$RENDER" minimal 2>&1); then
+  validate_render "no managed headless Service for non-StatefulSet workloads" "$out"
   if grep -q '^  name: .*-headless$' <<<"$out"; then
     echo "  FAIL: minimal (Deployment) fixture rendered a managed headless Service"; fail=1
   else
@@ -1401,5 +1536,11 @@ else
   echo "  FAIL: render failed for minimal fixture"; echo "$out" | tail -3; fail=1
 fi
 
-if [[ $fail -eq 0 ]]; then echo "==> PASS"; else echo "==> FAIL"; fi
+if [[ $fail -ne 0 ]]; then
+  echo "==> FAIL"
+elif [[ -n "$degraded" ]]; then
+  echo "==> DEGRADED PASS (missing: ${degraded% })"
+else
+  echo "==> PASS"
+fi
 exit $fail
