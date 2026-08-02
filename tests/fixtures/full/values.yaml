@@ -58,6 +58,30 @@ podDisruptionBudget:
 networkPolicy:
   enabled: true
 
+resourceQuota:
+  enabled: true
+  hard:
+    requests.cpu: "4"
+    requests.memory: 8Gi
+    limits.cpu: "8"
+    limits.memory: 16Gi
+    pods: "20"
+
+limitRange:
+  enabled: true
+  default:
+    cpu: 500m
+    memory: 512Mi
+  defaultRequest:
+    cpu: 250m
+    memory: 256Mi
+  max:
+    cpu: "2"
+    memory: 2Gi
+  min:
+    cpu: 50m
+    memory: 64Mi
+
 serviceAccount:
   create: true
 

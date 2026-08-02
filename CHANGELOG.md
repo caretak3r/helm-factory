@@ -143,6 +143,20 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
   also threaded through the library-managed headless Service, which matters
   for StatefulSet peer discovery during initial bootstrap (helm-factory-utm).
 
+### Added — ResourceQuota and LimitRange generators
+
+- First-class `resourceQuota` and `limitRange` generators for namespace QoS
+  governance, following the dedicated-namespace-per-app model: `resourceQuota`
+  renders a `v1/ResourceQuota` from a verbatim `hard` passthrough plus optional
+  `scopes`/`scopeSelector`; `limitRange` renders a `v1/LimitRange` with a
+  single `Container`-type item (`default`/`defaultRequest`/`max`/`min`, opt-in
+  `type` override for `Pod`/`PersistentVolumeClaim`). Both are opt-in
+  (`enabled: false` by default), always-GA built-ins (no capability gate), and
+  fail closed when enabled with nothing to enforce (empty `hard`, or none of
+  `default`/`defaultRequest`/`max`/`min` set). `limitRange.default`/
+  `defaultRequest` is the namespace-level backstop for a workload that renders
+  with no `resources:` set (BestEffort QoS).
+
 ## [2.1.0] - 2026-07-20
 
 Correctness batch: thirteen library defects fixed since 2.0.0, all with new

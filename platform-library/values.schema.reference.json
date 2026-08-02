@@ -222,6 +222,42 @@
         }
       }
     },
+    "resourceQuota": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "hard": { "type": "object", "description": "Verbatim passthrough to spec.hard (requests.cpu, requests.memory, limits.cpu, limits.memory, pods, count/<resource>.<group>, ...)." },
+        "scopes": { "type": "array", "items": { "type": "string" } },
+        "scopeSelector": { "type": "object", "description": "Verbatim passthrough to spec.scopeSelector." }
+      },
+      "if": { "properties": { "enabled": { "const": true } }, "required": ["enabled"] },
+      "then": {
+        "properties": { "hard": { "type": "object", "minProperties": 1 } },
+        "required": ["hard"]
+      }
+    },
+    "limitRange": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "type": { "type": "string", "enum": ["Container", "Pod", "PersistentVolumeClaim"], "description": "LimitRangeItem type. Defaults to Container when unset." },
+        "default": { "type": "object", "description": "Default resources.limits per resource name, applied to a container that omits it." },
+        "defaultRequest": { "type": "object", "description": "Default resources.requests per resource name, applied to a container that omits it." },
+        "max": { "type": "object", "description": "Maximum limits/requests per resource name." },
+        "min": { "type": "object", "description": "Minimum limits/requests per resource name." }
+      },
+      "if": { "properties": { "enabled": { "const": true } }, "required": ["enabled"] },
+      "then": {
+        "anyOf": [
+          { "properties": { "default": { "type": "object", "minProperties": 1 } }, "required": ["default"] },
+          { "properties": { "defaultRequest": { "type": "object", "minProperties": 1 } }, "required": ["defaultRequest"] },
+          { "properties": { "max": { "type": "object", "minProperties": 1 } }, "required": ["max"] },
+          { "properties": { "min": { "type": "object", "minProperties": 1 } }, "required": ["min"] }
+        ]
+      }
+    },
     "serviceMonitor": {
       "type": "object",
       "additionalProperties": true,

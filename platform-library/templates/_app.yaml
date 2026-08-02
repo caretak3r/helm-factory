@@ -75,6 +75,14 @@
 {{- include "platform.emit" (include "platform.pdb" .) }}
 {{- end }}
 
+{{- if .Values.resourceQuota.enabled }}
+{{- include "platform.emit" (include "platform.resourcequota" .) }}
+{{- end }}
+
+{{- if .Values.limitRange.enabled }}
+{{- include "platform.emit" (include "platform.limitrange" .) }}
+{{- end }}
+
 {{- if .Values.serviceAccount.create }}
 {{- include "platform.emit" (include "platform.serviceAccount" .) }}
 {{- end }}

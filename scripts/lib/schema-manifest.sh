@@ -32,6 +32,7 @@ NATIVE_SCHEMA_KINDS=(
   priorityclass-scheduling-v1
   networkpolicy-networking-v1
   resourcequota-v1
+  limitrange-v1
   poddisruptionbudget-policy-v1
   configmap-v1
   clusterrole-rbac-v1

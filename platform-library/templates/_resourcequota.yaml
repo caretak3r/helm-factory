@@ -1,0 +1,26 @@
+{{- define "platform.resourcequota" -}}
+{{- if .Values.resourceQuota.enabled }}
+{{- $hard := .Values.resourceQuota.hard | default dict }}
+{{- if not $hard }}
+{{- fail "resourceQuota.enabled is true but resourceQuota.hard is empty: an empty ResourceQuota enforces nothing. Set at least one resourceQuota.hard entry (e.g. requests.cpu, requests.memory, limits.cpu, limits.memory, pods)." }}
+{{- end }}
+apiVersion: {{ include "platform.capabilities.apiVersionForOrDefault" (list . "ResourceQuota") }}
+kind: ResourceQuota
+metadata:
+  name: {{ include "platform.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+    {{- range $k, $v := .Values.commonLabels }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+spec:
+  hard: {{- toYaml $hard | nindent 4 }}
+  {{- if .Values.resourceQuota.scopes }}
+  scopes: {{- toYaml .Values.resourceQuota.scopes | nindent 4 }}
+  {{- end }}
+  {{- if .Values.resourceQuota.scopeSelector }}
+  scopeSelector: {{- toYaml .Values.resourceQuota.scopeSelector | nindent 4 }}
+  {{- end }}
+{{- end }}
+{{- end }}

@@ -107,7 +107,7 @@ fail=0
 expected_kinds() {
   case "$1" in
     minimal)  echo 3 ;;
-    full)     echo 26 ;;
+    full)     echo 28 ;;
     stateful) echo 8 ;;
     daemon)   echo 3 ;;
     *)        echo "unknown fixture: $1" >&2; return 1 ;;
@@ -1626,6 +1626,35 @@ if out=$("$RENDER" full --set service.enabled=false --set ingress.enabled=false 
   echo "  OK: explicit HTTPRoute backendRefs render without the release Service"
 else
   echo "  FAIL: explicit backendRefs must not require service.enabled"; echo "$out" | tail -3; fail=1
+fi
+
+echo "==> ResourceQuota / LimitRange guardrails (empty spec enforces nothing)"
+if out=$("$RENDER" minimal --skip-schema-validation --set resourceQuota.enabled=true 2>&1); then
+  echo "  FAIL: render succeeded with resourceQuota.enabled=true and no resourceQuota.hard"; fail=1
+elif grep -q "resourceQuota.enabled is true but resourceQuota.hard is empty" <<<"$out"; then
+  echo "  OK: resourceQuota with empty hard rejected"
+else
+  echo "  FAIL: empty resourceQuota.hard failed without the expected message"; echo "$out" | tail -3; fail=1
+fi
+
+if out=$("$RENDER" minimal --set resourceQuota.enabled=true --set resourceQuota.hard.pods=10 2>&1); then
+  echo "  OK: resourceQuota with hard set renders"
+else
+  echo "  FAIL: resourceQuota with hard.pods set must render"; echo "$out" | tail -3; fail=1
+fi
+
+if out=$("$RENDER" minimal --skip-schema-validation --set limitRange.enabled=true 2>&1); then
+  echo "  FAIL: render succeeded with limitRange.enabled=true and no default/defaultRequest/max/min"; fail=1
+elif grep -q "limitRange.enabled is true but none of limitRange.default" <<<"$out"; then
+  echo "  OK: limitRange with no bounds rejected"
+else
+  echo "  FAIL: empty limitRange failed without the expected message"; echo "$out" | tail -3; fail=1
+fi
+
+if out=$("$RENDER" minimal --set limitRange.enabled=true --set limitRange.min.cpu=50m 2>&1); then
+  echo "  OK: limitRange with only min set renders"
+else
+  echo "  FAIL: limitRange with min set must render"; echo "$out" | tail -3; fail=1
 fi
 
 echo "==> StatefulSet governing headless Service"
