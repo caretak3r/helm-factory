@@ -57,22 +57,29 @@ gating (from the source):
 | 8 | PersistentVolumeClaim | `persistence.enabled` |
 | 9 | Workload (Deployment/StatefulSet/DaemonSet) | always |
 | 10 | HorizontalPodAutoscaler | `autoscaling.enabled` |
-| 11 | Service | `service.enabled` |
-| 12 | Ingress | `ingress.enabled` |
-| 13 | Gateway API (HTTPRoute/GRPCRoute) | `gatewayApi.enabled` **and** `apiVersionFor "HTTPRoute"` non-empty |
-| 14 | NetworkPolicy | `networkPolicy.enabled` |
-| 15 | PodDisruptionBudget | `podDisruptionBudget.enabled` |
-| 16 | ServiceAccount | `serviceAccount.create` or `serviceAccount.name` |
-| 17 | ServiceMonitor | `serviceMonitor.enabled` **and** `apiVersionFor "ServiceMonitor"` non-empty |
-| 18 | PodMonitor | `podMonitor.enabled` **and** `apiVersionFor "PodMonitor"` non-empty |
-| 19 | CronJob | `cronJob.enabled` |
-| 20 | Pre-install hook Job | `jobs.preInstall.enabled` |
-| 21 | Post-install hook Job | `jobs.postInstall.enabled` |
+| 11 | VerticalPodAutoscaler | `verticalAutoscaling.enabled` **and** `apiVersionFor "VerticalPodAutoscaler"` non-empty |
+| 12 | Service | `service.enabled` |
+| 13 | Ingress | `ingress.enabled` |
+| 14 | Gateway API (HTTPRoute/GRPCRoute) | `gatewayApi.enabled` **and** `apiVersionFor "HTTPRoute"` non-empty |
+| 15 | NetworkPolicy | `networkPolicy.enabled` |
+| 16 | PodDisruptionBudget | `podDisruptionBudget.enabled` |
+| 17 | ServiceAccount | `serviceAccount.create` or `serviceAccount.name` |
+| 18 | ServiceMonitor | `serviceMonitor.enabled` **and** `apiVersionFor "ServiceMonitor"` non-empty |
+| 19 | PodMonitor | `podMonitor.enabled` **and** `apiVersionFor "PodMonitor"` non-empty |
+| 20 | CronJob | `cronJob.enabled` |
+| 21 | Pre-install hook Job | `jobs.preInstall.enabled` |
+| 22 | Post-install hook Job | `jobs.postInstall.enabled` |
 
 Note the two-part gate on CRD-backed tier-1 objects (Certificate, mTLS, Gateway
-routes, ServiceMonitor, PodMonitor): the feature flag **and** a successful
-capability negotiation. This is what lets those objects skip cleanly when the CRD
-is absent.
+routes, ServiceMonitor, PodMonitor, VerticalPodAutoscaler): the feature flag
+**and** a successful capability negotiation. This is what lets those objects
+skip cleanly when the CRD is absent.
+
+`platform.app` also fails closed, ahead of the VPA gate, when
+`autoscaling.enabled` (HPA) and `verticalAutoscaling.enabled` are both true,
+HPA is scaling on CPU/memory (`targetCPU`, `targetMemory`, or a `Resource`-type
+entry in `metrics`), and `verticalAutoscaling.updateMode` is not `"Off"` — HPA
+and VPA both acting on the same resource is a known anti-pattern.
 
 ### 2.3 The separator invariant: `platform.emit`
 
@@ -165,6 +172,7 @@ that version was never removed upstream.
 | VirtualService | networking.istio.io | `v1`, `v1beta1`, `v1alpha3` |
 | DestinationRule, ServiceEntry, Sidecar | networking.istio.io | `v1`, `v1beta1` |
 | ServiceMonitor, PodMonitor, PrometheusRule, Probe | monitoring.coreos.com | `v1` |
+| VerticalPodAutoscaler | autoscaling.k8s.io | `v1` |
 | VolumeSnapshot, VolumeSnapshotClass, VolumeSnapshotContent | snapshot.storage.k8s.io | `v1` |
 | ResourceClaim, ResourceClaimTemplate, DeviceClass | resource.k8s.io | `v1` |
 
@@ -370,8 +378,9 @@ It produces a consumer chart wired with:
    `kubeconform` is on `PATH`).
 5. A **negative render** — `tests/render.sh full --set capabilities.apiVersions=null`
    — asserting that no CRD-backed Kind (Certificate, HTTPRoute, GRPCRoute,
-   PeerAuthentication, AuthorizationPolicy, ServiceMonitor, PodMonitor) rendered,
-   and that no empty `{}` document was emitted.
+   PeerAuthentication, AuthorizationPolicy, ServiceMonitor, PodMonitor,
+   VerticalPodAutoscaler) rendered, and that no empty `{}` document was
+   emitted.
 6. Posture guardrails and `platform.notes` (`NOTES.txt`) warning checks — via
    `helm install --dry-run=client` (NOTES only renders on install/upgrade, never
    `helm template`) — asserting the `secret.stringData`/`secret.data` and

@@ -165,6 +165,8 @@ ServiceMonitor: ["monitoring.coreos.com/v1/ServiceMonitor"]
 PodMonitor: ["monitoring.coreos.com/v1/PodMonitor"]
 PrometheusRule: ["monitoring.coreos.com/v1/PrometheusRule"]
 Probe: ["monitoring.coreos.com/v1/Probe"]
+# ---- kubernetes/autoscaler VPA CRD ----
+VerticalPodAutoscaler: ["autoscaling.k8s.io/v1/VerticalPodAutoscaler"]
 # ---- snapshot.storage.k8s.io/v1 (CSI volume snapshots) ----
 VolumeSnapshot: ["snapshot.storage.k8s.io/v1/VolumeSnapshot"]
 VolumeSnapshotClass: ["snapshot.storage.k8s.io/v1/VolumeSnapshotClass"]
@@ -289,6 +291,9 @@ podMonitor:
 prometheusRule:
   composition: atomic
   kinds: [PrometheusRule]
+verticalAutoscaling:
+  composition: atomic
+  kinds: [VerticalPodAutoscaler]
 {{- end -}}
 
 {{/*

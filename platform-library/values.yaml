@@ -117,6 +117,20 @@ exports:
       behavior: {}
 
     # -----------------------------------------------------------------------------
+    # Vertical Pod Autoscaler
+    # -----------------------------------------------------------------------------
+    # CRD-backed (autoscaling.k8s.io/v1, kubernetes/autoscaler project) —
+    # capability-gated like certificate/serviceMonitor/podMonitor: nothing
+    # renders unless the VPA CRDs are present (or force-assumed via
+    # capabilities.apiVersions). targetRef auto-wires to this chart's own
+    # workload. Enabling this alongside autoscaling (HPA) while both would act
+    # on CPU/memory fails closed unless updateMode is "Off" (recommend-only).
+    verticalAutoscaling:
+      enabled: false
+      updateMode: Auto
+      resourcePolicy: {}
+
+    # -----------------------------------------------------------------------------
     # Update Strategy
     # -----------------------------------------------------------------------------
     updateStrategy:

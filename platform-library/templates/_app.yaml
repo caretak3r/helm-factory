@@ -47,6 +47,20 @@
 {{- include "platform.emit" (include "platform.hpa" .) }}
 {{- end }}
 
+{{- $hpaActsOnCpuMem := or .Values.autoscaling.targetCPU .Values.autoscaling.targetMemory -}}
+{{- range .Values.autoscaling.metrics -}}
+{{- if and (eq (.type | default "") "Resource") .resource (has (.resource.name | default "") (list "cpu" "memory")) -}}
+{{- $hpaActsOnCpuMem = true -}}
+{{- end -}}
+{{- end -}}
+{{- if and .Values.autoscaling.enabled .Values.verticalAutoscaling.enabled (ne .Values.verticalAutoscaling.updateMode "Off") $hpaActsOnCpuMem -}}
+{{- fail (printf "autoscaling.enabled (HPA) and verticalAutoscaling.enabled (VPA) are both true, HPA is scaling on CPU/memory, and verticalAutoscaling.updateMode is %q (not \"Off\"): HPA and VPA fighting over the same resource is a known anti-pattern that causes scaling churn. Either disable one, or set verticalAutoscaling.updateMode: Off to run VPA in recommend-only mode alongside HPA." .Values.verticalAutoscaling.updateMode) -}}
+{{- end -}}
+
+{{- if include "platform.capabilities.gateOpen" (list . "VerticalPodAutoscaler") }}
+{{- include "platform.emit" (include "platform.vpa" .) }}
+{{- end }}
+
 {{- if .Values.service.enabled }}
 {{- include "platform.emit" (include "platform.service" .) }}
 {{- end }}

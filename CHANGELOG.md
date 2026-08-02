@@ -171,6 +171,20 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
   Fails closed when enabled with empty `prometheusRule.groups`: a rule
   object with no groups enforces nothing.
 
+### Added — VerticalPodAutoscaler generator
+
+- `VerticalPodAutoscaler` (`autoscaling.k8s.io/v1`) support: a new registry
+  entry (unblocks `extraObjects` for VPA) plus a first-class
+  `verticalAutoscaling` values block (`enabled`, `updateMode`, generator-gated
+  and capability-gated the same way as Certificate/ServiceMonitor/PodMonitor).
+  `updateMode` is validated against `Off`/`Initial`/`Recreate`/`Auto` and
+  `resourcePolicy` is a verbatim passthrough to `spec.resourcePolicy`;
+  `targetRef` auto-wires to the chart's own workload. Enabling
+  `verticalAutoscaling` alongside `autoscaling` (HPA) while HPA scales on
+  CPU/memory now fails closed at render time unless `updateMode: Off`
+  (recommend-only) — the two would otherwise fight over the same resource
+  (`helm-factory-ocx`).
+
 ## [2.1.0] - 2026-07-20
 
 Correctness batch: thirteen library defects fixed since 2.0.0, all with new
