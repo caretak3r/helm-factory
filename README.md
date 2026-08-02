@@ -947,6 +947,11 @@ schedulerName: ""         # Non-default scheduler; omitted when empty
 terminationGracePeriodSeconds: 60
 podRestartPolicy: Always  # Workload pod restartPolicy (CronJob pods are always OnFailure; hook Jobs use hooks.*.restartPolicy)
 hostAliases: []           # Extra /etc/hosts entries, e.g. [{ip: "10.0.0.1", hostnames: [foo.local]}]
+runtimeClassName: ""      # Alternate container runtime (gVisor, Kata, GPU runtimes); omitted when empty
+dnsPolicy: ""             # ClusterFirst|ClusterFirstWithHostNet|Default|None; omitted when empty
+dnsConfig: {}             # Verbatim passthrough (nameservers/searches/options) for custom resolvers or ndots tuning
+shareProcessNamespace: false  # Share the process namespace between containers; omitted (not rendered) when false
+os: {}                    # Pod-level OS designation, e.g. {name: linux}; PSS admission can use this. Omitted when empty
 ```
 
 ### Labels & Annotations

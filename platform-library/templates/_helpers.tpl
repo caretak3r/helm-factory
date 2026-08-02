@@ -527,6 +527,21 @@ spec:
   {{- if $ctx.Values.hostAliases }}
   hostAliases: {{- toYaml $ctx.Values.hostAliases | nindent 4 }}
   {{- end }}
+  {{- if $ctx.Values.runtimeClassName }}
+  runtimeClassName: {{ $ctx.Values.runtimeClassName | quote }}
+  {{- end }}
+  {{- if $ctx.Values.dnsPolicy }}
+  dnsPolicy: {{ $ctx.Values.dnsPolicy | quote }}
+  {{- end }}
+  {{- if $ctx.Values.dnsConfig }}
+  dnsConfig: {{- toYaml $ctx.Values.dnsConfig | nindent 4 }}
+  {{- end }}
+  {{- if $ctx.Values.shareProcessNamespace }}
+  shareProcessNamespace: {{ $ctx.Values.shareProcessNamespace }}
+  {{- end }}
+  {{- if $ctx.Values.os }}
+  os: {{- toYaml $ctx.Values.os | nindent 4 }}
+  {{- end }}
 {{- end }}
 
 {{/*
@@ -923,6 +938,21 @@ spec:
       restartPolicy: {{ $restartPolicy }}
       serviceAccountName: {{ include "platform.hookServiceAccountName" (list $ctx $type) }}
       {{- include "platform.podPolicy.identity" $ctx | nindent 6 }}
+      {{- if $ctx.Values.runtimeClassName }}
+      runtimeClassName: {{ $ctx.Values.runtimeClassName | quote }}
+      {{- end }}
+      {{- if $ctx.Values.dnsPolicy }}
+      dnsPolicy: {{ $ctx.Values.dnsPolicy | quote }}
+      {{- end }}
+      {{- if $ctx.Values.dnsConfig }}
+      dnsConfig: {{- toYaml $ctx.Values.dnsConfig | nindent 8 }}
+      {{- end }}
+      {{- if $ctx.Values.shareProcessNamespace }}
+      shareProcessNamespace: {{ $ctx.Values.shareProcessNamespace }}
+      {{- end }}
+      {{- if $ctx.Values.os }}
+      os: {{- toYaml $ctx.Values.os | nindent 8 }}
+      {{- end }}
       {{- include "platform.podPolicy.securityContext" (list $ctx 6) }}
       {{- include "platform.podPolicy.imagePullSecrets" (list $ctx 6) }}
       {{- if gt (len $initContainers) 0 }}

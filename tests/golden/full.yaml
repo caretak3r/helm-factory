@@ -315,6 +315,19 @@ spec:
           name: config
       terminationGracePeriodSeconds: 30
       restartPolicy: Always
+      runtimeClassName: "gvisor"
+      dnsPolicy: "ClusterFirst"
+      dnsConfig:
+        nameservers:
+        - 10.0.0.10
+        options:
+        - name: ndots
+          value: "5"
+        searches:
+        - ns1.svc.cluster.local
+      shareProcessNamespace: true
+      os:
+        name: linux
 ---
 # Source: full/templates/app.yaml
 apiVersion: autoscaling/v2
@@ -406,6 +419,19 @@ spec:
               resizePolicy:
                 - resourceName: cpu
                   restartPolicy: NotRequired
+          runtimeClassName: "gvisor"
+          dnsPolicy: "ClusterFirst"
+          dnsConfig:
+            nameservers:
+            - 10.0.0.10
+            options:
+            - name: ndots
+              value: "5"
+            searches:
+            - ns1.svc.cluster.local
+          shareProcessNamespace: true
+          os:
+            name: linux
 ---
 # Source: full/templates/app.yaml
 apiVersion: networking.k8s.io/v1
@@ -672,6 +698,19 @@ spec:
       serviceAccountName: t-full-preinstall
       automountServiceAccountToken: false
       enableServiceLinks: false
+      runtimeClassName: "gvisor"
+      dnsPolicy: "ClusterFirst"
+      dnsConfig:
+        nameservers:
+        - 10.0.0.10
+        options:
+        - name: ndots
+          value: "5"
+        searches:
+        - ns1.svc.cluster.local
+      shareProcessNamespace: true
+      os:
+        name: linux
       securityContext:
         fsGroup: 1001
         runAsNonRoot: true

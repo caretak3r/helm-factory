@@ -82,5 +82,20 @@ spec:
           {{- if .Values.cronJob.tolerations }}
           tolerations: {{- toYaml .Values.cronJob.tolerations | nindent 10 }}
           {{- end }}
+          {{- if .Values.runtimeClassName }}
+          runtimeClassName: {{ .Values.runtimeClassName | quote }}
+          {{- end }}
+          {{- if .Values.dnsPolicy }}
+          dnsPolicy: {{ .Values.dnsPolicy | quote }}
+          {{- end }}
+          {{- if .Values.dnsConfig }}
+          dnsConfig: {{- toYaml .Values.dnsConfig | nindent 12 }}
+          {{- end }}
+          {{- if .Values.shareProcessNamespace }}
+          shareProcessNamespace: {{ .Values.shareProcessNamespace }}
+          {{- end }}
+          {{- if .Values.os }}
+          os: {{- toYaml .Values.os | nindent 12 }}
+          {{- end }}
 {{- end }}
 {{- end }}

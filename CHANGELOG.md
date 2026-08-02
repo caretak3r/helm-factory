@@ -124,6 +124,15 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
   accept the same key directly since they are already verbatim per-container
   passthrough lists (helm-factory-7dm).
 
+### Added — pod-spec long-tail fields
+
+- Four pod-spec long-tail fields — `runtimeClassName`, `dnsPolicy`/`dnsConfig`,
+  `shareProcessNamespace`, and pod-level `os` — as new top-level values keys,
+  rendered verbatim (and omitted unless explicitly set, matching the existing
+  `priorityClassName`/`schedulerName` convention) across all three pod-spec
+  render sites: the main workload, the CronJob, and the pre/post-install hook
+  Jobs (helm-factory-4qe).
+
 ## [2.1.0] - 2026-07-20
 
 Correctness batch: thirteen library defects fixed since 2.0.0, all with new

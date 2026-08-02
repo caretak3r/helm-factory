@@ -540,6 +540,19 @@ exports:
     terminationGracePeriodSeconds: 30
     podRestartPolicy: Always
     hostAliases: []
+    # Alternate container runtime (e.g. gVisor, Kata, GPU runtimes). Omitted
+    # unless explicitly set.
+    runtimeClassName: ""
+    # DNS policy/config for custom resolvers or ndots tuning. dnsConfig is
+    # rendered verbatim; both are omitted unless explicitly set.
+    dnsPolicy: ""
+    dnsConfig: {}
+    # Share the process namespace between containers in the pod (e.g. for a
+    # debug sidecar that needs to see the main container's processes).
+    shareProcessNamespace: false
+    # Pod-level OS designation (e.g. {name: linux}); PSS admission can use
+    # this. Rendered verbatim; omitted unless explicitly set.
+    os: {}
     # Do not inject <SVCNAME>_SERVICE_HOST/_PORT env vars from every Service in
     # the namespace (information leak + env bloat). Set true to restore the
     # legacy Kubernetes behavior.
