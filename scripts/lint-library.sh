@@ -756,6 +756,18 @@ else
   echo "  FAIL: render failed without a schema error"; echo "$out" | tail -3; fail=1
 fi
 
+echo "==> PodDisruptionBudget: invalid unhealthyPodEvictionPolicy fails closed"
+# values.schema.reference.json already enforces the enum, but library
+# consumers may not copy the schema — the template itself must also refuse
+# an invalid value instead of rendering it verbatim (invariant 1: fail closed).
+if out=$("$RENDER" full --skip-schema-validation --set podDisruptionBudget.unhealthyPodEvictionPolicy=Bogus 2>&1); then
+  echo "  FAIL: render succeeded with podDisruptionBudget.unhealthyPodEvictionPolicy=Bogus and no schema"; fail=1
+elif grep -q "podDisruptionBudget.unhealthyPodEvictionPolicy" <<<"$out"; then
+  echo "  OK: unknown unhealthyPodEvictionPolicy fails in-template without the schema"
+else
+  echo "  FAIL: schema-less unhealthyPodEvictionPolicy=Bogus failed without the expected message"; echo "$out" | tail -3; fail=1
+fi
+
 echo "==> posture guardrails"
 # mTLS fail-closed: enabled with empty principals must fail with guidance.
 # (--set key=null deletes the key from the coalesced values.)
