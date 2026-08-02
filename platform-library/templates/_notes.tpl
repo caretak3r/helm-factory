@@ -1,4 +1,49 @@
 {{/*
+platform.notes.hasResources — "true" (else "") when a container's resources
+map (main container's .Values.resources, or a sidecar/initContainer entry's
+own .resources) declares at least one request or limit.
+Usage: include "platform.notes.hasResources" $container.resources
+*/}}
+{{- define "platform.notes.hasResources" -}}
+{{- $resources := . | default dict -}}
+{{- if or (and $resources.requests (not (empty $resources.requests))) (and $resources.limits (not (empty $resources.limits))) -}}true{{- end -}}
+{{- end -}}
+
+{{/*
+platform.notes.emptyResourceContainers — comma-separated names of every
+container that will actually render (main container, plus each enabled entry
+under sidecars.containers / initContainers.containers) whose effective
+resources map has neither requests nor limits, so it runs BestEffort QoS
+(first evicted under node pressure). The library keeps `resources: {}` as the
+default on purpose (no values-contract break); platform.notes turns a
+non-empty result here into an operator-visible WARNING instead of shipping
+default requests/limits — see CHANGELOG hf-uup.
+Usage: include "platform.notes.emptyResourceContainers" $top
+*/}}
+{{- define "platform.notes.emptyResourceContainers" -}}
+{{- $top := . -}}
+{{- $empty := list -}}
+{{- if not (include "platform.notes.hasResources" $top.Values.resources) -}}
+  {{- $empty = append $empty $top.Chart.Name -}}
+{{- end -}}
+{{- if and $top.Values.initContainers $top.Values.initContainers.enabled $top.Values.initContainers.containers -}}
+  {{- range $c := $top.Values.initContainers.containers -}}
+    {{- if not (include "platform.notes.hasResources" $c.resources) -}}
+      {{- $empty = append $empty (printf "%s (initContainer)" (default "<unnamed>" $c.name)) -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+{{- if and $top.Values.sidecars $top.Values.sidecars.enabled $top.Values.sidecars.containers -}}
+  {{- range $c := $top.Values.sidecars.containers -}}
+    {{- if not (include "platform.notes.hasResources" $c.resources) -}}
+      {{- $empty = append $empty (printf "%s (sidecar)" (default "<unnamed>" $c.name)) -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+{{- join ", " $empty -}}
+{{- end -}}
+
+{{/*
 =============================================================================
 platform.notes — post-install warnings for the consumer's NOTES.txt: security
 footguns, plus Kinds that were enabled in values and silently skipped because
@@ -97,6 +142,10 @@ Usage (consumer chart templates/NOTES.txt):
 {{- $extras := .Values.extraObjects | default dict -}}
 {{- if or (hasKey $extras "ClusterRole") (hasKey $extras "ClusterRoleBinding") (contains "kind: ClusterRole" $extrasYaml) -}}
 {{- $warnings = append $warnings "extraObjects/extraManifests grant cluster-scoped RBAC (ClusterRole/ClusterRoleBinding). Cluster-wide permissions outlive the namespace — keep the rules least-privilege." -}}
+{{- end -}}
+{{- $emptyResources := include "platform.notes.emptyResourceContainers" $top | trim -}}
+{{- if $emptyResources -}}
+{{- $warnings = append $warnings (printf "NO RESOURCES CONFIGURED: container(s) %s have no CPU/memory requests or limits and will run at BestEffort QoS — the first killed under node memory pressure and unbounded on CPU/memory otherwise. Set resources.requests/resources.limits for the main container, or a resources block per entry under sidecars.containers / initContainers.containers." $emptyResources) -}}
 {{- end -}}
 {{- range $w := $warnings }}
 WARNING: {{ $w }}

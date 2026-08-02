@@ -185,6 +185,22 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
   (recommend-only) — the two would otherwise fight over the same resource
   (`helm-factory-ocx`).
 
+### Added — NOTES warning for BestEffort QoS containers
+
+- `NOTES.txt` now warns when a container that will actually render — the main
+  container, or an enabled entry under `sidecars.containers` /
+  `initContainers.containers` — has no `resources.requests` or
+  `resources.limits` configured, so it runs at BestEffort QoS (first evicted
+  under node memory pressure, unbounded otherwise). The library's default stays
+  `resources: {}` — this is a NOTES-only warning, not a values-contract change,
+  and it has zero effect on rendered manifests: shipping default
+  requests/limits remains a possible future follow-up, reserved for a separate
+  decision. The warning names every offending container; `scripts/lint-library.sh`
+  gained a mutation-tested `NOTES: containers with no resources configured`
+  section covering the zero-config case, setting resources on the main
+  container, and setting/omitting resources on sidecars and initContainers
+  independently (hf-uup).
+
 ## [2.1.0] - 2026-07-20
 
 Correctness batch: thirteen library defects fixed since 2.0.0, all with new
