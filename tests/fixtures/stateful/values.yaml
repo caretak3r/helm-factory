@@ -1,7 +1,8 @@
 # StatefulSet coverage fixture. Values land at root because the dependency
 # uses import-values: [defaults]. Exercises: workload.type=StatefulSet,
 # persistence (PVC + mount), mounted ConfigMap, Secret, all three probes,
-# and statefulSet.volumeClaimTemplates.
+# and statefulSet.volumeClaimTemplates, plus a ServiceMonitor over the
+# StatefulSet's primary + managed headless Service pair (the double-match case).
 workload:
   type: StatefulSet
 
@@ -41,6 +42,13 @@ livenessProbe:
 
 readinessProbe:
   enabled: true
+
+serviceMonitor:
+  enabled: true
+
+capabilities:
+  apiVersions:
+    - monitoring.coreos.com/v1
 
 statefulSet:
   volumeClaimTemplates:

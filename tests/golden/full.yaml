@@ -577,6 +577,11 @@ spec:
       app.kubernetes.io/name: full
       app.kubernetes.io/instance: t
       app.kubernetes.io/component: app
+    matchExpressions:
+      - key: platform/service-role
+        operator: NotIn
+        values:
+          - headless
   namespaceSelector:
     matchNames:
       - "default"

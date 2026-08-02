@@ -85,6 +85,24 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
   in a `SKIPPED EXTRA OBJECTS` NOTES warning naming each `Kind/name` and the
   apiVersions tried — the same contract tier-1 gated Kinds already have.
 
+### Fixed — ServiceMonitor double-match
+
+- The default ServiceMonitor selector no longer double-matches a StatefulSet's
+  managed headless Service. Both Services carried identical label sets, so
+  `matchLabels: platform.selectorLabels` selected the primary *and* the
+  headless Service and Prometheus Operator generated two scrape targets for
+  the same pods (duplicate series, doubled `up` counts). The managed headless
+  Service now carries `platform/service-role: headless`, and the default
+  selector adds a `matchExpressions` entry excluding it. An explicit
+  `serviceMonitor.selector` is still used verbatim — it replaces the default
+  selector, exclusion included. `PodMonitor` was never affected (it selects
+  pods, not Services). The stateful fixture now enables `serviceMonitor`, and
+  `scripts/lint-library.sh` gained a guarded, mutation-tested
+  `ServiceMonitor does not double-match` gate section (helm-factory-75c).
+  **Behavior change:** the headless Service gains one label; consumers that
+  wrote their own selector matching *every* Service of the release should
+  confirm they still want both targets.
+
 ## [2.1.0] - 2026-07-20
 
 Correctness batch: thirteen library defects fixed since 2.0.0, all with new
