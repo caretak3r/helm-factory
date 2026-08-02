@@ -259,6 +259,22 @@ service:
   annotations: {}
 ```
 
+Long-tail Service fields are unset by default and render only when set —
+the API server's own default applies otherwise:
+
+```yaml
+service:
+  ipFamilies: []                 # e.g. [IPv4, IPv6] for dual-stack, in preference order
+  ipFamilyPolicy: ""             # SingleStack | PreferDualStack | RequireDualStack
+  internalTrafficPolicy: ""      # Cluster | Local
+  trafficDistribution: ""        # PreferClose (topology-aware routing)
+  publishNotReadyAddresses: false
+```
+
+`publishNotReadyAddresses` also applies to the library-managed headless
+Service (`<fullname>-headless`) rendered for StatefulSets — useful for peer
+discovery while pods are still starting up.
+
 `type: ExternalName` aliases an external DNS name instead of selecting pods —
 set `service.externalName` (required; rendering fails without it) and the
 Service renders only `type` + `externalName`, omitting ports and selector:

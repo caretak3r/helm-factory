@@ -25,6 +25,9 @@ metadata:
 spec:
   type: ClusterIP
   clusterIP: None
+  {{- if .Values.service.publishNotReadyAddresses }}
+  publishNotReadyAddresses: {{ .Values.service.publishNotReadyAddresses }}
+  {{- end }}
   {{- $servicePorts := dict "value" .Values.service.ports -}}
   {{- if not (index $servicePorts "value") }}
     {{- $_ := set $servicePorts "value" (list (include "platform.primaryServicePort" . | fromYaml)) -}}

@@ -81,6 +81,15 @@ exports:
       loadBalancerSourceRanges: []
       externalTrafficPolicy: Cluster
       annotations: {}
+      # Dual-stack / traffic-routing long tail. Unset by default — each field
+      # renders only when the consumer sets it; the API server's own default
+      # applies otherwise. Also consumed by the managed headless Service
+      # (publishNotReadyAddresses only — see _service-headless.yaml).
+      ipFamilies: []
+      ipFamilyPolicy: ""
+      internalTrafficPolicy: ""
+      trafficDistribution: ""
+      publishNotReadyAddresses: false
 
     # -----------------------------------------------------------------------------
     # High Availability

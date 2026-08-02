@@ -133,6 +133,16 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
   render sites: the main workload, the CronJob, and the pre/post-install hook
   Jobs (helm-factory-4qe).
 
+### Added — Service long-tail fields
+
+- Service long-tail fields: dual-stack `service.ipFamilies` /
+  `service.ipFamilyPolicy`, `service.internalTrafficPolicy`,
+  `service.trafficDistribution` (topology-aware routing), and
+  `service.publishNotReadyAddresses`. All five are unset by default and
+  render only when the consumer sets them. `publishNotReadyAddresses` is
+  also threaded through the library-managed headless Service, which matters
+  for StatefulSet peer discovery during initial bootstrap (helm-factory-utm).
+
 ## [2.1.0] - 2026-07-20
 
 Correctness batch: thirteen library defects fixed since 2.0.0, all with new

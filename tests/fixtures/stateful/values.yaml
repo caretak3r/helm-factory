@@ -17,6 +17,8 @@ service:
       port: 80
       targetPort: http
       protocol: TCP
+  internalTrafficPolicy: Local
+  publishNotReadyAddresses: true
 
 configMap:
   enabled: true
