@@ -21,5 +21,12 @@ spec:
   {{- else }}
   minAvailable: {{ $min | default 1 }}
   {{- end }}
+  {{- $uep := .Values.podDisruptionBudget.unhealthyPodEvictionPolicy }}
+  {{- if and $uep (ne $uep "IfHealthyBudget") (ne $uep "AlwaysAllow") }}
+  {{- fail (printf "podDisruptionBudget.unhealthyPodEvictionPolicy %q is invalid: set it to \"IfHealthyBudget\" or \"AlwaysAllow\" (case-sensitive), or leave it empty (the default) to omit the field." $uep) }}
+  {{- end }}
+  {{- if .Values.podDisruptionBudget.unhealthyPodEvictionPolicy }}
+  unhealthyPodEvictionPolicy: {{ .Values.podDisruptionBudget.unhealthyPodEvictionPolicy }}
+  {{- end }}
 {{- end }}
 {{- end }}

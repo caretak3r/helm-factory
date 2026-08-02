@@ -121,10 +121,13 @@ exports:
     # -----------------------------------------------------------------------------
     # minAvailable and maxUnavailable are mutually exclusive; set exactly one.
     # When neither is set the chart applies minAvailable: 1.
+    # unhealthyPodEvictionPolicy: IfHealthyBudget (default) or AlwaysAllow.
+    # Empty string omits the field and keeps the cluster default (IfHealthyBudget).
     podDisruptionBudget:
       enabled: false
       minAvailable: ""
       maxUnavailable: ""
+      unhealthyPodEvictionPolicy: ""
 
     # -----------------------------------------------------------------------------
     # Resources
