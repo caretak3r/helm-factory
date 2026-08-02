@@ -164,4 +164,8 @@ Created ${out_dir}/
 Next:
   helm dependency update ${out_dir}
   helm template ${name} ${out_dir}
+
+values.schema.json is a point-in-time copy of the library's reference schema.
+After bumping the platform dependency version in ${out_dir}/Chart.yaml, refresh it:
+  scripts/sync-consumer-schema.sh ${out_dir}
 EOF

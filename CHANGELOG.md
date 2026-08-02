@@ -201,6 +201,19 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
   container, and setting/omitting resources on sidecars and initContainers
   independently (hf-uup).
 
+### Added — consumer schema sync script
+
+- `scripts/sync-consumer-schema.sh <consumer-chart-dir>` refreshes a consumer
+  chart's `values.schema.json` from `platform-library/values.schema.reference.json`.
+  `scripts/new-app-chart.sh` only copies that schema once, at scaffold time, so
+  a consumer that later bumped its `platform` dependency kept validating against
+  the old contract with no warning. The script reads the chart's declared
+  `platform` dependency version, reports the top-level values keys added or
+  removed plus a truncated unified diff, and supports `--dry-run` for a
+  report-only pass. It exits 0 without writing when the copy is already in sync.
+  Documented in README.md and printed in the scaffold's onboarding output
+  (hf-th2).
+
 ## [2.1.0] - 2026-07-20
 
 Correctness batch: thirteen library defects fixed since 2.0.0, all with new

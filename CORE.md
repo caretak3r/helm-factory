@@ -158,6 +158,7 @@ helm-factory/
 │       └── _prometheusrule.yaml  # Prometheus PrometheusRule
 ├── scripts/
 │   ├── new-app-chart.sh          # Consumer chart scaffold
+│   ├── sync-consumer-schema.sh   # Refresh a consumer's values.schema.json after a dependency bump
 │   ├── lint-library.sh           # Full validation gate (matrix, goldens, kubeconform)
 │   ├── vendor-schemas.sh         # Refreshes tests/schemas/ (only script allowed to hit the network)
 │   └── lib/
