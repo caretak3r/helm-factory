@@ -112,6 +112,18 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
   other value fails at template time with a named error (guarded,
   mutation-tested gate section included).
 
+### Added — container resizePolicy
+
+- Container `resizePolicy` passthrough for in-place pod vertical scaling
+  (`InPlacePodVerticalScaling`, GA in the 1.34-1.36 supported window). New
+  additive `resizePolicy` values key (list of `{resourceName, restartPolicy}`,
+  same shape as the native Kubernetes container field) on the main workload
+  container, threaded through to the CronJob fallback container and the
+  pre/post-install hook Job main container via the shared `jobs.resizePolicy`
+  default. `sidecars.containers` and `initContainers.containers` entries
+  accept the same key directly since they are already verbatim per-container
+  passthrough lists (helm-factory-7dm).
+
 ## [2.1.0] - 2026-07-20
 
 Correctness batch: thirteen library defects fixed since 2.0.0, all with new

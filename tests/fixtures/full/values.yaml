@@ -45,6 +45,13 @@ cronJob:
   enabled: true
   schedule: "*/5 * * * *"
 
+# In-place pod vertical scaling: verbatim container resizePolicy passthrough.
+resizePolicy:
+  - resourceName: cpu
+    restartPolicy: NotRequired
+  - resourceName: memory
+    restartPolicy: RestartContainer
+
 certificate:
   enabled: true
   issuer: letsencrypt
@@ -144,7 +151,12 @@ extraManifests:
 
 # Hook job, exercises the hardened renderHookJob path (securityContext,
 # automountServiceAccountToken, enableServiceLinks, script ConfigMap).
+# jobs.resizePolicy is the shared default consumed by both the hook Job main
+# container below and the CronJob fallback container above.
 jobs:
+  resizePolicy:
+    - resourceName: cpu
+      restartPolicy: NotRequired
   preInstall:
     enabled: true
     script: |

@@ -135,6 +135,15 @@ exports:
     resources: {}
 
     # -----------------------------------------------------------------------------
+    # Resize Policy (in-place pod vertical scaling, InPlacePodVerticalScaling)
+    # -----------------------------------------------------------------------------
+    # Verbatim passthrough of the native container field: a list of
+    # {resourceName, restartPolicy}. resourceName is cpu or memory;
+    # restartPolicy is NotRequired (default resize behavior) or
+    # RestartContainer (restart the container to apply the resize).
+    resizePolicy: []
+
+    # -----------------------------------------------------------------------------
     # Probes
     # -----------------------------------------------------------------------------
     startupProbe:
@@ -366,6 +375,10 @@ exports:
         limits:
           cpu: 500m
           memory: 512Mi
+      # Shared default for both the hook Job main container and the CronJob
+      # fallback container (see .Values.jobs.resources above); per-job
+      # jobs.preInstall.resizePolicy / jobs.postInstall.resizePolicy override.
+      resizePolicy: []
       initContainers:
         enabled: false
         containers: []

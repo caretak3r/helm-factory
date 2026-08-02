@@ -69,6 +69,9 @@ spec:
               {{- with .Values.jobs.resources }}
               resources: {{- toYaml . | nindent 16 }}
               {{- end }}
+              {{- with .Values.jobs.resizePolicy }}
+              resizePolicy: {{- toYaml . | nindent 16 }}
+              {{- end }}
           {{- end }}
           {{- if .Values.cronJob.volumes }}
           volumes: {{- toYaml .Values.cronJob.volumes | nindent 10 }}
