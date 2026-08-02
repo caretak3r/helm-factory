@@ -66,4 +66,5 @@ CRD_SCHEMA_PATHS=(
   security.istio.io/peerauthentication_v1
   monitoring.coreos.com/podmonitor_v1
   monitoring.coreos.com/servicemonitor_v1
+  monitoring.coreos.com/prometheusrule_v1
 )

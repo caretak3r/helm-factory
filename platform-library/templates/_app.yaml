@@ -99,6 +99,10 @@
 {{- include "platform.emit" (include "platform.podmonitor" .) }}
 {{- end }}
 
+{{- if include "platform.capabilities.gateOpen" (list . "PrometheusRule") }}
+{{- include "platform.emit" (include "platform.prometheusrule" .) }}
+{{- end }}
+
 {{- if .Values.cronJob.enabled }}
 {{- include "platform.emit" (include "platform.cronjob" .) }}
 {{- end }}

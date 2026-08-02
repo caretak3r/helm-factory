@@ -157,6 +157,20 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
   `defaultRequest` is the namespace-level backstop for a workload that renders
   with no `resources:` set (BestEffort QoS).
 
+### Added — PrometheusRule generator
+
+- First-class `prometheusRule:` values block and `_prometheusrule.yaml`
+  generator for Prometheus Operator `PrometheusRule` objects (alerts and
+  recording rules), the missing third leg of the observability story
+  alongside `serviceMonitor`/`podMonitor`. `PrometheusRule` is registered in
+  the `platform.capabilities.features` registry, so it negotiates its
+  apiVersion and skips (with a NOTES warning) like the other Prometheus
+  Operator CRDs when the `monitoring.coreos.com` API isn't served or
+  force-assumed. `groups` is a verbatim passthrough of Prometheus rule
+  groups — the same free-form treatment as `serviceMonitor.relabelings`.
+  Fails closed when enabled with empty `prometheusRule.groups`: a rule
+  object with no groups enforces nothing.
+
 ## [2.1.0] - 2026-07-20
 
 Correctness batch: thirteen library defects fixed since 2.0.0, all with new

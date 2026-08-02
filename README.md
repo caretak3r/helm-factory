@@ -39,7 +39,7 @@ This library no longer targets Kubernetes 1.31–1.33 (its `kubeVersion` floor i
 | Networking | Service, Ingress, Gateway API (HTTPRoute / GRPCRoute), NetworkPolicy |
 | Scaling | HPA, PodDisruptionBudget |
 | Security | PodSecurityContext, ContainerSecurityContext, mTLS (Istio), Certificates (cert-manager), TLS self-signed |
-| Observability | ServiceMonitor, PodMonitor (Prometheus Operator) |
+| Observability | ServiceMonitor, PodMonitor, PrometheusRule (Prometheus Operator) |
 | Config/Secrets | ConfigMap, Secret, Environment Variables |
 | Storage | PersistentVolumeClaim, VolumeClaimTemplates (StatefulSet) |
 | Jobs | Pre/Post-install hooks, CronJob |
@@ -865,7 +865,7 @@ serviceAccount:
 > itself via `serviceAccount.annotations` (`helm.sh/hook: pre-install,pre-upgrade`,
 > `helm.sh/hook-weight: "-10"`, `helm.sh/hook-delete-policy: before-hook-creation`).
 
-### Service Monitor / Pod Monitor (Prometheus)
+### Service Monitor / Pod Monitor / Prometheus Rule (Prometheus)
 
 ```yaml
 serviceMonitor:
@@ -891,6 +891,23 @@ podMonitor:
     insecureSkipVerify: false
   interval: 30s
   sampleLimit: 0                # optional per-target series cap; 0 = no limit
+```
+
+```yaml
+prometheusRule:
+  enabled: true
+  labels:
+    release: prometheus
+  groups:                       # verbatim passthrough of Prometheus Operator rule groups
+    - name: app.rules
+      rules:
+        - alert: HighErrorRate
+          expr: rate(http_requests_total{status=~"5.."}[5m]) > 0.05
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: High error rate detected
 ```
 
 ### Pod Disruption Budget
@@ -1179,7 +1196,8 @@ platform-library/
 │   ├── _cronjob.yaml       ← CronJob
 │   ├── _job-preinstall.yaml / _job-postinstall.yaml ← Hook Jobs
 │   ├── _servicemonitor.yaml ← Prometheus ServiceMonitor
-│   └── _podmonitor.yaml    ← Prometheus PodMonitor
+│   ├── _podmonitor.yaml    ← Prometheus PodMonitor
+│   └── _prometheusrule.yaml ← Prometheus PrometheusRule (alerts / recording rules)
 ```
 
 **Rendering flow:** the consumer's `templates/app.yaml` includes `platform.render`, which composes `platform.app` (the tier-1 orchestrator in `_app.yaml` — checks each feature's `.enabled` flag and capability gate, then emits the object), `platform.extraObjects`, and `platform.extraManifests`. Every template is an underscore-prefixed `define` block; the library ships no directly-rendered templates.

@@ -635,6 +635,18 @@ exports:
       sampleLimit: 0
 
     # -----------------------------------------------------------------------------
+    # Prometheus Rule (alerts / recording rules, Prometheus Operator)
+    # -----------------------------------------------------------------------------
+    prometheusRule:
+      enabled: false
+      namespace: ""
+      labels: {}
+      annotations: {}
+      # Verbatim passthrough of Prometheus Operator rule groups (alerting and
+      # recording rules) — same free-form treatment as serviceMonitor.relabelings.
+      groups: []
+
+    # -----------------------------------------------------------------------------
     # Network Policy
     # -----------------------------------------------------------------------------
     networkPolicy:
