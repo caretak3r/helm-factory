@@ -107,7 +107,7 @@ fail=0
 expected_kinds() {
   case "$1" in
     minimal)  echo 3 ;;
-    full)     echo 30 ;;
+    full)     echo 31 ;;
     stateful) echo 8 ;;
     daemon)   echo 3 ;;
     *)        echo "unknown fixture: $1" >&2; return 1 ;;
@@ -1249,9 +1249,8 @@ fi
 # gated in _app.yaml (Certificate, PeerAuthentication, HTTPRoute, ServiceMonitor,
 # PodMonitor, PrometheusRule, VerticalPodAutoscaler) plus 2 secondary Kinds gated
 # inside their own feature template (AuthorizationPolicy, GRPCRoute). The full
-# fixture enables
-# mtls and gatewayApi.httpRoute (not grpcRoute) and force-assumes every API
-# those enabled Kinds need, so it must stay silent.
+# fixture enables mtls and both routes (httpRoute and grpcRoute) and
+# force-assumes every API those enabled Kinds need, so it must stay silent.
 if out=$(notes_of full 2>&1); then
   if grep -q "SKIPPED KINDS" <<<"$out"; then
     echo "  FAIL: full fixture warns about skipped Kinds it actually renders"; echo "$out" | tail -5; fail=1
@@ -1573,13 +1572,25 @@ if out=$("$RENDER" full --set capabilities.apiVersions=null \
 else
   echo "  FAIL: render failed for v1 negotiation check"; echo "$out" | tail -3; fail=1
 fi
-if out=$("$RENDER" full --set gatewayApi.apiVersion=gateway.networking.k8s.io/v1beta1 2>&1); then
+# The shared gatewayApi.apiVersion override applies to BOTH routes, and the
+# versions are not interchangeable: GRPCRoute has no v1beta1 upstream. The
+# per-route override is what makes the shared one usable here, so this leg
+# asserts the two-level precedence (per-route beats shared beats negotiated)
+# rather than the shared key alone.
+if out=$("$RENDER" full --set gatewayApi.apiVersion=gateway.networking.k8s.io/v1beta1 \
+  --set gatewayApi.grpcRoute.apiVersion=gateway.networking.k8s.io/v1alpha2 2>&1); then
   validate_render "Gateway API negotiation (explicit override)" "$out"
   http_api=$(grep -B1 '^kind: HTTPRoute$' <<<"$out" | grep '^apiVersion:' || true)
+  grpc_api=$(grep -B1 '^kind: GRPCRoute$' <<<"$out" | grep '^apiVersion:' || true)
   if [[ "$http_api" == "apiVersion: gateway.networking.k8s.io/v1beta1" ]]; then
     echo "  OK: explicit gatewayApi.apiVersion override still wins over negotiation"
   else
     echo "  FAIL: expected overridden HTTPRoute apiVersion v1beta1, got '${http_api:-none}'"; fail=1
+  fi
+  if [[ "$grpc_api" == "apiVersion: gateway.networking.k8s.io/v1alpha2" ]]; then
+    echo "  OK: per-route grpcRoute.apiVersion beats the shared gatewayApi.apiVersion"
+  else
+    echo "  FAIL: expected per-route GRPCRoute apiVersion v1alpha2, got '${grpc_api:-none}'"; fail=1
   fi
 else
   echo "  FAIL: render failed for explicit-override check"; echo "$out" | tail -3; fail=1
@@ -1769,13 +1780,66 @@ else
   echo "  FAIL: defaulted-backend-without-service failed without the expected message"; echo "$out" | tail -3; fail=1
 fi
 
+# The GRPCRoute leg of the same guard: it defaults its backendRefs identically,
+# and is reached only once HTTPRoute's copy is satisfied (explicit backendRefs
+# below), so it needs its own negative render or the branch stays dead.
 if out=$("$RENDER" full --set service.enabled=false --set ingress.enabled=false \
   --set 'gatewayApi.httpRoute.backendRefs[0].name=other' \
   --set 'gatewayApi.httpRoute.backendRefs[0].port=8080' 2>&1); then
-  validate_render "HTTPRoute explicit backendRefs (no release Service)" "$out"
-  echo "  OK: explicit HTTPRoute backendRefs render without the release Service"
+  echo "  FAIL: render succeeded with a defaulted GRPCRoute backend and service.enabled=false"; fail=1
+elif grep -q "gatewayApi.grpcRoute has no backendRefs" <<<"$out"; then
+  echo "  OK: defaulted GRPCRoute backend without the Service rejected"
+else
+  echo "  FAIL: defaulted-GRPCRoute-backend-without-service failed without the expected message"; echo "$out" | tail -3; fail=1
+fi
+
+if out=$("$RENDER" full --set service.enabled=false --set ingress.enabled=false \
+  --set 'gatewayApi.httpRoute.backendRefs[0].name=other' \
+  --set 'gatewayApi.httpRoute.backendRefs[0].port=8080' \
+  --set 'gatewayApi.grpcRoute.backendRefs[0].name=other-grpc' \
+  --set 'gatewayApi.grpcRoute.backendRefs[0].port=9090' 2>&1); then
+  validate_render "HTTPRoute/GRPCRoute explicit backendRefs (no release Service)" "$out"
+  echo "  OK: explicit route backendRefs render without the release Service"
 else
   echo "  FAIL: explicit backendRefs must not require service.enabled"; echo "$out" | tail -3; fail=1
+fi
+
+# parentRefs is REQUIRED on every route — a route with none is accepted by the
+# API server and attaches to nothing. Both legs fall back to gatewayApi.parentRefs,
+# so each negative render clears the shared base plus that route's own list. The
+# HTTPRoute check runs first in the template, so the GRPCRoute leg must leave
+# HTTPRoute's own parentRefs intact to reach its guard at all. Schema-skipped:
+# the reference schema also requires parentRefs, and the template guard is the
+# layer that survives consumer schema drift.
+if out=$("$RENDER" full --skip-schema-validation --set gatewayApi.parentRefs=null \
+  --set gatewayApi.httpRoute.parentRefs=null 2>&1); then
+  echo "  FAIL: render succeeded with gatewayApi.httpRoute.enabled and no parentRefs"; fail=1
+elif grep -q "gatewayApi.httpRoute.enabled but no parentRefs configured" <<<"$out"; then
+  echo "  OK: HTTPRoute without parentRefs rejected"
+else
+  echo "  FAIL: HTTPRoute-without-parentRefs failed without the expected message"; echo "$out" | tail -3; fail=1
+fi
+
+if out=$("$RENDER" full --skip-schema-validation --set gatewayApi.parentRefs=null \
+  --set gatewayApi.grpcRoute.parentRefs=null 2>&1); then
+  echo "  FAIL: render succeeded with gatewayApi.grpcRoute.enabled and no parentRefs"; fail=1
+elif grep -q "gatewayApi.grpcRoute.enabled but no parentRefs configured" <<<"$out"; then
+  echo "  OK: GRPCRoute without parentRefs rejected"
+else
+  echo "  FAIL: GRPCRoute-without-parentRefs failed without the expected message"; echo "$out" | tail -3; fail=1
+fi
+
+echo "==> hook script source guard"
+# jobs.*.scriptFile silently produced an EMPTY script.sh when the file was
+# missing from the consumer chart: the hook Job then ran a no-op and reported
+# success, so a failed migration looked like a clean install.
+if out=$("$RENDER" full --set jobs.preInstall.script=null \
+  --set jobs.preInstall.scriptFile=does-not-exist.sh 2>&1); then
+  echo "  FAIL: render succeeded with jobs.preInstall.scriptFile pointing at a missing file"; fail=1
+elif grep -q "Script file not found: does-not-exist.sh" <<<"$out"; then
+  echo "  OK: missing scriptFile rejected by name"
+else
+  echo "  FAIL: missing scriptFile failed without the expected message"; echo "$out" | tail -3; fail=1
 fi
 
 echo "==> ResourceQuota / LimitRange / PrometheusRule guardrails (empty spec enforces nothing)"

@@ -49,6 +49,31 @@ autoscaling:
   minReplicas: 2
   maxReplicas: 5
   targetCPU: 80
+  # The advanced HPA branches (behavior, targetMemory, custom metrics) are all
+  # gated separately in platform.autoscaling; a CPU-only fixture froze none of
+  # them into a golden.
+  targetMemory: 75
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 50
+          periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Pods
+          value: 4
+          periodSeconds: 15
+  metrics:
+    - type: Pods
+      pods:
+        metric:
+          name: http_requests_per_second
+        target:
+          type: AverageValue
+          averageValue: "1k"
 
 # updateMode: Off (recommend-only) so this coexists with autoscaling.enabled
 # above without tripping the HPA/VPA conflict guard.
@@ -70,8 +95,31 @@ podDisruptionBudget:
   minAvailable: 1
   unhealthyPodEvictionPolicy: AlwaysAllow
 
+# Populated ingress/egress rules: the default-deny shape (podSelector +
+# policyTypes only) left _networkpolicy.yaml's rule branches unrendered.
 networkPolicy:
   enabled: true
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: gateway
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
 
 resourceQuota:
   enabled: true
@@ -158,6 +206,22 @@ gatewayApi:
     parentRefs:
       - name: shared-gateway
         namespace: gateway-system
+  # GRPCRoute is a separate CRD negotiated on its own (HTTPRoute availability
+  # does not prove it), and no fixture rendered it — ~80 lines of
+  # _gateway-api.yaml were frozen into no golden. The force-assumed bare
+  # gateway.networking.k8s.io/v1 below satisfies its registry entry too.
+  grpcRoute:
+    enabled: true
+    hostnames:
+      - grpc.example.com
+    parentRefs:
+      - name: shared-gateway
+        namespace: gateway-system
+    matches:
+      - method:
+          type: Exact
+          service: com.example.Echo
+          method: Ping
 
 capabilities:
   apiVersions:
