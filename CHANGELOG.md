@@ -214,6 +214,15 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
   Documented in README.md and printed in the scaffold's onboarding output
   (hf-th2).
 
+### Added — schema sync `--check` mode
+
+- `scripts/sync-consumer-schema.sh` gained a `--check` mode: it reports drift
+  exactly like `--dry-run` (writing nothing) but exits 1 when the consumer's
+  `values.schema.json` is DRIFTED or MISSING and 0 when it is already in sync.
+  A consumer chart can now gate its own CI on schema drift after bumping its
+  `platform` dependency, instead of relying on someone reading `--dry-run`
+  output (helm-factory-cuk).
+
 ## [2.1.0] - 2026-07-20
 
 Correctness batch: thirteen library defects fixed since 2.0.0, all with new

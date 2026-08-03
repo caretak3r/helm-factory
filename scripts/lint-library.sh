@@ -768,6 +768,30 @@ else
   echo "  FAIL: schema-less unhealthyPodEvictionPolicy=Bogus failed without the expected message"; echo "$out" | tail -3; fail=1
 fi
 
+echo "==> PodDisruptionBudget: minAvailable and maxUnavailable are mutually exclusive"
+# _pdb.yaml:17 fails closed when both are set. The schema only documents the
+# exclusion in its property descriptions, it does not structurally forbid
+# both keys, so the template guard is what actually stops a consumer from
+# rendering a PodDisruptionBudget the API server rejects.
+if out=$("$RENDER" full --set podDisruptionBudget.minAvailable=1 --set podDisruptionBudget.maxUnavailable=1 2>&1); then
+  echo "  FAIL: render succeeded with both minAvailable and maxUnavailable set"; fail=1
+elif grep -q "mutually exclusive" <<<"$out"; then
+  echo "  OK: setting both minAvailable and maxUnavailable fails closed"
+else
+  echo "  FAIL: render failed without the expected mutually-exclusive message"; echo "$out" | tail -3; fail=1
+fi
+
+if out=$("$RENDER" full --set podDisruptionBudget.minAvailable=null --set podDisruptionBudget.maxUnavailable=1 2>&1); then
+  pdb_doc=$(doc_of PodDisruptionBudget t-full <<<"$out")
+  if grep -q '^  maxUnavailable: 1$' <<<"$pdb_doc"; then
+    echo "  OK: maxUnavailable alone renders without over-firing the mutual-exclusion guard"
+  else
+    echo "  FAIL: PodDisruptionBudget rendered without maxUnavailable"; echo "$pdb_doc" | tail -8; fail=1
+  fi
+else
+  echo "  FAIL: render failed with only maxUnavailable set"; echo "$out" | tail -3; fail=1
+fi
+
 echo "==> posture guardrails"
 # mTLS fail-closed: enabled with empty principals must fail with guidance.
 # (--set key=null deletes the key from the coalesced values.)
