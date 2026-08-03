@@ -17,11 +17,14 @@
 #
 # Options:
 #   --dry-run    Report what would change; write nothing
+#   --check      Like --dry-run, but exit 1 if drifted/missing, 0 if in sync
+#                (write-free, for gate/CI use)
 #   -h, --help   Show this help
 #
 # Example:
 #   scripts/sync-consumer-schema.sh ../billing
 #   scripts/sync-consumer-schema.sh tests/fixtures/full --dry-run
+#   scripts/sync-consumer-schema.sh tests/fixtures/full --check
 # =============================================================================
 set -euo pipefail
 
@@ -32,13 +35,15 @@ DIFF_PREVIEW_LINES=40
 
 chart_dir=""
 dry_run=0
+check=0
 
 die() { echo "error: $*" >&2; exit 1; }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --dry-run) dry_run=1; shift ;;
-    -h|--help) sed -n '2,24p' "$0"; exit 0 ;;
+    --check)   check=1; dry_run=1; shift ;;
+    -h|--help) sed -n '2,27p' "$0"; exit 0 ;;
     -*)        die "unknown option: $1" ;;
     *)         if [[ -z "$chart_dir" ]]; then chart_dir="$1"; else die "unexpected argument: $1"; fi; shift ;;
   esac
@@ -80,8 +85,10 @@ echo "  declared platform dependency: ${dep_version}"
 echo "  library in this checkout:     ${lib_version}  ($REFERENCE_SCHEMA)"
 
 # --- what would change --------------------------------------------------------
+drifted=0
 if [[ ! -f "$dest" ]]; then
   echo "  values.schema.json: MISSING - will be created"
+  drifted=1
 elif cmp -s "$REFERENCE_SCHEMA" "$dest"; then
   echo "  values.schema.json: already in sync - nothing to do"
   exit 0
@@ -95,6 +102,7 @@ else
   added="$(printf '%s\n' "$diff_out" | grep -c '^+[^+]' || true)"
   removed="$(printf '%s\n' "$diff_out" | grep -c '^-[^-]' || true)"
   echo "  values.schema.json: DRIFTED (+${added} / -${removed} lines)"
+  drifted=1
 
   if command -v jq >/dev/null 2>&1; then
     key_delta="$(diff \
@@ -112,6 +120,11 @@ else
   if [[ "$(printf '%s\n' "$diff_out" | wc -l)" -gt "$DIFF_PREVIEW_LINES" ]]; then
     echo "    ... (truncated)"
   fi
+fi
+
+if [[ "$check" -eq 1 && "$drifted" -eq 1 ]]; then
+  echo "  --check: out of sync - run '$0 $chart_dir' (without --check) to resync"
+  exit 1
 fi
 
 if [[ "$dry_run" -eq 1 ]]; then
