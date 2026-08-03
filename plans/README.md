@@ -69,8 +69,9 @@ All ten uplift plans are landed; this index is complete.
   benefit from the cache); 007 after 005 (both edit `scripts/lint-library.sh`;
   005's new renders are adopters of 007's helper, not conflicts).
 - **008 updates existing bead hf-ocq** — do not file a duplicate bead.
-- **005 vs hf-dtj**: if hf-dtj (fixture coverage) lands first and enables
-  grpcRoute in the full fixture, re-verify plan 005's zero-golden claim.
+- **005 vs hf-dtj**: resolved — 005 landed first with zero golden diffs, and
+  hf-dtj then enabled grpcRoute in the full fixture, so the GRPCRoute object in
+  `tests/golden/full.yaml` is hf-dtj's, not a late 005 regression.
 
 ## Ground rules for executors
 

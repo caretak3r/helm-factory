@@ -37,6 +37,27 @@ spec:
   policyTypes:
     - Ingress
     - Egress
+  ingress:
+    - from:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: ingress-nginx
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: gateway
+      ports:
+      - port: 8080
+        protocol: TCP
+  egress:
+    - ports:
+      - port: 53
+        protocol: UDP
+      - port: 53
+        protocol: TCP
+      to:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: kube-system
 ---
 # Source: full/templates/app.yaml
 apiVersion: v1
@@ -403,6 +424,19 @@ spec:
     name: t-full
   minReplicas: 2
   maxReplicas: 5
+  behavior:
+    scaleDown:
+      policies:
+      - periodSeconds: 60
+        type: Percent
+        value: 50
+      stabilizationWindowSeconds: 300
+    scaleUp:
+      policies:
+      - periodSeconds: 15
+        type: Pods
+        value: 4
+      stabilizationWindowSeconds: 0
   metrics:
     - type: Resource
       resource:
@@ -410,6 +444,19 @@ spec:
         target:
           type: Utilization
           averageUtilization: 80
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 75
+    - pods:
+        metric:
+          name: http_requests_per_second
+        target:
+          averageValue: 1k
+          type: AverageValue
+      type: Pods
 ---
 # Source: full/templates/app.yaml
 apiVersion: batch/v1
@@ -564,6 +611,38 @@ spec:
   usages:
     - "server auth"
     - "client auth"
+---
+# Source: full/templates/app.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: GRPCRoute
+metadata:
+  name: t-full-grpc
+  namespace: default
+  labels:
+    helm.sh/chart: full-0.1.0
+    app.kubernetes.io/name: full
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/component: app
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+
+  hostnames:
+  - grpc.example.com
+  parentRefs:
+  - name: shared-gateway
+    namespace: gateway-system
+  rules:
+  - backendRefs:
+    - kind: Service
+      name: t-full
+      port: 80
+      weight: 1
+    matches:
+    - method:
+        method: Ping
+        service: com.example.Echo
+        type: Exact
 ---
 # Source: full/templates/app.yaml
 ---
