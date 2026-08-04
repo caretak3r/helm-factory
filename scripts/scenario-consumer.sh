@@ -53,6 +53,31 @@ trap cleanup EXIT
 chart="$work/scenario"
 fail=0
 
+# The scaffolder's name guard is checked here rather than in lint-library.sh
+# because this script is the one that owns new-app-chart.sh's contract. Both
+# bounds matter: over 63 is illegal outright, and over 45 is legal but leaves
+# no room for the suffixes the generators append after fullname truncation.
+echo "==> assert: scaffolder rejects names that cannot render"
+long64=$(printf 'a%.0s' $(seq 1 64))
+if out=$("$REPO_ROOT/scripts/new-app-chart.sh" "$long64" --dir "$work/toolong" 2>&1); then
+  echo "  FAIL: a 64-character chart name was accepted"; fail=1
+elif ! grep -q "RFC 1123 label limit" <<<"$out"; then
+  echo "  FAIL: 64-character name rejected without naming the limit: $out"; fail=1
+elif [[ -e "$work/toolong" ]]; then
+  echo "  FAIL: rejected name still created $work/toolong"; fail=1
+else
+  echo "  OK: 64-character name rejected"
+fi
+
+long50=$(printf 'a%.0s' $(seq 1 50))
+if out=$("$REPO_ROOT/scripts/new-app-chart.sh" "$long50" --dir "$work/headroom" 2>&1) \
+     && grep -q '^warning: chart name is 50 characters' <<<"$out"; then
+  echo "  OK: 50-character name scaffolds with a headroom warning"
+else
+  echo "  FAIL: a 50-character name should scaffold AND warn about suffix headroom"; fail=1
+fi
+rm -rf "$work/headroom"
+
 echo "==> scaffold: scripts/new-app-chart.sh scenario"
 "$REPO_ROOT/scripts/new-app-chart.sh" scenario \
   --dir "$chart" \

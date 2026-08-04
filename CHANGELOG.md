@@ -9,6 +9,21 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
 
 ## [Unreleased]
 
+### Fixed — `new-app-chart.sh` name validation
+
+- The scaffolder validated the chart name's charset against RFC 1123 but not
+  its length. A name over 63 characters scaffolded and rendered cleanly, then
+  every object was rejected at **apply** time in a cluster — days later, in the
+  worst possible place. Names over 63 are now rejected outright.
+- Names over 45 characters now warn about suffix headroom. The bound is
+  `63 - len("-preinstall-script")`: `platform.fullname` is `<release>-<chart>`
+  truncated to 63 and the generators append their suffixes *after* that
+  truncation, so a 50-character name is legal on its own and still overflows
+  for some Kinds once a release name spends from the same budget.
+- `--help` printed the usage banner by a hardcoded line range and had started
+  spilling seven lines of source; it now stops at the banner's closing rule.
+- `make smoke` asserts both bounds, so a refactor cannot silently drop them.
+
 ### Added — consumer scenario test (`make smoke`)
 
 - New `scripts/scenario-consumer.sh` runs the day-one consumer journey end to
