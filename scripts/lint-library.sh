@@ -107,7 +107,7 @@ fail=0
 expected_kinds() {
   case "$1" in
     minimal)  echo 3 ;;
-    full)     echo 31 ;;
+    full)     echo 33 ;;
     stateful) echo 8 ;;
     daemon)   echo 3 ;;
     *)        echo "unknown fixture: $1" >&2; return 1 ;;
@@ -752,6 +752,31 @@ if out=$("$RENDER" minimal --set ingress.hostname=INVALID_HOST 2>&1); then
   echo "  FAIL: render succeeded with ingress.hostname=INVALID_HOST"; fail=1
 elif grep -q "ingress/hostname" <<<"$out"; then
   echo "  OK: non-RFC1123 ingress.hostname rejected by values.schema.json"
+else
+  echo "  FAIL: render failed without a schema error"; echo "$out" | tail -3; fail=1
+fi
+
+# rbac.rules is a permission grant: a malformed rule that the schema lets
+# through renders a Role the API server rejects at install time, or (worse) one
+# that grants something other than what was written. verbs is not optional.
+if out=$("$RENDER" minimal --set rbac.enabled=true \
+  --set 'rbac.rules[0].apiGroups[0]=' --set 'rbac.rules[0].resources[0]=pods' 2>&1); then
+  echo "  FAIL: render succeeded with an rbac rule that has no verbs"; fail=1
+elif grep -q "rbac/rules" <<<"$out"; then
+  echo "  OK: rbac rule without verbs rejected by values.schema.json"
+else
+  echo "  FAIL: render failed without a schema error"; echo "$out" | tail -3; fail=1
+fi
+
+# nonResourceURLs is a ClusterRole-only field. Accepted in a namespaced Role it
+# is silently ignored by the API server, so the app gets none of the access the
+# consumer believes they granted — additionalProperties:false catches the typo class.
+if out=$("$RENDER" minimal --set rbac.enabled=true \
+  --set 'rbac.rules[0].apiGroups[0]=' --set 'rbac.rules[0].resources[0]=pods' \
+  --set 'rbac.rules[0].verbs[0]=get' --set 'rbac.rules[0].nonResourceURLs[0]=/healthz' 2>&1); then
+  echo "  FAIL: render succeeded with nonResourceURLs in a namespaced rbac rule"; fail=1
+elif grep -q "rbac/rules" <<<"$out"; then
+  echo "  OK: ClusterRole-only nonResourceURLs rejected by values.schema.json"
 else
   echo "  FAIL: render failed without a schema error"; echo "$out" | tail -3; fail=1
 fi
@@ -1890,6 +1915,87 @@ if out=$("$RENDER" minimal --skip-schema-validation \
   echo "  OK: prometheusRule with a group set renders"
 else
   echo "  FAIL: prometheusRule with a group set must render"; echo "$out" | tail -3; fail=1
+fi
+
+echo "==> RBAC binds the chart's OWN identity (helm-factory-buw)"
+# The whole point of the generator is that the consumer never writes a subject
+# name by hand: the RoleBinding must resolve through platform.serviceAccountName
+# so it tracks the ServiceAccount the pods actually use. A hardcoded fullname
+# renders identically in the default case and only breaks under an override —
+# so the override case is the assertion that matters.
+if out=$("$RENDER" full 2>&1); then
+  rb=$(doc_of RoleBinding t-full <<<"$out")
+  role=$(doc_of Role t-full <<<"$out")
+  sa_subject=$(awk '/^subjects:/{s=1} s && /name:/{print $2; exit}' <<<"$rb")
+  role_ref=$(awk '/^roleRef:/{s=1} s && /^  name:/{print $2; exit}' <<<"$rb")
+  if [[ -n "$role" ]]; then
+    echo "  OK: rbac.enabled renders the namespaced Role"
+  else
+    echo "  FAIL: rbac.enabled=true rendered no Role named t-full"; fail=1
+  fi
+  if [[ "$role_ref" == "t-full" && "$sa_subject" == "t-full" ]]; then
+    echo "  OK: RoleBinding points at the chart's Role and its own ServiceAccount"
+  else
+    echo "  FAIL: RoleBinding wiring wrong (roleRef=$role_ref subject=$sa_subject, want t-full/t-full)"; fail=1
+  fi
+else
+  echo "  FAIL: full fixture must render with rbac enabled"; echo "$out" | tail -3; fail=1
+fi
+
+if out=$("$RENDER" full --set serviceAccount.name=custom-id 2>&1); then
+  sa_subject=$(doc_of RoleBinding t-full <<<"$out" | awk '/^subjects:/{s=1} s && /name:/{print $2; exit}')
+  if [[ "$sa_subject" == "custom-id" ]]; then
+    echo "  OK: RoleBinding subject follows a serviceAccount.name override"
+  else
+    echo "  FAIL: RoleBinding subject is $sa_subject, want custom-id — the subject is not resolving through platform.serviceAccountName"; fail=1
+  fi
+else
+  echo "  FAIL: full fixture must render with a serviceAccount.name override"; echo "$out" | tail -3; fail=1
+fi
+
+# Fail-closed #1: an empty Role grants nothing and surfaces only as a runtime
+# 403. The schema catches this too; --skip-schema-validation proves the template
+# guard survives a consumer whose values.schema.json copy has drifted.
+if out=$("$RENDER" full --skip-schema-validation --set rbac.rules=null 2>&1); then
+  echo "  FAIL: render succeeded with rbac.enabled=true and no rbac.rules"; fail=1
+elif grep -q "rbac.enabled=true but rbac.rules is empty" <<<"$out"; then
+  echo "  OK: rbac with empty rules rejected"
+else
+  echo "  FAIL: empty rbac.rules failed without the expected message"; echo "$out" | tail -3; fail=1
+fi
+
+# Fail-closed #2: the real privilege leak. platform.serviceAccountName falls
+# back to "default" when the chart neither creates nor names a ServiceAccount;
+# binding the Role there grants the rules to every unowned pod in the namespace.
+if out=$("$RENDER" full --set serviceAccount.create=false 2>&1); then
+  echo "  FAIL: render succeeded binding the Role to the namespace default ServiceAccount"; fail=1
+elif grep -q 'would bind the Role to the "default" namespace' <<<"$out"; then
+  echo "  OK: binding to the default ServiceAccount rejected"
+else
+  echo "  FAIL: default-ServiceAccount binding failed without the expected message"; echo "$out" | tail -3; fail=1
+fi
+
+# The grant is inert without a token, and the library default is no token —
+# the most likely way to ship this feature and have it silently do nothing.
+if out=$(notes_of full --set serviceAccount.automountServiceAccountToken=false 2>&1); then
+  if grep -q "rbac.enabled=true but serviceAccount.automountServiceAccountToken is false" <<<"$out"; then
+    echo "  OK: RBAC without a mounted token is NOTES-warned"
+  else
+    echo "  FAIL: no NOTES warning for rbac.enabled with automountServiceAccountToken=false"; fail=1
+  fi
+else
+  echo "  FAIL: notes render failed for the RBAC automount warning"; echo "$out" | tail -3; fail=1
+fi
+
+if out=$(notes_of full --set 'rbac.rules[0].apiGroups[0]=*' \
+  --set 'rbac.rules[0].resources[0]=*' --set 'rbac.rules[0].verbs[0]=*' 2>&1); then
+  if grep -q 'rbac.rules use the "\*" wildcard at rules\[0\].apiGroups, rules\[0\].resources, rules\[0\].verbs' <<<"$out"; then
+    echo "  OK: wildcard rbac rules are NOTES-warned with their paths"
+  else
+    echo "  FAIL: no NOTES warning for wildcard rbac.rules"; fail=1
+  fi
+else
+  echo "  FAIL: notes render failed for the RBAC wildcard warning"; echo "$out" | tail -3; fail=1
 fi
 
 echo "==> StatefulSet governing headless Service"

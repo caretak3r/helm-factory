@@ -147,6 +147,21 @@ limitRange:
 
 serviceAccount:
   create: true
+  # The Role below is useless without a token to present with it; the library
+  # default is false, so an app that actually calls the API must opt in.
+  automountServiceAccountToken: true
+
+# Namespaced Role + RoleBinding for this chart's own ServiceAccount.
+rbac:
+  enabled: true
+  rules:
+    - apiGroups: [""]
+      resources: ["configmaps"]
+      verbs: ["get", "list", "watch"]
+    - apiGroups: ["apps"]
+      resources: ["deployments"]
+      resourceNames: ["t-full"]
+      verbs: ["get", "patch"]
 
 cronJob:
   enabled: true

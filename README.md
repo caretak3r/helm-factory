@@ -911,6 +911,47 @@ serviceAccount:
 > itself via `serviceAccount.annotations` (`helm.sh/hook: pre-install,pre-upgrade`,
 > `helm.sh/hook-weight: "-10"`, `helm.sh/hook-delete-policy: before-hook-creation`).
 
+### RBAC
+
+`rbac.enabled` grants that ServiceAccount permissions **in its own namespace**.
+`rules` is passed through verbatim to a `Role`, and the `RoleBinding` subject is
+resolved through `platform.serviceAccountName` — so it follows a
+`serviceAccount.name` override instead of drifting.
+
+```yaml
+serviceAccount:
+  create: true
+  automountServiceAccountToken: true   # without a token the grant does nothing
+
+rbac:
+  enabled: true
+  name: ""                             # Role + RoleBinding name; defaults to fullname
+  rules:
+    - apiGroups: [""]
+      resources: ["configmaps"]
+      verbs: ["get", "list", "watch"]
+    - apiGroups: ["apps"]
+      resources: ["deployments"]
+      resourceNames: ["my-app"]        # narrow the grant to specific objects
+      verbs: ["get", "patch"]
+  annotations: {}
+  labels: {}
+```
+
+Two shapes **fail at template time** rather than shipping a broken or dangerous
+grant: `enabled: true` with empty `rules` (a Role that grants nothing, which
+only shows up later as a runtime 403), and `enabled: true` while
+`serviceAccount.create: false` with no `serviceAccount.name` — that would bind
+the Role to the namespace's `default` ServiceAccount and hand the permissions to
+every pod in the namespace that doesn't name its own identity.
+
+Install-time `WARNING:`s cover the softer hazards: RBAC enabled without
+`automountServiceAccountToken`, and `"*"` wildcards in `apiGroups`/`resources`/`verbs`.
+
+> **Namespaced only.** `ClusterRole`/`ClusterRoleBinding` are deliberately not
+> generated here — cluster-wide permission stays an explicit act via
+> `extraObjects` with `allowClusterScopedExtras: true`.
+
 ### Service Monitor / Pod Monitor / Prometheus Rule (Prometheus)
 
 ```yaml
@@ -1233,6 +1274,7 @@ platform-library/
 │   ├── _vpa.yaml           ← VerticalPodAutoscaler (kubernetes/autoscaler)
 │   ├── _pdb.yaml           ← PodDisruptionBudget
 │   ├── _networkpolicy.yaml ← NetworkPolicy
+│   ├── _rbac.yaml          ← Role + RoleBinding for the chart's own SA
 │   ├── _configmap.yaml     ← ConfigMap
 │   ├── _configmap-script.yaml ← Hook script ConfigMaps
 │   ├── _secret.yaml        ← Secret

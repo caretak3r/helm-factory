@@ -105,6 +105,10 @@
 {{- include "platform.emit" (include "platform.serviceAccount.hook" .) }}
 {{- end }}
 
+{{- if .Values.rbac.enabled }}
+{{- include "platform.emit" (include "platform.rbac" .) }}
+{{- end }}
+
 {{- if include "platform.capabilities.gateOpen" (list . "ServiceMonitor") }}
 {{- include "platform.emit" (include "platform.servicemonitor" .) }}
 {{- end }}

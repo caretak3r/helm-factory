@@ -521,6 +521,25 @@ exports:
       annotations: {}
 
     # -----------------------------------------------------------------------------
+    # RBAC
+    # -----------------------------------------------------------------------------
+    # Grants the chart's own ServiceAccount permissions in its own namespace.
+    # `rules` is a plain list of policy rules rendered verbatim into a Role; the
+    # RoleBinding subject is wired to platform.serviceAccountName, so it tracks
+    # serviceAccount.name overrides automatically. Enabling this with an empty
+    # `rules` list fails at template time — an empty Role is a silent 403 later.
+    # Remember to set serviceAccount.automountServiceAccountToken: true, or the
+    # pods have no token to use the grant with.
+    # Namespaced only by design: cluster-scoped RBAC stays behind
+    # extraObjects + allowClusterScopedExtras, which exists precisely for that.
+    rbac:
+      enabled: false
+      name: ""
+      rules: []
+      annotations: {}
+      labels: {}
+
+    # -----------------------------------------------------------------------------
     # Security Context
     # -----------------------------------------------------------------------------
     # Enabled by default. The zero-config output targets the Pod Security

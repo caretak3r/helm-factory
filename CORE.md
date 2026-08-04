@@ -44,11 +44,12 @@
 18. ResourceQuota — `resourceQuota.enabled`; fails closed if `hard` is empty
 19. LimitRange — `limitRange.enabled`; fails closed if `default`/`defaultRequest`/`max`/`min` are all empty
 20. ServiceAccount — `serviceAccount.create` or `serviceAccount.name`
-21. ServiceMonitor — `serviceMonitor.enabled` + capability gate
-22. PodMonitor — `podMonitor.enabled` + capability gate
-23. PrometheusRule — `prometheusRule.enabled` + capability gate
-24. CronJob — `cronJob.enabled`
-25. Pre-install Job, then post-install Job — `jobs.preInstall/postInstall.enabled`
+21. Role + RoleBinding — `rbac.enabled`; namespaced only, bound to `platform.serviceAccountName`; fails closed if `rbac.rules` is empty or the subject would resolve to the namespace `default` SA
+22. ServiceMonitor — `serviceMonitor.enabled` + capability gate
+23. PodMonitor — `podMonitor.enabled` + capability gate
+24. PrometheusRule — `prometheusRule.enabled` + capability gate
+25. CronJob — `cronJob.enabled`
+26. Pre-install Job, then post-install Job — `jobs.preInstall/postInstall.enabled`
 
 `platform.render` then appends `platform.extraObjects` (any Kind, capability-negotiated, cluster-scoped Kinds gated by `allowClusterScopedExtras`) and `platform.extraManifests` (raw maps or `tpl` strings).
 
@@ -140,6 +141,7 @@ helm-factory/
 │       ├── _vpa.yaml             # VerticalPodAutoscaler (kubernetes/autoscaler)
 │       ├── _pdb.yaml             # PodDisruptionBudget
 │       ├── _networkpolicy.yaml   # NetworkPolicy
+│       ├── _rbac.yaml            # Role + RoleBinding for the chart's own SA
 │       ├── _resourcequota.yaml   # ResourceQuota (namespace QoS governance)
 │       ├── _limitrange.yaml      # LimitRange (namespace QoS governance)
 │       ├── _configmap.yaml       # ConfigMap
@@ -284,6 +286,7 @@ Not workload types (separate features):
 - `networkPolicy.enabled` → requires a CNI supporting NetworkPolicy; empty ingress+egress = default-deny (NOTES warning)
 - `persistence.enabled` → creates a PVC unless `persistence.existingClaim` is set; StatefulSets can use `statefulSet.volumeClaimTemplates` instead
 - `workload.type: StatefulSet` → `spec.serviceName` resolves to `statefulSet.serviceName` if set, else the primary Service when it is headless (`service.enabled` + `service.clusterIP: None`), else a library-managed headless Service `<fullname>-headless` is rendered and used
+- `rbac.enabled` → requires a non-empty `rbac.rules`, and a ServiceAccount the chart owns (`serviceAccount.create: true` or an explicit `serviceAccount.name`); needs `serviceAccount.automountServiceAccountToken: true` to be usable (NOTES warning), and wildcard rules are NOTES-warned
 - `extraObjects` with cluster-scoped Kinds → requires `allowClusterScopedExtras: true`
 
 ## Debug Commands
