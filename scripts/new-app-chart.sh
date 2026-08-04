@@ -19,6 +19,12 @@
 #
 # Example:
 #   scripts/new-app-chart.sh billing --repo oci://ghcr.io/acme/charts --version "^2.0.0"
+#
+# Chart names are RFC 1123 labels: lowercase alphanumeric and dashes, 63
+# characters at most. Keep them well under that — object names are
+# "<release>-<chart>" plus a per-Kind suffix, so a long name that scaffolds
+# fine can still be rejected at apply time:
+#   scripts/new-app-chart.sh my-very-long-service-name-that-eats-the-whole-budget
 # =============================================================================
 set -euo pipefail
 
@@ -39,7 +45,11 @@ while [[ $# -gt 0 ]]; do
     --repo)        repo="${2:?}"; shift 2 ;;
     --version)     version="${2:?}"; shift 2 ;;
     --app-version) app_version="${2:?}"; shift 2 ;;
-    -h|--help)     sed -n '2,30p' "$0"; exit 0 ;;
+    # Print the usage banner, stopping at its closing rule. A fixed line range
+    # here silently started spilling source code the moment the banner grew.
+    # `==*` not `=\+`: BSD sed has no \+ and would match nothing, printing the
+    # entire script.
+    -h|--help)     sed -n '3,${/^# ==*$/q;p;}' "$0"; exit 0 ;;
     -*)            die "unknown option: $1" ;;
     *)             if [[ -z "$name" ]]; then name="$1"; else die "unexpected argument: $1"; fi; shift ;;
   esac
@@ -48,6 +58,25 @@ done
 [[ -n "$name" ]] || die "chart name is required (usage: new-app-chart.sh <name>)"
 [[ "$name" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]] || \
   die "chart name must be lowercase alphanumeric with dashes (RFC 1123): '$name'"
+
+# RFC 1123 caps a label at 63 characters. Without this check an over-long name
+# scaffolds and renders cleanly, then every object is rejected at APPLY time —
+# the failure surfaces in a cluster, days later, instead of here.
+#
+# The warn bound is not a round number: platform.fullname is "<release>-<chart>"
+# truncated to 63, and the generators append their suffixes AFTER that
+# truncation (longest: "-preinstall-script", 18 chars, from the job script
+# ConfigMap in _helpers.tpl). So a 50-character name is legal on its own and
+# still overflows for some Kinds — and the release name, which this script
+# cannot see, spends from the same budget.
+name_max=63
+name_suffix_budget=18   # len("-preinstall-script")
+name_warn=$(( name_max - name_suffix_budget ))
+(( ${#name} <= name_max )) || \
+  die "chart name is ${#name} characters, over the RFC 1123 label limit of ${name_max}: '$name'"
+if (( ${#name} > name_warn )); then
+  echo "warning: chart name is ${#name} characters. Rendered object names are '<release>-<chart>' plus a suffix up to ${name_suffix_budget} characters, so names over ${name_warn} can exceed the ${name_max}-character limit for some Kinds once a release name is added. Consider a shorter name." >&2
+fi
 : "${out_dir:=$name}"
 [[ ! -e "$out_dir" ]] || die "output path already exists: $out_dir"
 
