@@ -61,5 +61,5 @@ jobs:
       - name: lint-library (render matrix, goldens, kubeconform, negative render, image pins)
         run: make gate
 
-      - name: scaffolder smoke test
+      - name: consumer scenario (scaffold, build, render, kubeconform)
         run: make smoke

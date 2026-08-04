@@ -9,6 +9,22 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
 
 ## [Unreleased]
 
+### Added — consumer scenario test (`make smoke`)
+
+- New `scripts/scenario-consumer.sh` runs the day-one consumer journey end to
+  end: scaffold with `scripts/new-app-chart.sh`, overlay an ingress and a
+  ServiceMonitor, `helm dependency update`, render at the oldest supported
+  Kubernetes version, then assert the expected Kinds are present, that no
+  document rendered empty, and that `kubeconform -strict` accepts every object
+  against the vendored schemas. Runs in CI (`make smoke`) and locally by the
+  same command; `KEEP_SCENARIO_DIR=1` leaves the generated chart on disk.
+  The committed fixtures cannot catch a regression in the *scaffold* — a broken
+  dependency stanza, a dropped `import-values: [defaults]`, a renamed
+  entrypoint, a drifted `values.schema.json` — because they are written by hand;
+  each of those keeps the gate green and breaks the first command a new consumer
+  runs. This generates its consumer instead of curating it. Replaces the inline
+  `make smoke` recipe, which only grepped for a Deployment.
+
 ### Added — contributor toolchain (`Makefile`, `make tools`)
 
 - New `Makefile` with the checks CI runs: `make lint` (every CI step, in CI's

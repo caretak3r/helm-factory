@@ -1355,6 +1355,7 @@ one per re-run.
 ```bash
 make lint     # THE gate: every CI step, in CI's order. Must end "==> PASS".
 make fast     # subset loop (~14s). Skips the guardrail suite — not "done".
+make smoke    # consumer scenario: scaffold, build, render, kubeconform
 make golden   # accept intentional render changes; review every diff line
 make render FIXTURE=stateful ARGS="--set replicaCount=3"
 make help     # all targets
@@ -1365,6 +1366,24 @@ their own copies of the commands, so `make lint` passing locally and CI passing
 mean the same thing. The scripts underneath still run standalone
 (`scripts/lint-library.sh`, `tests/render.sh <fixture>`) if you want a leg on
 its own.
+
+#### The consumer scenario
+
+`make smoke` (`scripts/scenario-consumer.sh`) is the only check that runs the
+day-one journey instead of a curated fixture: it scaffolds a chart with
+`scripts/new-app-chart.sh`, adds an ingress and a ServiceMonitor, resolves the
+dependency, renders at the oldest supported Kubernetes version, and validates
+every object with `kubeconform -strict` against the vendored schemas.
+
+The fixtures under `tests/fixtures/` are committed by hand, so they cannot
+catch a regression in the scaffold itself — a broken dependency stanza, a
+dropped `import-values: [defaults]`, a renamed entrypoint, a `values.schema.json`
+that drifted from the library's reference. Those keep the gate green and break
+the first command a new consumer runs. The scenario generates its consumer, so
+they cannot hide.
+
+`KEEP_SCENARIO_DIR=1 make smoke` leaves the generated chart on disk and prints
+its path, which is the fastest way to see what a consumer actually gets.
 
 `FIXTURES` and `KUBE_VERSIONS` accept space-separated subsets (e.g.
 `FIXTURES="full stateful" KUBE_VERSIONS=1.36`) for a fast local feedback loop:
