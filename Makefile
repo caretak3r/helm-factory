@@ -45,13 +45,8 @@ schema-meta: check-tools ## Verify the reference values schema is valid JSON Sch
 gate: check-tools ## THE gate: render matrix, goldens, kubeconform, guardrails
 	REQUIRE_KUBECONFORM=1 REQUIRE_CHECK_JSONSCHEMA=1 scripts/lint-library.sh
 
-smoke: check-tools ## Scaffold a consumer chart from scratch, build it, render it
-	@set -euo pipefail; \
-	dir=$$(mktemp -d); trap 'rm -rf "$$dir"' EXIT; \
-	scripts/new-app-chart.sh smoke --dir "$$dir/smoke" --repo "file://$(CURDIR)/platform-library"; \
-	helm dependency update "$$dir/smoke" >/dev/null; \
-	helm template smoke "$$dir/smoke" | grep -q '^kind: Deployment'; \
-	echo "  ✓ scaffolded chart builds and renders a Deployment"
+smoke: check-tools ## Consumer scenario: scaffold a chart, build, render, kubeconform
+	@scripts/scenario-consumer.sh
 
 lint: shellcheck helm-lint schema-meta gate smoke ## Everything CI runs, in CI's order
 

@@ -158,7 +158,10 @@ are curated consumer charts; `tests/render.sh` renders them exactly as the gate
 does; `tests/golden/*.yaml` freeze the output; `scripts/lint-library.sh` layers
 30+ guardrail sections (render matrix across the K8s versions, kubeconform
 against vendored schemas, negative renders, precedence/posture/hook-ordering
-assertions) on top.
+assertions) on top. Because those fixtures are committed by hand they cannot
+catch a regression in the *scaffold*, so `scripts/scenario-consumer.sh`
+(`make smoke`) generates its consumer instead: scaffold → dependency → render →
+kubeconform, end to end.
 
 One load-bearing subtlety: pre-install hook Jobs depend on a script ConfigMap
 and a **distinctly named** hook ServiceAccount (`<fullname>-preinstall`),
