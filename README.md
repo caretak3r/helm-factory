@@ -1335,18 +1335,40 @@ of [AGENTS.md](AGENTS.md) before running `bd sync`.
 5. Cover it in a fixture under `tests/fixtures/`, bump `expected_kinds` in `scripts/lint-library.sh`, and regenerate goldens: `UPDATE_GOLDEN=1 scripts/lint-library.sh`
 6. Update `CORE.md` rendering order and directory listing
 
+### Toolchain
+
+Five tools: `helm` (4.x), `kubeconform`, `check-jsonschema`, `shellcheck`, `jq`.
+Versions and download checksums are declared in exactly one place,
+[`scripts/lib/tool-versions.sh`](scripts/lib/tool-versions.sh), which both CI
+workflows source — there is no second copy to drift.
+
+```bash
+make tools    # what you have vs what CI pins, with an install line per gap
+```
+
+Every target that runs a check depends on this, so a fresh clone with nothing
+installed fails immediately and names every missing tool at once rather than
+one per re-run.
+
 ### Validation
 
 ```bash
-helm lint platform-library/
-scripts/lint-library.sh              # render matrix, goldens, kubeconform, guardrails
-UPDATE_GOLDEN=1 scripts/lint-library.sh   # accept intentional render changes
-FIXTURES=minimal scripts/lint-library.sh  # fast local loop: subset of fixtures/versions
+make lint     # THE gate: every CI step, in CI's order. Must end "==> PASS".
+make fast     # subset loop (~14s). Skips the guardrail suite — not "done".
+make golden   # accept intentional render changes; review every diff line
+make render FIXTURE=stateful ARGS="--set replicaCount=3"
+make help     # all targets
 ```
+
+`.github/workflows/{ci,release}.yaml` invoke these same targets rather than
+their own copies of the commands, so `make lint` passing locally and CI passing
+mean the same thing. The scripts underneath still run standalone
+(`scripts/lint-library.sh`, `tests/render.sh <fixture>`) if you want a leg on
+its own.
 
 `FIXTURES` and `KUBE_VERSIONS` accept space-separated subsets (e.g.
 `FIXTURES="full stateful" KUBE_VERSIONS=1.36`) for a fast local feedback loop:
 a subset run covers only the per-fixture legs (values validation, render
 matrix, kubeconform, golden diffs), skips the guardrail suite, and ends
-`==> PASS (subset)`. Run the bare gate before pushing — it (and CI) is
-unchanged by these overrides.
+`==> PASS (subset)`. They apply to `make gate` too (`FIXTURES=minimal make gate`).
+Run `make lint` before pushing — it (and CI) is unchanged by these overrides.

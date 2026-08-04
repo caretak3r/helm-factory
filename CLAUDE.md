@@ -111,28 +111,35 @@ See [AGENTS.md](AGENTS.md) for the same notes alongside the full agent instructi
 
 ## Build & Test
 
-Toolchain: Helm 4.x, `kubeconform`, `check-jsonschema`, `shellcheck` (all via
-homebrew/pipx). K8s schema versions are vendored under `tests/schemas/`
-(`scripts/vendor-schemas.sh`); the supported version matrix comes from
-`scripts/lib/schema-manifest.sh`.
+Toolchain: Helm 4.x, `kubeconform`, `check-jsonschema`, `shellcheck`, `jq` (all
+via homebrew/pipx). Versions and checksums are pinned in ONE place,
+`scripts/lib/tool-versions.sh`, which both workflows source — `make tools`
+reports what you have against those pins. K8s schema versions are vendored
+under `tests/schemas/` (`scripts/vendor-schemas.sh`); the supported version
+matrix comes from `scripts/lib/schema-manifest.sh`.
 
 ```bash
 # THE gate — must end "==> PASS" (exit 0). This is the definition of done.
-REQUIRE_KUBECONFORM=1 REQUIRE_CHECK_JSONSCHEMA=1 scripts/lint-library.sh
+make lint          # == every CI step, in CI's order (ci.yaml calls these targets)
+make gate          # just the lint-library leg, with the CI env vars already set
 
 # Fast local loop (~14s vs ~4min): subset run, ends "==> PASS (subset)",
 # SKIPS the guardrail suite — never sufficient to claim work is done.
-FIXTURES=minimal scripts/lint-library.sh
+make fast
 
-shellcheck -x scripts/*.sh tests/render.sh   # CI uses -x (follows sourced files)
-helm lint platform-library/
-tests/render.sh <fixture> [--set k=v ...]    # render one fixture the gate's way
-UPDATE_GOLDEN=1 scripts/lint-library.sh      # accept INTENTIONAL render changes only
-scripts/new-app-chart.sh <name>              # scaffold a new consumer chart
+make tools                       # toolchain status vs the pins; install hints
+make render FIXTURE=full ARGS="--set k=v"   # render one fixture the gate's way
+make golden                      # accept INTENTIONAL render changes only
+scripts/new-app-chart.sh <name>  # scaffold a new consumer chart
 ```
 
-CI (`.github/workflows/ci.yaml`) runs shellcheck, `helm lint`, a metaschema
-check on `values.schema.reference.json`, and the strict gate on every PR; the
+The underlying scripts still work directly (`scripts/lint-library.sh`,
+`tests/render.sh <fixture>`, `UPDATE_GOLDEN=1 …`), and `FIXTURES`/`KUBE_VERSIONS`
+overrides apply to both forms — but the make targets are what CI runs, so use
+them when the question is "is this done".
+
+CI (`.github/workflows/ci.yaml`) runs `make shellcheck`, `make helm-lint`,
+`make schema-meta`, `make gate` and `make smoke` on every PR; the
 `main-pr-only` ruleset makes that check required. Releases: tag `vX.Y.Z` (must
 equal `platform-library/Chart.yaml` version, CHANGELOG must have a matching
 `## [X.Y.Z]` section) → `release.yaml` re-runs the gates → publishes to GHCR.

@@ -1055,7 +1055,17 @@ notes_of() {
   local fixture="$1"; shift
   local dir="$REPO_ROOT/tests/fixtures/$fixture"
   cp "$LIB/values.schema.reference.json" "$dir/values.schema.json"
-  helm dependency update "$dir" >/dev/null 2>&1
+  # Do NOT swallow this failure. A dependency update that dies here leaves a
+  # STALE charts/ in place, so every NOTES assertion below silently tests the
+  # PREVIOUS library build and reports OK. Capture the output rather than
+  # letting it stream: callers run `out=$(notes_of ... 2>&1)` and grep $out, so
+  # dependency-resolution chatter on the happy path would be grep fodder.
+  local dep
+  if ! dep=$(helm dependency update "$dir" 2>&1); then
+    echo "helm dependency update failed for fixture '$fixture':" >&2
+    echo "$dep" >&2
+    return 1
+  fi
   helm install notes-check "$dir" --dry-run=client "$@"
 }
 

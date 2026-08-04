@@ -18,26 +18,30 @@ jobs:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      # Tool versions mirror .github/workflows/ci.yaml exactly — keep in sync,
-      # including checksums.
+      # Versions and checksums come from scripts/lib/tool-versions.sh, shared with
+      # ci.yaml. There is nothing left to keep in sync by hand.
       - name: Install helm
         run: |
-          curl -fsSL -o /tmp/helm.tgz https://get.helm.sh/helm-v4.2.0-linux-amd64.tar.gz
-          echo "97dbeb971be4ac4b27e3839976d9564c0fb35c6f3b1da89dd1e292d236af4096  /tmp/helm.tgz" | sha256sum -c -
+          source scripts/lib/tool-versions.sh
+          curl -fsSL -o /tmp/helm.tgz "$HELM_URL"
+          echo "$HELM_SHA256_LINUX_AMD64  /tmp/helm.tgz" | sha256sum -c -
           tar -xz -C /tmp -f /tmp/helm.tgz
           sudo install -m 0755 /tmp/linux-amd64/helm /usr/local/bin/helm
           helm version --short
 
       - name: Install kubeconform
         run: |
-          curl -fsSL -o /tmp/kubeconform.tgz https://github.com/yannh/kubeconform/releases/download/v0.8.0/kubeconform-linux-amd64.tar.gz
-          echo "9bc2bffbf71f261128533edaf912153948b7ff238f9a531ae6d34466ec287883  /tmp/kubeconform.tgz" | sha256sum -c -
+          source scripts/lib/tool-versions.sh
+          curl -fsSL -o /tmp/kubeconform.tgz "$KUBECONFORM_URL"
+          echo "$KUBECONFORM_SHA256_LINUX_AMD64  /tmp/kubeconform.tgz" | sha256sum -c -
           tar -xz -C /tmp -f /tmp/kubeconform.tgz kubeconform
           sudo install -m 0755 /tmp/kubeconform /usr/local/bin/kubeconform
           kubeconform -v
 
       - name: Install check-jsonschema
-        run: pipx install check-jsonschema==0.37.4
+        run: |
+          source scripts/lib/tool-versions.sh
+          pipx install "check-jsonschema==$CHECK_JSONSCHEMA_VERSION"
 
       - name: Verify tag matches chart version
         run: |
@@ -58,18 +62,20 @@ jobs:
           fi
           echo "CHANGELOG.md has an entry for ${tag_version}"
 
-      # Full CI gate (mirrors ci.yaml) — a tag never ships unvalidated code.
+      # Full CI gate — a tag never ships unvalidated code. Same Makefile targets
+      # ci.yaml runs, so "it passed CI" and "it passed the release gate" mean
+      # the same commands.
       - name: shellcheck
-        run: shellcheck -x scripts/*.sh scripts/lib/*.sh tests/render.sh
+        run: make shellcheck
 
       - name: helm lint
-        run: helm lint platform-library/
+        run: make helm-lint
 
       - name: reference values schema is a valid JSON Schema
-        run: check-jsonschema --check-metaschema platform-library/values.schema.reference.json
+        run: make schema-meta
 
       - name: lint-library (render matrix, goldens, kubeconform, negative render, image pins)
-        run: REQUIRE_KUBECONFORM=1 REQUIRE_CHECK_JSONSCHEMA=1 scripts/lint-library.sh
+        run: make gate
 
       - name: Log in to GHCR
         env:

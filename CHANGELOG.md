@@ -9,6 +9,35 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
 
 ## [Unreleased]
 
+### Added — contributor toolchain (`Makefile`, `make tools`)
+
+- New `Makefile` with the checks CI runs: `make lint` (every CI step, in CI's
+  order), plus `shellcheck`, `helm-lint`, `schema-meta`, `gate`, `smoke`,
+  `fast`, `render`, `golden`, `clean` and `help`.
+  `.github/workflows/{ci,release}.yaml` now invoke these targets instead of
+  carrying their own copies of the commands, so `make lint` is byte-identical
+  to CI by construction rather than by discipline. `make gate` sets
+  `REQUIRE_KUBECONFORM=1 REQUIRE_CHECK_JSONSCHEMA=1` itself — the two knobs a
+  local run used to omit.
+- New `scripts/lib/tool-versions.sh` is the single source of truth for the
+  toolchain: helm and kubeconform versions with their download checksums, the
+  check-jsonschema pin, and the minimum-version floor and install hint for each
+  required tool. Both workflows source it; the duplicated install blocks (kept
+  in sync by a comment) are gone.
+- New `scripts/check-tools.sh` verifies the local toolchain and is a
+  prerequisite of every checking target, so a fresh clone with nothing
+  installed fails on the first `make lint` with **all** missing tools named at
+  once and an install line for each, rather than one per re-run. Silent when
+  everything is fine. `make tools` (`--list`) prints the full table, flagging
+  versions that differ from the CI pins.
+
+### Fixed — CI/tooling
+
+- `scripts/lint-library.sh`'s NOTES helper no longer discards stderr from
+  `helm dependency update`. A failed dependency update left a stale `charts/`
+  in place, so every NOTES assertion downstream silently tested the *previous*
+  library build and reported OK; it now surfaces the error and fails the leg.
+
 ### Added — RBAC (`rbac.enabled`)
 
 - New namespaced RBAC generator. `rbac.enabled: true` with a `rbac.rules` list

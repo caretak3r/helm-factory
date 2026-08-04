@@ -5,8 +5,10 @@
 (fail-closed, capability negotiation, specific-beats-common, goldens-as-contract,
 guarded+mutation-tested gates, per-container hardening), the real build/test
 commands, and the architecture overview. Read that section before your first
-change; the strict gate (`REQUIRE_KUBECONFORM=1 REQUIRE_CHECK_JSONSCHEMA=1
-scripts/lint-library.sh` ending `==> PASS`) is the definition of done.
+change; the strict gate (`make lint`, which ends `==> PASS`) is the definition
+of done. CI runs the same Makefile targets, so local green and CI green cannot
+disagree; `make tools` reports your toolchain against the pins in
+`scripts/lib/tool-versions.sh`.
 
 This project uses **bd** (beads) for issue tracking. Run `bd onboard` to get started.
 
