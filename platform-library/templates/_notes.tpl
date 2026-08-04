@@ -143,6 +143,22 @@ Usage (consumer chart templates/NOTES.txt):
 {{- if or (hasKey $extras "ClusterRole") (hasKey $extras "ClusterRoleBinding") (contains "kind: ClusterRole" $extrasYaml) -}}
 {{- $warnings = append $warnings "extraObjects/extraManifests grant cluster-scoped RBAC (ClusterRole/ClusterRoleBinding). Cluster-wide permissions outlive the namespace — keep the rules least-privilege." -}}
 {{- end -}}
+{{- if .Values.rbac.enabled -}}
+{{- if not .Values.serviceAccount.automountServiceAccountToken -}}
+{{- $warnings = append $warnings "rbac.enabled=true but serviceAccount.automountServiceAccountToken is false (the library default): the pods get no API token, so the Role grants them nothing and every API call fails unauthenticated. Set serviceAccount.automountServiceAccountToken: true, or drop the RBAC block." -}}
+{{- end -}}
+{{- $wildcards := list -}}
+{{- range $i, $rule := (.Values.rbac.rules | default list) -}}
+{{- range $field := (list "apiGroups" "resources" "verbs") -}}
+{{- if has "*" (get $rule $field | default list) -}}
+{{- $wildcards = append $wildcards (printf "rules[%d].%s" $i $field) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- if $wildcards -}}
+{{- $warnings = append $warnings (printf "rbac.rules use the \"*\" wildcard at %s. A wildcard grant is not least-privilege — it silently widens as CRDs are installed in the namespace. List the apiGroups/resources/verbs the app actually needs." (join ", " $wildcards)) -}}
+{{- end -}}
+{{- end -}}
 {{- $emptyResources := include "platform.notes.emptyResourceContainers" $top | trim -}}
 {{- if $emptyResources -}}
 {{- $warnings = append $warnings (printf "NO RESOURCES CONFIGURED: container(s) %s have no CPU/memory requests or limits and will run at BestEffort QoS — the first killed under node memory pressure and unbounded on CPU/memory otherwise. Set resources.requests/resources.limits for the main container, or a resources block per entry under sidecars.containers / initContainers.containers." $emptyResources) -}}

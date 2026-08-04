@@ -161,7 +161,7 @@ metadata:
     app.kubernetes.io/component: app
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/managed-by: Helm
-automountServiceAccountToken: false
+automountServiceAccountToken: true
 ---
 # Source: full/templates/app.yaml
 apiVersion: v1
@@ -245,6 +245,38 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
+  name: t-full
+  namespace: default
+  labels:
+    helm.sh/chart: full-0.1.0
+    app.kubernetes.io/name: full
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/component: app
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+rules:
+  - apiGroups:
+    - ""
+    resources:
+    - configmaps
+    verbs:
+    - get
+    - list
+    - watch
+  - apiGroups:
+    - apps
+    resourceNames:
+    - t-full
+    resources:
+    - deployments
+    verbs:
+    - get
+    - patch
+---
+# Source: full/templates/app.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
   name: app-reader
   namespace: default
   labels:
@@ -264,6 +296,28 @@ rules:
     - get
     - list
     - watch
+---
+# Source: full/templates/app.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: t-full
+  namespace: default
+  labels:
+    helm.sh/chart: full-0.1.0
+    app.kubernetes.io/name: full
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/component: app
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: t-full
+subjects:
+  - kind: ServiceAccount
+    name: t-full
+    namespace: default
 ---
 # Source: full/templates/app.yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -351,7 +405,7 @@ spec:
         checksum/config: "a93d5de51b81e9e0612bae7ead1aac1203d88d85d23f4d0f101b27a01195650e"
     spec:
       serviceAccountName: t-full
-      automountServiceAccountToken: false
+      automountServiceAccountToken: true
       enableServiceLinks: false
       securityContext:
         fsGroup: 1001
@@ -488,7 +542,7 @@ spec:
             app.kubernetes.io/component: cronjob
         spec:
           serviceAccountName: t-full
-          automountServiceAccountToken: false
+          automountServiceAccountToken: true
           enableServiceLinks: false
           restartPolicy: OnFailure
           securityContext:
@@ -829,7 +883,7 @@ metadata:
     helm.sh/hook: pre-install,pre-upgrade
     helm.sh/hook-weight: "-6"
     helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
-automountServiceAccountToken: false
+automountServiceAccountToken: true
 ---
 # Source: full/templates/app.yaml
 apiVersion: v1
@@ -884,7 +938,7 @@ spec:
     spec:
       restartPolicy: Never
       serviceAccountName: t-full-preinstall
-      automountServiceAccountToken: false
+      automountServiceAccountToken: true
       enableServiceLinks: false
       runtimeClassName: "gvisor"
       dnsPolicy: "ClusterFirst"

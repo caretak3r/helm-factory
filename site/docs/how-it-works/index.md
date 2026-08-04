@@ -90,11 +90,12 @@ the workload that mounts them, and hook Jobs come last.
 | 14 | NetworkPolicy | `networkPolicy.enabled` |
 | 15 | PodDisruptionBudget | `podDisruptionBudget.enabled` |
 | 16 | ServiceAccount | `serviceAccount.create` or `serviceAccount.name` |
-| 17 | ServiceMonitor | `serviceMonitor.enabled` **and** `apiVersionFor "ServiceMonitor"` |
-| 18 | PodMonitor | `podMonitor.enabled` **and** `apiVersionFor "PodMonitor"` |
-| 19 | CronJob | `cronJob.enabled` |
-| 20 | Pre-install hook Job | `jobs.preInstall.enabled` |
-| 21 | Post-install hook Job | `jobs.postInstall.enabled` |
+| 17 | Role + RoleBinding | `rbac.enabled` |
+| 18 | ServiceMonitor | `serviceMonitor.enabled` **and** `apiVersionFor "ServiceMonitor"` |
+| 19 | PodMonitor | `podMonitor.enabled` **and** `apiVersionFor "PodMonitor"` |
+| 20 | CronJob | `cronJob.enabled` |
+| 21 | Pre-install hook Job | `jobs.preInstall.enabled` |
+| 22 | Post-install hook Job | `jobs.postInstall.enabled` |
 
 CRD-backed objects (Certificate, mTLS, Gateway routes, ServiceMonitor,
 PodMonitor) sit behind a two-part gate: the feature flag plus a successful

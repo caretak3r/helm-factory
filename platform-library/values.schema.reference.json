@@ -296,6 +296,34 @@
         "automountServiceAccountToken": { "type": "boolean" }
       }
     },
+    "rbac": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "name": { "type": "string", "pattern": "^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$", "maxLength": 253, "description": "Name shared by the Role and RoleBinding; empty string defers to the release-derived default name." },
+        "rules": {
+          "type": "array",
+          "description": "Policy rules rendered verbatim into the Role. Namespaced rules only: nonResourceURLs is a ClusterRole-only field and is rejected here.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "apiGroups": { "type": "array", "items": { "type": "string" }, "description": "\"\" is the core API group; \"*\" matches every group." },
+              "resources": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+              "resourceNames": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+              "verbs": { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+            },
+            "required": ["apiGroups", "resources", "verbs"]
+          }
+        }
+      },
+      "if": { "properties": { "enabled": { "const": true } }, "required": ["enabled"] },
+      "then": {
+        "properties": { "rules": { "type": "array", "minItems": 1 } },
+        "required": ["rules"]
+      }
+    },
     "enableServiceLinks": { "type": "boolean" },
     "podSecurityContext": {
       "type": "object",

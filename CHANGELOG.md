@@ -9,6 +9,32 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
 
 ## [Unreleased]
 
+### Added — RBAC (`rbac.enabled`)
+
+- New namespaced RBAC generator. `rbac.enabled: true` with a `rbac.rules` list
+  renders a `Role` and a `RoleBinding` for the chart's own ServiceAccount. The
+  binding subject resolves through `platform.serviceAccountName`, so it follows
+  a `serviceAccount.name` override instead of drifting — previously every app
+  that needed API access hand-rolled both objects through `extraObjects` and
+  kept the subject in sync by hand. `rbac.name`, `rbac.annotations` and
+  `rbac.labels` are supported; `commonLabels`/`commonAnnotations` apply, with
+  the `rbac.*` maps winning on key collision.
+- Fails closed on two shapes: `rbac.enabled: true` with empty `rbac.rules` (a
+  Role that grants nothing, surfacing later as a runtime 403), and
+  `rbac.enabled: true` with `serviceAccount.create: false` and no
+  `serviceAccount.name` — which would bind the Role to the namespace's
+  `default` ServiceAccount and grant the rules to every pod in the namespace
+  that does not name its own identity.
+- New NOTES warnings: RBAC enabled while
+  `serviceAccount.automountServiceAccountToken` is false (the library default —
+  the grant has no token to be used with), and `"*"` wildcards in
+  `rbac.rules[].apiGroups`/`resources`/`verbs`, reported with their paths.
+- `values.schema.reference.json` constrains the rule shape: `apiGroups`,
+  `resources` and `verbs` are required per rule, and `nonResourceURLs` (a
+  ClusterRole-only field the API server silently ignores in a namespaced Role)
+  is rejected. Cluster-scoped RBAC is deliberately not generated here — it
+  stays behind `extraObjects` + `allowClusterScopedExtras`.
+
 ### Fixed — image resolution
 
 - `platform.imageRef` no longer double-prefixes the registry when
