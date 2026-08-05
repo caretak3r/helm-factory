@@ -68,6 +68,11 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
   `helm dependency update`. A failed dependency update left a stale `charts/`
   in place, so every NOTES assertion downstream silently tested the *previous*
   library build and reported OK; it now surfaces the error and fails the leg.
+- `scripts/sync-consumer-schema.sh --help` printed the usage banner by a
+  hardcoded `sed -n 2,27p` line range — the same bug already fixed once in
+  `new-app-chart.sh` (the Options block had grown past line 27 before). It now
+  stops at the banner's closing rule with the same `sed -n '3,${/^# ==*$/q;p;}'`
+  idiom, immune to the banner growing again.
 
 ### Added — RBAC (`rbac.enabled`)
 
