@@ -1328,6 +1328,12 @@ cosign verify \
   ghcr.io/caretak3r/charts/platform@sha256:<digest-of-the-release-you-pulled>
 ```
 
+Once the GHCR push and signing both succeed, a `github-release` job publishes
+a [GitHub Release](https://github.com/caretak3r/helm-factory/releases) for the
+tag, with the matching `CHANGELOG.md` section as its notes and the packaged
+chart `.tgz` attached. A failed gate creates no Release, and rerunning a
+release workflow is a no-op if the Release already exists.
+
 ## Contributing
 
 See [CORE.md](CORE.md) for architecture details, known issues, and maintenance guidelines.
