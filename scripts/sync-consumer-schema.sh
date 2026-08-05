@@ -43,7 +43,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --dry-run) dry_run=1; shift ;;
     --check)   check=1; dry_run=1; shift ;;
-    -h|--help) sed -n '2,27p' "$0"; exit 0 ;;
+    -h|--help) sed -n '3,${/^# ==*$/q;p;}' "$0"; exit 0 ;;
     -*)        die "unknown option: $1" ;;
     *)         if [[ -z "$chart_dir" ]]; then chart_dir="$1"; else die "unexpected argument: $1"; fi; shift ;;
   esac
