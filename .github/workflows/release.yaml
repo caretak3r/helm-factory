@@ -8,6 +8,7 @@ on:
 permissions:
   contents: read
   packages: write
+  id-token: write # OIDC token for cosign keyless signing
 
 jobs:
   release:
@@ -84,12 +85,38 @@ jobs:
         run: helm registry login ghcr.io --username "$GH_ACTOR" --password-stdin <<<"$GH_TOKEN"
 
       - name: Package and push chart
+        id: push
         env:
           OWNER: ${{ github.repository_owner }}
         run: |
           owner="$(tr '[:upper:]' '[:lower:]' <<<"$OWNER")"  # GHCR paths must be lowercase
           helm package platform-library/ --destination dist/
-          helm push "dist/platform-${GITHUB_REF_NAME#v}.tgz" "oci://ghcr.io/${owner}/charts"
+          if ! push_out=$(helm push "dist/platform-${GITHUB_REF_NAME#v}.tgz" "oci://ghcr.io/${owner}/charts" 2>&1); then
+            echo "$push_out"
+            echo "::error::helm push failed"
+            exit 1
+          fi
+          echo "$push_out"
+          digest="$(grep -oE 'sha256:[0-9a-f]{64}' <<<"$push_out" | head -n1)"
+          if [[ -z "$digest" ]]; then
+            echo "::error::could not parse a digest from helm push output"
+            exit 1
+          fi
+          echo "chart_ref=ghcr.io/${owner}/charts/platform" >> "$GITHUB_OUTPUT"
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
 
-      # Future work (deliberately out of scope): sign the pushed chart with
-      # cosign (keyless OIDC) and attach provenance — see fable5-review.md #14.
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: "v3.1.2"
+
+      # Keyless signing: the OIDC identity (this workflow, on this tag) IS the
+      # key — nothing to generate, rotate, or leak. Signs the immutable digest
+      # captured above, never the mutable version tag.
+      - name: Sign pushed chart digest (keyless OIDC)
+        env:
+          GH_ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cosign login ghcr.io --username "$GH_ACTOR" --password "$GH_TOKEN"
+          cosign sign --yes "${{ steps.push.outputs.chart_ref }}@${{ steps.push.outputs.digest }}"

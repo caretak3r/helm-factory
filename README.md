@@ -1314,8 +1314,19 @@ refuses tags without a matching `## [X.Y.Z]` heading in `CHANGELOG.md`, reruns
 the full CI gate (shellcheck, `helm lint`, schema metaschema check,
 `scripts/lint-library.sh` with kubeconform + check-jsonschema required), then
 runs `helm package` and `helm push` to GHCR using the workflow's
-`GITHUB_TOKEN` (`packages: write`). Chart signing/provenance (cosign) is
-tracked as future work (bead `hf-j30`).
+`GITHUB_TOKEN` (`packages: write`). It then signs the pushed chart's digest
+keylessly with [cosign](https://github.com/sigstore/cosign), using the
+workflow's own GitHub Actions OIDC token (`id-token: write`) as the signing
+identity — no signing key to generate, store, or rotate.
+
+Consumers can verify a release's provenance before pulling it:
+
+```bash
+cosign verify \
+  --certificate-identity-regexp '^https://github\.com/caretak3r/helm-factory/\.github/workflows/release\.yaml@refs/tags/v.*$' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  ghcr.io/caretak3r/charts/platform@sha256:<digest-of-the-release-you-pulled>
+```
 
 ## Contributing
 
