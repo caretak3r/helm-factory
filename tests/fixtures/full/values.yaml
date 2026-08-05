@@ -198,6 +198,29 @@ mtls:
   allowedPrincipals:
     - "cluster.local/ns/default/sa/*"
 
+# One validating + one mutating entry: exercises the webhook-cert Secret plus
+# both cluster-scoped webhook Kinds. service.enabled=true above satisfies the
+# webhooks.enabled fail-closed guard.
+webhooks:
+  enabled: true
+  validating:
+    - name: validate.app.example.com
+      path: /validate
+      rules:
+        - apiGroups: [""]
+          apiVersions: ["v1"]
+          operations: ["CREATE", "UPDATE"]
+          resources: ["pods"]
+  mutating:
+    - name: mutate.app.example.com
+      path: /mutate
+      rules:
+        - apiGroups: [""]
+          apiVersions: ["v1"]
+          operations: ["CREATE"]
+          resources: ["pods"]
+      reinvocationPolicy: IfNeeded
+
 serviceMonitor:
   enabled: true
 

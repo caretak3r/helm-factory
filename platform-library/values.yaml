@@ -428,6 +428,54 @@ exports:
           basePath: /etc/platform-tls   # server/ client-<name>/ ca/
 
     # -----------------------------------------------------------------------------
+    # Admission Webhooks (Validating / Mutating)
+    # -----------------------------------------------------------------------------
+    # ValidatingWebhookConfiguration / MutatingWebhookConfiguration
+    # (admissionregistration.k8s.io/v1, built-in — no capability-registry
+    # gate). Generates a CA + serving certificate into Secret
+    # <fullname>-webhook-cert (same lookup/reuse/renewal idiom as
+    # tlsSelfSigned) and mounts it read-only into every container at
+    # certMountPath. Both configuration objects are CLUSTER-SCOPED, named
+    # "<namespace>-<fullname>" for cluster-wide uniqueness — a misconfigured
+    # failurePolicy: Fail webhook can block admission cluster-wide for
+    # matching resources. Requires service.enabled: true (clientConfig.service
+    # targets the release Service) and at least one entry under validating or
+    # mutating.
+    webhooks:
+      enabled: false
+      ca:
+        validityDays: 3650
+        renewBeforeDays: 30
+      port: 443
+      certMountPath: /etc/webhook-tls
+      # Each entry: name (required, FQDN-style) and path (required) identify
+      # the webhook; rules (required) is a verbatim admissionregistration
+      # RuleWithOperations passthrough. failurePolicy/sideEffects/
+      # timeoutSeconds/namespaceSelector/objectSelector/
+      # admissionReviewVersions/matchPolicy default as shown below when
+      # omitted on an entry.
+      # validating:
+      #   - name: validate.example.com
+      #     path: /validate
+      #     rules:
+      #       - apiGroups: [""]
+      #         apiVersions: ["v1"]
+      #         operations: ["CREATE", "UPDATE"]
+      #         resources: ["pods"]
+      #     failurePolicy: Fail
+      #     sideEffects: None
+      #     timeoutSeconds: 10
+      #     namespaceSelector: {}
+      #     objectSelector: {}
+      #     admissionReviewVersions: [v1]
+      #     matchPolicy: Equivalent
+      validating: []
+      # mutating: same shape as validating, plus an optional
+      # reinvocationPolicy (Never or IfNeeded) — left unset falls back to the
+      # Kubernetes API default (Never).
+      mutating: []
+
+    # -----------------------------------------------------------------------------
     # Jobs (Helm Hooks)
     # -----------------------------------------------------------------------------
     jobs:

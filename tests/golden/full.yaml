@@ -200,6 +200,28 @@ data:
 ---
 # Source: full/templates/app.yaml
 apiVersion: v1
+kind: Secret
+metadata:
+  name: t-full-webhook-cert
+  namespace: default
+  labels:
+    helm.sh/chart: full-0.1.0
+    app.kubernetes.io/name: full
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/component: app
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    platform/tls-not-after: REDACTED
+type: Opaque
+data:
+  ca.crt: REDACTED
+  ca.key: REDACTED
+  tls.crt: REDACTED
+  tls.key: REDACTED
+---
+# Source: full/templates/app.yaml
+apiVersion: v1
 kind: ConfigMap
 metadata:
   name: t-full-config
@@ -458,10 +480,17 @@ spec:
           volumeMounts:
             - mountPath: /app/config
               name: config
+            - mountPath: /etc/webhook-tls
+              name: webhook-tls
+              readOnly: true
       volumes:
         - configMap:
             name: t-full-config
           name: config
+        - name: webhook-tls
+          secret:
+            defaultMode: 256
+            secretName: t-full-webhook-cert
       terminationGracePeriodSeconds: 30
       restartPolicy: Always
       runtimeClassName: "gvisor"
@@ -633,6 +662,90 @@ spec:
                 name: t-full
                 port:
                   number: 80
+---
+# Source: full/templates/app.yaml
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: default-t-full
+  labels:
+    helm.sh/chart: full-0.1.0
+    app.kubernetes.io/name: full
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/component: app
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+webhooks:
+  - name: mutate.app.example.com
+    admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        namespace: default
+        name: t-full
+        port: 443
+        path: /mutate
+      caBundle: REDACTED
+    rules:
+      - apiGroups:
+        - ""
+        apiVersions:
+        - v1
+        operations:
+        - CREATE
+        resources:
+        - pods
+    failurePolicy: Fail
+    sideEffects: None
+    timeoutSeconds: 10
+    matchPolicy: Equivalent
+    namespaceSelector:
+      {}
+    objectSelector:
+      {}
+    reinvocationPolicy: IfNeeded
+---
+# Source: full/templates/app.yaml
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: default-t-full
+  labels:
+    helm.sh/chart: full-0.1.0
+    app.kubernetes.io/name: full
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/component: app
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+webhooks:
+  - name: validate.app.example.com
+    admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        namespace: default
+        name: t-full
+        port: 443
+        path: /validate
+      caBundle: REDACTED
+    rules:
+      - apiGroups:
+        - ""
+        apiVersions:
+        - v1
+        operations:
+        - CREATE
+        - UPDATE
+        resources:
+        - pods
+    failurePolicy: Fail
+    sideEffects: None
+    timeoutSeconds: 10
+    matchPolicy: Equivalent
+    namespaceSelector:
+      {}
+    objectSelector:
+      {}
 ---
 # Source: full/templates/app.yaml
 apiVersion: security.istio.io/v1beta1

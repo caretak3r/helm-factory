@@ -91,6 +91,16 @@ Usage (consumer chart templates/NOTES.txt):
 {{- if .Values.tlsSelfSigned.mtls.enabled -}}
 {{- $warnings = append $warnings "tlsSelfSigned.mtls.enabled=true: self-signed mTLS is DEV-ONLY, not for production. A CA Secret and per-client certificates are generated and persisted alongside the server cert. If the server cert already existed from a prior release without mtls, THIS UPGRADE ROTATES IT ONCE so it chains to the new CA — anything holding the old server cert/CA pair must be updated." -}}
 {{- end -}}
+{{- if .Values.webhooks.enabled -}}
+{{- $webhookObjs := list -}}
+{{- if .Values.webhooks.validating -}}
+{{- $webhookObjs = append $webhookObjs (printf "ValidatingWebhookConfiguration/%s-%s" .Release.Namespace (include "platform.fullname" .)) -}}
+{{- end -}}
+{{- if .Values.webhooks.mutating -}}
+{{- $webhookObjs = append $webhookObjs (printf "MutatingWebhookConfiguration/%s-%s" .Release.Namespace (include "platform.fullname" .)) -}}
+{{- end -}}
+{{- $warnings = append $warnings (printf "webhooks.enabled=true creates CLUSTER-SCOPED admission object(s): %s. These affect API requests across the WHOLE CLUSTER for resources matching their rules, not just this namespace/release — a misconfigured failurePolicy: Fail webhook can block admission cluster-wide for matching resources. Verify the serving cert and path before relying on Fail. Rotate the serving cert by deleting Secret %s-webhook-cert and running helm upgrade." (join ", " $webhookObjs) (include "platform.fullname" .)) -}}
+{{- end -}}
 {{- if not (empty .Values.ingress.secrets) -}}
 {{- $warnings = append $warnings "ingress.secrets contains inline TLS cert/key material in values (DISCOURAGED). Prefer cert-manager (certificate block) or a pre-created Secret via ingress.existingSecret." -}}
 {{- end -}}
