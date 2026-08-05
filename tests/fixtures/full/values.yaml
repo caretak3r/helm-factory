@@ -40,6 +40,16 @@ service:
   ipFamilies:
     - IPv4
 
+generatedSecrets:
+  - name: admin
+    keys:
+      - key: password
+        kind: password
+      - key: auth
+        kind: htpasswd
+        username: admin
+        passwordFrom: password
+
 ingress:
   enabled: true
   hostname: app.example.com
