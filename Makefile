@@ -18,7 +18,7 @@ SHELL := /bin/bash
 FIXTURE ?= full
 ARGS ?=
 
-.PHONY: help tools check-tools shellcheck helm-lint schema-meta gate smoke lint fast render golden clean
+.PHONY: help tools check-tools shellcheck helm-lint schema-meta gate smoke smoke-packaged lint fast render golden clean
 
 help: ## Show this help
 	@echo "helm-factory — targets:"
@@ -48,7 +48,11 @@ gate: check-tools ## THE gate: render matrix, goldens, kubeconform, guardrails
 smoke: check-tools ## Consumer scenario: scaffold a chart, build, render, kubeconform
 	@scripts/scenario-consumer.sh
 
-lint: shellcheck helm-lint schema-meta gate smoke ## Everything CI runs, in CI's order
+smoke-packaged: check-tools ## Packaged-artifact consumer scenario: package, build, render, kubeconform
+	@scripts/scenario-packaged-consumer.sh
+
+lint: shellcheck helm-lint schema-meta gate smoke smoke-packaged ## Everything CI runs, in CI's order
+	@echo "==> PASS"
 
 fast: check-tools ## Subset loop (~14s). Skips the guardrail suite — NOT done.
 	FIXTURES=minimal REQUIRE_KUBECONFORM=1 REQUIRE_CHECK_JSONSCHEMA=1 scripts/lint-library.sh

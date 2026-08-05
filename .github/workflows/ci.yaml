@@ -63,3 +63,6 @@ jobs:
 
       - name: consumer scenario (scaffold, build, render, kubeconform)
         run: make smoke
+
+      - name: packaged-artifact consumer scenario (package, build, render, kubeconform)
+        run: make smoke-packaged

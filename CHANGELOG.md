@@ -40,6 +40,15 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
   runs. This generates its consumer instead of curating it. Replaces the inline
   `make smoke` recipe, which only grepped for a Deployment.
 
+### Added — packaged-artifact consumer scenario (`make smoke-packaged`)
+
+- CI now packages `platform-library` and exercises a fresh consumer against the
+  extracted contents of that `.tgz`, rather than reading templates and defaults
+  from the source chart directory. The scenario builds the dependency, renders
+  it, asserts the expected Kinds, and validates every object with kubeconform.
+  This catches release-only defects such as `.helmignore` exclusions or required
+  files missing from the archive before the chart is published.
+
 ### Added — contributor toolchain (`Makefile`, `make tools`)
 
 - New `Makefile` with the checks CI runs: `make lint` (every CI step, in CI's
