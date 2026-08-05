@@ -309,6 +309,16 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
   `platform` dependency, instead of relying on someone reading `--dry-run`
   output (helm-factory-cuk).
 
+### Added — cosign keyless signing for GHCR releases
+
+- `.github/workflows/release.yaml` now signs the pushed chart's OCI digest
+  with [cosign](https://github.com/sigstore/cosign) using GitHub Actions OIDC
+  (keyless — no signing key to generate, store, or rotate), scoped to a
+  narrow `id-token: write` permission. Signing runs against the immutable
+  digest captured from `helm push` output, never the mutable version tag.
+  README's Releasing section documents `cosign verify` for consumers and
+  drops the "future work" caveat (hf-j30).
+
 ## [2.1.0] - 2026-07-20
 
 Correctness batch: thirteen library defects fixed since 2.0.0, all with new
