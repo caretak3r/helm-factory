@@ -1,0 +1,149 @@
+---
+title: Security model
+description: Pod hardening, hook ServiceAccount isolation, mesh mTLS, and the opt-in escape hatches.
+---
+
+import { Callout } from 'nextra/components'
+
+# Security model
+
+## Pod Security Standards hardening, per container
+
+The zero-config output targets the Kubernetes Pod Security Standards
+"restricted" profile: `runAsNonRoot`, no privilege escalation, every
+Linux capability dropped, `RuntimeDefault` seccomp, and a read-only root
+filesystem. `podSecurityContext.enabled` and `containerSecurityContext.enabled`
+are both `true` by default; every key besides `enabled` renders verbatim
+into the manifest, so overriding one field (e.g.
+`containerSecurityContext.readOnlyRootFilesystem: false` for an app that
+writes to its own root filesystem) doesn't require restating the rest.
+
+The hardening pass runs **per container**, not once for the pod. A pod is
+only as secure as its least-hardened container — one privileged sidecar
+fails admission for the *whole pod* under a restricted PSS policy, not
+just for itself. So every passthrough container (init containers,
+sidecars, and anything supplied verbatim through `initContainers.containers`
+or `sidecars.containers`) goes through the exact same hardening template
+as the primary application container.
+
+User-supplied `securityContext` keys on any container always win over the
+library's defaults. The merge is `mergeOverwrite $default
+$container.securityContext` — Sprig's "last map wins" merge, with the
+user's map applied last — specifically because the naive `merge $default
+$user` would keep the *default's* keys on collision, silently discarding
+an explicit user override. See
+[Conventions & tricks](/conventions-and-tricks/#map-precedence-range--set-never-bare-merge)
+for the general version of this trap.
+
+<Callout type="warning">
+Turning off hardening is a real option (`enabled: false` on either
+context block) for workloads that genuinely can't run restricted — but
+it's an explicit, visible opt-out per block, not a silent default.
+</Callout>
+
+## Why the hook ServiceAccount has its own name
+
+Pre-install hook Jobs get a **distinctly named** ServiceAccount,
+`<fullname>-preinstall`, separate from the release ServiceAccount
+(`serviceAccount.name`, or the chart's fullname by default). This is not
+cosmetic.
+
+Helm's `before-hook-creation` delete policy removes any existing object
+matching a hook's identity before the hook runs again on upgrade. If the
+hook Job's ServiceAccount shared its name with the *release's* live
+ServiceAccount, every `helm upgrade` would delete-then-recreate that
+ServiceAccount purely to satisfy the hook — and deleting a live
+ServiceAccount invalidates every token minted against it, including the
+ones already mounted into currently-running pods. A distinctly named hook
+ServiceAccount means the hook's own lifecycle (create, delete-on-recreate,
+delete-on-hook-succeeded) never touches the identity your running
+workload depends on.
+
+This also means the ServiceAccount admission controller's usual rule —
+"a pod always looks up its ServiceAccount, even with
+`automountServiceAccountToken: false`" — still requires the hook
+ServiceAccount to exist and be well-formed; omitting it because the hook
+doesn't need a token doesn't work, since a missing ServiceAccount is a
+hard admission failure regardless of the automount setting.
+
+## Mesh mTLS: fail closed on authorization, not just encryption
+
+The top-level `mtls.*` block renders an Istio `PeerAuthentication` (mode:
+`mtls.policy`, default `STRICT`) and a companion `AuthorizationPolicy` —
+both gated atomically (see [Capability catalog](/capability-catalog/)):
+neither renders unless both CRDs are available, because a
+PeerAuthentication with no matching AuthorizationPolicy is encryption
+without authorization, and the reverse is a policy with nothing to enforce
+mutual TLS in the first place.
+
+Enabling `mtls.enabled: true` with an empty `mtls.allowedPrincipals` fails
+the render outright — encrypting a connection is not the same as deciding
+who's allowed to use it, and the library refuses to guess. The two ways
+out:
+
+```yaml
+mtls:
+  enabled: true
+  allowedPrincipals:
+    - "cluster.local/ns/my-namespace/sa/*"   # same-namespace default
+```
+
+or an explicit, visible opt-in to allow every workload in the mesh:
+
+```yaml
+mtls:
+  enabled: true
+  allowAllPrincipals: true   # wildcard: cluster.local/ns/*/sa/*
+```
+
+`allowAllPrincipals` is ignored whenever `allowedPrincipals` is non-empty —
+an explicit principal list always wins over the wildcard opt-in.
+
+This is a different feature from `tlsSelfSigned.mtls` (dev-only
+client-certificate issuance from a self-signed CA) — see
+[Security features → mTLS](/security-features/mtls/) for that one.
+
+## Admission webhooks: cluster-wide blast radius
+
+`webhooks.*` generates `ValidatingWebhookConfiguration`/
+`MutatingWebhookConfiguration` objects, which are **cluster-scoped** — a
+misconfigured `failurePolicy: Fail` webhook can block admission
+cluster-wide for every resource matching its rules, not just resources in
+your namespace. Full mechanics, including the fail-closed
+`name`/`path`/`rules` requirement and certificate lifecycle, live in
+[Security features → Webhooks](/security-features/webhooks/) — this page
+just flags the blast-radius risk: review a new webhook's `rules` and
+`namespaceSelector`/`objectSelector` scoping as carefully as you'd review
+a cluster-admin RBAC grant, because the effective reach is comparable.
+
+## Trust model for values files
+
+Nothing in this library encrypts or protects the consumer chart's
+`values.yaml` itself. `secret.data`/`secret.stringData` put secret
+material directly into values files and into the resulting Helm release
+manifest (visible to anyone with `helm get manifest` access) — prefer an
+out-of-band Secret (External Secrets Operator, Sealed Secrets, SOPS,
+`kubectl create secret`) and point `secret.existingSecret` at it, which
+renders no Secret object of the library's own. For credentials the
+*cluster* should generate rather than a human choosing a value, use
+`generatedSecrets` instead — see
+[Security features → Generated secrets](/security-features/generated-secrets/).
+
+## Escape hatches are opt-in and warned
+
+Two values keys exist specifically to let a consumer step outside the
+library's default posture, and both default to `false`:
+
+- **`allowClusterScopedExtras`** — without it, an `extraObjects` entry
+  naming a cluster-scoped Kind (ClusterRole, ClusterRoleBinding,
+  PriorityClass, StorageClass, a CRD, ...) fails the render. A
+  namespace-scoped app chart reaching for cluster-wide permissions should
+  be a deliberate, reviewed decision, not an accident of an unfamiliar
+  Kind name.
+- **`mtls.allowAllPrincipals`** — covered above; the wildcard mesh
+  principal is available, but only behind an explicit flag, never as a
+  fallback default.
+
+Both are ordinary boolean values, not admission-time policy — a consumer
+chart can still set either one. The point isn't to make the escape hatch
+impossible, it's to make it visible in a diff and in `git blame`.

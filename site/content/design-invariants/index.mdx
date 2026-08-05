@@ -1,0 +1,105 @@
+---
+title: Design invariants
+description: The rules a change to this library must never break.
+---
+
+import { Callout } from 'nextra/components'
+
+# Design invariants
+
+These are not style preferences. Each one is a rule that, if violated,
+turns a code-review nit into a production incident — a dangling manifest,
+a leaked selector, a token invalidated out from under a running pod. Any
+change to the library is measured against these six invariants first.
+
+## 1. Fail closed
+
+Invalid or ambiguous configuration fails **at template time**, with a named
+error, never at apply time and never silently. The library never renders a
+best-effort guess and lets the API server (or, worse, a production
+incident) discover the problem.
+
+Examples enforced today: an `ingress` or Gateway API route with no backing
+Service; a HorizontalPodAutoscaler and a VerticalPodAutoscaler both trying
+to scale CPU on the same workload; an `mtls.enabled: true` block with an
+empty `allowedPrincipals` list and no explicit `allowAllPrincipals: true`
+opt-in; a webhook entry missing `name`, `path`, or `rules`. Each of these
+aborts `helm template`/`helm install` with a `fail` message naming the
+exact key that's wrong, not a downstream Go template nil-pointer panic.
+
+<Callout type="info">
+Fail-closed is a design constraint on new features, too: if you add a
+values key whose absence or bad value could produce a broken object, add
+the guard before you add the happy path.
+</Callout>
+
+## 2. Capability negotiation
+
+The library never emits an `apiVersion` the target cluster doesn't serve.
+CRD-backed Kinds — `Certificate`, Gateway API `HTTPRoute`/`Gateway`,
+`ServiceMonitor`, `PodMonitor`, `PrometheusRule`, `VerticalPodAutoscaler`,
+`ValidatingWebhookConfiguration`/`MutatingWebhookConfiguration` — check a
+capabilities registry before rendering. A Kind that isn't available is
+**skipped**, not rendered anyway, and every skip is surfaced in
+`NOTES.txt` after install so it's visible without grepping manifests.
+
+This is the mechanism behind the `--api-versions group/version/Kind`
+requirement covered in [Getting started](/getting-started/) and detailed
+in [Capability catalog](/capability-catalog/): the registry check is an
+exact-string membership test against the full `group/version/Kind` triple,
+not a prefix match.
+
+## 3. Specific beats common
+
+When the same key is set in more than one place — a resource-specific
+block, a chart-wide `common*` default, and a cross-chart `global` value —
+the most specific setting always wins. Labels and annotations follow this
+resolution order:
+
+```
+resource-specific  >  common*  >  global
+```
+
+This matters for template authors more than it matters for consumers:
+Sprig's `merge $dst $src` keeps `$dst`'s keys on collision, so a naive
+`merge $common $specific` silently produces the *opposite* of "specific
+wins." The library never uses bare `merge` for precedence-sensitive maps —
+it uses the range-and-`set` idiom, or `mergeOverwrite` with the specific
+map passed last. See [Conventions & tricks](/conventions-and-tricks/) for
+the exact idiom and why Go template scoping makes the naive version of
+this bug easy to reintroduce.
+
+## 4. Goldens are the contract
+
+`tests/golden/*.yaml` are byte-exact rendered output for the fixture
+charts. A golden diff you can't explain top-to-bottom means the change
+under review is wrong, not the golden file. Goldens are never regenerated
+to make a red diff go green — they're regenerated only after confirming,
+line by line, that every line that changed is an intended consequence of
+the change being made.
+
+## 5. Gates are guarded and mutation-tested
+
+Every lint-gate assertion in the shell-based guardrail suite uses the
+guarded `if out=$(...); then ... fi` idiom. A bare `var=$(...)` under
+`set -e` silently aborts the whole gate script on a non-zero exit from the
+substitution — the check simply never runs again, and nobody notices
+because the script still "passes." Every new check is also
+**mutation-tested**: proven able to fail by temporarily reverting the fix
+it guards, then confirmed to catch it, before the check is trusted to
+guard anything in CI.
+
+## 6. Hardening is default-on and per-container
+
+Pod Security Standards "restricted" posture — non-root, no privilege
+escalation, dropped capabilities, a read-only root filesystem where
+feasible — is evaluated **per container**, not once for the pod. One
+unhardened sidecar fails admission for the entire pod, so every
+passthrough container (sidecars, init containers, anything supplied
+verbatim in values) goes through the same hardening pass as the primary
+container. User-supplied `securityContext` keys always win over the
+library's defaults, merged with `mergeOverwrite` so the user's explicit
+choice is never silently clobbered — but the *default*, absent an
+explicit override, is always the hardened one. Full detail, including the
+`ServiceAccount` naming rule that protects hook Jobs from invalidating
+live pods' tokens, lives in [Security model](/security-model/).

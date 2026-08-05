@@ -1,0 +1,217 @@
+---
+title: Capability catalog
+description: How the library decides which apiVersion to emit, and when it skips a Kind entirely.
+---
+
+import { Callout } from 'nextra/components'
+
+# Capability catalog
+
+The library never emits an `apiVersion` the target cluster doesn't serve.
+Every Kind it can produce — built-in or CRD-backed — goes through a
+negotiation step first. This page covers the mechanics; see
+[Architecture](/architecture/) for where negotiation sits in the render
+pipeline and [Design invariants](/design-invariants/) for why this exists.
+
+## The `--api-versions` gotcha
+
+<Callout type="warning">
+**Always pass the full `group/version/Kind` form.** `helm template --api-versions
+cert-manager.io/v1` looks correct and produces a clean `exit 0` — with the
+Certificate object silently missing from the output. Negotiation checks the
+exact string `cert-manager.io/v1/Certificate`; a bare `group/version` entry
+never matches it. The correct invocation is:
+
+```bash
+helm template my-service my-service \
+  --api-versions cert-manager.io/v1/Certificate \
+  --api-versions monitoring.coreos.com/v1/ServiceMonitor
+```
+
+The one place the bare `group/version` form *does* work is the
+`capabilities.apiVersions` **values** key — see below — because the
+library matches those entries against both the full GVK and the
+group/version prefix on your behalf. The CLI flag has no such leniency.
+</Callout>
+
+## Two negotiation modes
+
+Every Kind resolves its `apiVersion` through one of two strict/lenient
+modes, chosen by whether the Kind is a stable Kubernetes built-in or a CRD:
+
+- **`apiVersionFor` (strict).** Negotiates against the registry below;
+  returns empty if nothing is served. Used for CRDs and optional objects —
+  a missing API means "do not render," so a real deploy never conflicts
+  with an object the cluster can't accept.
+- **`apiVersionForOrDefault` (never empty).** Negotiates, and falls back to
+  the registry's first (preferred, GA) entry if discovery reports nothing.
+  Used for always-present built-ins, so a core Deployment or Service is
+  never dropped just because `helm template` ran without a live cluster.
+
+The split exists because bare `helm template` reports a minimal API
+discovery set — no CRDs, and not the full built-in group list either. If
+built-ins were gated strictly, a plain offline render would silently drop
+core objects. So built-ins always render at the best available version;
+CRDs and optional objects render only when proven available, whether by a
+live cluster or by force-assuming their groups (next section).
+
+## Force-assuming capabilities offline
+
+`helm template` and CI have no live cluster to query. Two ways to bridge
+the gap, in order of convenience:
+
+```yaml filename="values.yaml"
+capabilities:
+  apiVersions:
+    - gateway.networking.k8s.io/v1
+    - cert-manager.io/v1
+    - monitoring.coreos.com/v1
+    - security.istio.io/v1beta1
+```
+
+```bash
+helm template my-service my-service \
+  --api-versions cert-manager.io/v1/Certificate \
+  --kube-version 1.34
+```
+
+The `full` test fixture in this repository force-assumes exactly this set
+of groups to exercise every CRD-gated block in CI without a cluster.
+
+## The apiVersion registry
+
+The registry is a `Kind -> ordered preference list` table; the first entry
+per Kind is the preferred (newest GA) version.
+
+| Kind | Group | Preference order |
+|---|---|---|
+| HorizontalPodAutoscaler | `autoscaling` | `v2`, `v1` |
+| PodDisruptionBudget | `policy` | `v1` |
+| Ingress, IngressClass, NetworkPolicy | `networking.k8s.io` | `v1` |
+| Role, RoleBinding, ClusterRole, ClusterRoleBinding | `rbac.authorization.k8s.io` | `v1` |
+| StorageClass, VolumeAttachment, CSIDriver, CSINode, CSIStorageCapacity | `storage.k8s.io` | `v1` |
+| PriorityClass | `scheduling.k8s.io` | `v1` |
+| RuntimeClass | `node.k8s.io` | `v1` |
+| Lease | `coordination.k8s.io` | `v1` |
+| EndpointSlice | `discovery.k8s.io` | `v1` |
+| ValidatingWebhookConfiguration, MutatingWebhookConfiguration | `admissionregistration.k8s.io` | `v1` |
+| ValidatingAdmissionPolicy(Binding), MutatingAdmissionPolicy(Binding) | `admissionregistration.k8s.io` | `v1`, `v1beta1` |
+| CustomResourceDefinition | `apiextensions.k8s.io` | `v1` |
+| CertificateSigningRequest | `certificates.k8s.io` | `v1` |
+| APIService | `apiregistration.k8s.io` | `v1` |
+| FlowSchema, PriorityLevelConfiguration | `flowcontrol.apiserver.k8s.io` | `v1` |
+| GatewayClass, Gateway, HTTPRoute | `gateway.networking.k8s.io` | `v1`, `v1beta1` |
+| GRPCRoute | `gateway.networking.k8s.io` | `v1`, `v1alpha2` |
+| ReferenceGrant | `gateway.networking.k8s.io` | `v1beta1`, `v1alpha2` |
+| Certificate, Issuer, ClusterIssuer, CertificateRequest | `cert-manager.io` | `v1` |
+| PeerAuthentication, AuthorizationPolicy, RequestAuthentication | `security.istio.io` | `v1`, `v1beta1` |
+| VirtualService | `networking.istio.io` | `v1`, `v1beta1`, `v1alpha3` |
+| DestinationRule, ServiceEntry, Sidecar | `networking.istio.io` | `v1`, `v1beta1` |
+| ServiceMonitor, PodMonitor, PrometheusRule, Probe | `monitoring.coreos.com` | `v1` |
+| VerticalPodAutoscaler | `autoscaling.k8s.io` | `v1` |
+| VolumeSnapshot, VolumeSnapshotClass, VolumeSnapshotContent | `snapshot.storage.k8s.io` | `v1` |
+| ResourceClaim, ResourceClaimTemplate, DeviceClass | `resource.k8s.io` | `v1` |
+
+Plain core (`v1`) and `apps/v1`/`batch` built-ins (Pod, Service, ConfigMap,
+Secret, Deployment, StatefulSet, DaemonSet, Job, CronJob, ...) aren't
+listed — they have exactly one served version and always resolve to it.
+The registry floor is Kubernetes 1.34; versions removed before that
+(`batch/v1beta1`, `policy/v1beta1`, `autoscaling/v2beta1`/`v2beta2`,
+`networking.k8s.io/v1beta1`, `extensions/v1beta1`) are pruned rather than
+carried as dead fallback weight.
+
+## The features registry: single-Kind vs. multi-Kind gating
+
+The apiVersion registry answers "what version does this one Kind negotiate
+to?" — it doesn't say whether a *feature* needs more than one Kind to
+render safely. The features registry adds that layer:
+
+```yaml
+certificate:
+  composition: atomic
+  kinds: [Certificate]
+mtls:
+  composition: atomic
+  kinds: [PeerAuthentication, AuthorizationPolicy]
+gatewayApi:
+  composition: independent
+  kinds: [HTTPRoute, GRPCRoute]
+  requires:
+    GRPCRoute: gatewayApi.grpcRoute
+serviceMonitor:
+  composition: atomic
+  kinds: [ServiceMonitor]
+podMonitor:
+  composition: atomic
+  kinds: [PodMonitor]
+prometheusRule:
+  composition: atomic
+  kinds: [PrometheusRule]
+verticalAutoscaling:
+  composition: atomic
+  kinds: [VerticalPodAutoscaler]
+```
+
+Two composition policies:
+
+- **`atomic`** — every Kind in the feature must have a negotiable API, or
+  none of them render. mTLS is the canonical example: an
+  AuthorizationPolicy with no matching PeerAuthentication (or vice versa)
+  is a broken policy, not a partial one, so the feature renders both Kinds
+  or neither.
+- **`independent`** — only the queried Kind's own API matters.
+  `gatewayApi` covers HTTPRoute and GRPCRoute, two unrelated CRDs — a
+  cluster missing the GRPCRoute CRD should not block HTTPRoute, and vice
+  versa.
+
+`gateOpen (Kind)` — `featureEnabled AND kindAvailable` — is the single gate
+every CRD-backed tier-1 object calls; no generator template hand-rolls its
+own enabled-and-available check. Admission webhooks
+(`ValidatingWebhookConfiguration`/`MutatingWebhookConfiguration`, see
+[Webhooks](/security-features/webhooks/)) go through the same registry.
+
+## Tier-1 Kinds gated by the features registry
+
+| Feature | Composition | Kind(s) | Values flag |
+|---|---|---|---|
+| `certificate` | atomic | Certificate | `certificate.enabled` |
+| `mtls` | atomic | PeerAuthentication, AuthorizationPolicy | `mtls.enabled` |
+| `gatewayApi` | independent | HTTPRoute, GRPCRoute | `gatewayApi.enabled` (GRPCRoute: `gatewayApi.grpcRoute.enabled`) |
+| `serviceMonitor` | atomic | ServiceMonitor | `serviceMonitor.enabled` |
+| `podMonitor` | atomic | PodMonitor | `podMonitor.enabled` |
+| `prometheusRule` | atomic | PrometheusRule | `prometheusRule.enabled` |
+| `verticalAutoscaling` | atomic | VerticalPodAutoscaler | `verticalAutoscaling.enabled` |
+
+## When a Kind gets skipped
+
+A Kind that's enabled in values but whose API isn't available doesn't fail
+the render — it's dropped, and the drop is surfaced. `helm install`/`helm
+template` output ends with a `NOTES.txt` section listing every skipped
+Kind and every skipped `extraObjects` entry by name, plus which
+`group/version`s were tried. If a feature you enabled doesn't show up in
+the rendered output, check NOTES before assuming it's a bug — it's very
+likely a missing CRD or a missing `--api-versions`/`capabilities.apiVersions`
+entry.
+
+## Cluster-scoped Kinds
+
+`platform.genericResource` (the `extraObjects` renderer) needs to know
+whether to stamp `metadata.namespace` on a generic object. The
+cluster-scoped set: Namespace, Node, PersistentVolume, ClusterRole,
+ClusterRoleBinding, StorageClass, VolumeAttachment, CSIDriver, CSINode,
+PriorityClass, RuntimeClass, IngressClass, CustomResourceDefinition,
+APIService, CertificateSigningRequest,
+ValidatingWebhookConfiguration/MutatingWebhookConfiguration,
+ValidatingAdmissionPolicy(Binding)/MutatingAdmissionPolicy(Binding),
+FlowSchema, PriorityLevelConfiguration, GatewayClass, ClusterIssuer,
+ComponentStatus, VolumeSnapshotClass, VolumeSnapshotContent, DeviceClass.
+Any other Kind gets a namespace unless the spec explicitly sets
+`clusterScoped: true`.
+
+## Supported Kubernetes range
+
+`platform-library/Chart.yaml` pins `kubeVersion: ">=1.34.0-0 <1.37.0-0"` —
+Kubernetes 1.34 through 1.36, an n-2 rolling window (latest supported minor
+plus the two behind it). `scripts/lint-library.sh` renders every fixture
+against each supported minor as part of the gate; a version bump to this
+range goes through the `k8s-version-bump` process, not an ad hoc edit.

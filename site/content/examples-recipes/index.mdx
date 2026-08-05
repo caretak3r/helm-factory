@@ -1,0 +1,278 @@
+---
+title: Examples & recipes
+description: Worked values.yaml examples per workload type and common feature combinations.
+---
+
+import { Callout } from 'nextra/components'
+
+# Examples & recipes
+
+Every example on this page is drawn directly from the library's own test
+fixtures (`tests/fixtures/{minimal,full,stateful,daemon}/values.yaml`),
+which are rendered and validated against vendored Kubernetes schemas on
+every change — these aren't illustrative snippets, they're the same values
+the gate exercises.
+
+## Minimal: the smallest working chart
+
+The floor for a working render: an image and one Service.
+
+```yaml
+image:
+  repository: example/minimal
+  tag: "1.0.0"
+
+service:
+  enabled: true
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
+```
+
+Everything else — Pod Security Standards hardening, labels, the
+ServiceAccount with automount disabled — comes from the library's
+zero-config defaults. See [Getting started](/getting-started/) for how to
+scaffold this.
+
+## StatefulSet with persistence and a scraped headless Service
+
+```yaml
+workload:
+  type: StatefulSet
+
+image:
+  repository: example/stateful
+  tag: "1.0.0"
+
+service:
+  enabled: true
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
+  internalTrafficPolicy: Local
+  publishNotReadyAddresses: true
+
+persistence:
+  enabled: true
+  size: 1Gi
+
+statefulSet:
+  volumeClaimTemplates:
+    - name: logs
+      accessModes: ["ReadWriteOnce"]
+      storage: 1Gi
+
+livenessProbe:
+  enabled: true
+readinessProbe:
+  enabled: true
+startupProbe:
+  enabled: true
+
+serviceMonitor:
+  enabled: true
+
+capabilities:
+  apiVersions:
+    - monitoring.coreos.com/v1   # force-assume for offline helm template
+```
+
+`workload.type: StatefulSet` with no explicit `statefulSet.serviceName`
+gets a library-managed governing headless Service (`<fullname>-headless`)
+automatically — see [Architecture](/architecture/) for why. That headless
+Service carries a `platform/service-role: headless`
+label specifically so the default `serviceMonitor` selector can exclude it
+and scrape only the primary Service, avoiding doubled Prometheus targets
+for the same pods.
+
+## DaemonSet with sidecars, an init container, and dev mTLS
+
+```yaml
+workload:
+  type: DaemonSet
+
+image:
+  repository: example/daemon
+  tag: "1.0.0"
+
+tlsSelfSigned:
+  enabled: true
+  commonName: daemon.local
+  dnsNames: [daemon.local]
+  mtls:
+    enabled: true
+    clients:
+      - name: worker
+      - name: reader
+    trustBundle:
+      enabled: true
+
+initContainers:
+  enabled: true
+  containers:
+    - name: init-wait
+      image: docker.io/library/busybox:1.36.1
+      command: ["sh", "-c", "echo init"]
+
+sidecars:
+  enabled: true
+  containers:
+    - name: metrics-proxy
+      image: docker.io/library/busybox:1.36.1
+      command: ["sh", "-c", "sleep infinity"]
+      securityContext:
+        runAsUser: 65532        # overrides the library default; every other field still applies
+    - name: log-shipper
+      image: docker.io/library/busybox:1.36.1
+      command: ["sh", "-c", "sleep infinity"]   # no override — still fully hardened
+
+daemonSet:
+  nodeSelector:
+    kubernetes.io/os: linux
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
+```
+
+The two sidecars deliberately demonstrate the hardening merge from two
+angles: `metrics-proxy` overrides one `securityContext` key and keeps every
+other library default, while `log-shipper` supplies no `securityContext`
+at all and still renders fully hardened — Pod Security Standards is
+evaluated per container, so neither can opt out by omission. See
+[Security features → mTLS](/security-features/mtls/) for what
+`tlsSelfSigned.mtls` mounts into each container.
+
+## Gateway API + generated credentials + admission webhook
+
+A slice from the library's full-coverage fixture, showing several tier-1
+features composing in one chart:
+
+```yaml
+image:
+  repository: example/app
+  tag: "1.2.3"
+
+ingress:
+  enabled: true
+  hostname: app.example.com
+
+gatewayApi:
+  enabled: true
+  hostnames:
+    - app.example.com
+  parentRefs:
+    - name: shared-gateway
+      namespace: gateway-system
+  httpRoute:
+    enabled: true
+    hostnames:
+      - app.example.com
+    parentRefs:
+      - name: shared-gateway
+        namespace: gateway-system
+
+generatedSecrets:
+  - name: admin
+    keys:
+      - key: password
+        kind: password
+      - key: auth
+        kind: htpasswd
+        username: admin
+        passwordFrom: password
+
+webhooks:
+  enabled: true
+  validating:
+    - name: validate.app.example.com
+      path: /validate
+      rules:
+        - apiGroups: [""]
+          apiVersions: ["v1"]
+          operations: ["CREATE", "UPDATE"]
+          resources: ["pods"]
+
+capabilities:
+  apiVersions:
+    - gateway.networking.k8s.io/v1
+    - monitoring.coreos.com/v1
+```
+
+`ingress` and `gatewayApi` aren't mutually exclusive — both can target the
+same hostname if you're running both an Ingress controller and a Gateway
+API implementation during a migration window. `generatedSecrets` and
+`webhooks` are unrelated features that happen to compose cleanly here: the
+generated `admin` credential has nothing to do with the webhook's serving
+certificate, which the library generates and rotates independently. See
+[Values reference](/values-reference/) for the full key list and
+[Security features](/security-features/) for the credential/certificate
+mechanics.
+
+## extraObjects: RBAC and a PriorityClass
+
+For anything the opinionated tier-1 blocks don't model:
+
+```yaml
+allowClusterScopedExtras: true   # PriorityClass below is cluster-scoped
+
+extraObjects:
+  Role:
+    - name: app-reader
+      rules:
+        - apiGroups: [""]
+          resources: [configmaps, secrets]
+          verbs: [get, list, watch]
+  RoleBinding:
+    - name: app-reader-binding
+      roleRef:
+        apiGroup: rbac.authorization.k8s.io
+        kind: Role
+        name: app-reader
+      subjects:
+        - kind: ServiceAccount
+          name: app-high            # matches serviceAccount.name / chart fullname
+  PriorityClass:
+    - name: app-high                # cluster-scoped Kinds skip the namespace automatically
+      value: 1000000
+      globalDefault: false
+```
+
+`allowClusterScopedExtras` is required the moment any `extraObjects` entry
+names a cluster-scoped Kind — omit it and the render fails naming the
+offending Kind, rather than silently dropping the object. See
+[Security model](/security-model/#escape-hatches-are-opt-in-and-warned)
+for why that gate exists.
+
+<Callout type="info">
+If your only need is a namespaced Role bound to the chart's own
+ServiceAccount, the first-class `rbac` block (see
+[Values reference](/values-reference/)) is less to write than the
+`extraObjects` form above — it wires the RoleBinding subject to
+`serviceAccount.name` automatically, so it can't drift.
+</Callout>
+
+## Rendering any of these offline
+
+None of the CRD-backed Kinds above (`gatewayApi`, `serviceMonitor`,
+`webhooks` uses only built-ins so it's fine) render under a bare
+`helm template` — Helm's client-side API discovery reports no CRDs at all.
+Force-assume the groups you need to see them locally or in CI:
+
+```bash
+helm dependency update .
+helm template my-app . \
+  --api-versions gateway.networking.k8s.io/v1/HTTPRoute \
+  --api-versions monitoring.coreos.com/v1/ServiceMonitor \
+  --kube-version 1.34
+```
+
+or set the equivalent `capabilities.apiVersions` list in values, shown in
+each example above — see the
+[capability catalog](/capability-catalog/#force-assuming-capabilities-offline)
+for why the bare `group/version` form to `--api-versions` silently fails to
+satisfy the gate.

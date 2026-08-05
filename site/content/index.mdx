@@ -1,0 +1,94 @@
+---
+title: platform
+description: A Helm 4 pure library chart for hardened, capability-negotiated Kubernetes manifests.
+---
+
+import { Cards } from 'nextra/components'
+
+# platform
+
+`platform` is a **Helm 4 pure library chart**. It ships no installable
+templates of its own — a chart that depends on it declares `platform` in its
+`Chart.yaml`, imports its defaults, and renders everything through one
+template call:
+
+```yaml filename="Chart.yaml"
+dependencies:
+  - name: platform
+    repository: oci://ghcr.io/caretak3r/charts
+    version: ">=2.0.0-0"
+    import-values: [defaults]
+```
+
+```gotemplate filename="templates/app.yaml"
+{{ include "platform.render" . }}
+```
+
+That is the entire template surface most consumer charts ever need. A
+consumer `values.yaml` of roughly 30 lines — image, ports, a few feature
+flags — turns into a hardened Deployment (or StatefulSet, or DaemonSet),
+Service, ServiceAccount, and whatever else the values ask for: Ingress or
+Gateway API routes, TLS, a HorizontalPodAutoscaler, a PodDisruptionBudget,
+NetworkPolicy, Prometheus monitors, lifecycle hook Jobs.
+
+## What you get for free
+
+- **PSS-restricted by default.** Every container in the pod — main, sidecar,
+  init — is hardened toward the Kubernetes Pod Security Standards
+  "restricted" profile unless you opt out, because one unhardened container
+  fails admission for the whole pod. See [Security model](/security-model/).
+- **Capability negotiation.** The library never emits an `apiVersion` your
+  cluster doesn't serve. CRD-backed Kinds — Certificate, Gateway API routes,
+  ServiceMonitor, VerticalPodAutoscaler, admission webhooks — are gated on
+  what the cluster (or your `--api-versions` flags) actually offers, and any
+  Kind that gets skipped is called out in `NOTES.txt`. See
+  [Capability catalog](/capability-catalog/).
+- **Fail-closed configuration.** Ambiguous or contradictory values — an
+  Ingress with no backing Service, an HPA and a VPA both scaling on CPU, a
+  webhook entry with no `rules` — abort the render with a named error
+  instead of producing a manifest that fails later at the API server. See
+  [Design invariants](/design-invariants/).
+- **One place to fix a bug for every consumer.** A correctness fix to the
+  library — selector scoping, annotation precedence, hook ordering — ships
+  once, and every chart depending on `platform` picks it up on its next
+  `helm dependency update`.
+
+## Where to go next
+
+<Cards>
+  <Cards.Card title="Getting started" href="/getting-started/" />
+  <Cards.Card title="Architecture" href="/architecture/" />
+  <Cards.Card title="Values reference" href="/values-reference/" />
+  <Cards.Card title="Examples & recipes" href="/examples-recipes/" />
+</Cards>
+
+## Who this is for
+
+The library is built for two audiences at once:
+
+- **App teams** describe intent, not Kubernetes YAML — a `workload.type`, an
+  image, a handful of feature flags — and get manifests that already pass
+  cluster admission and a platform security review.
+- **Platform owners** get a single codebase to evolve instead of N copies of
+  the same Deployment template scattered across app repos. When a class of
+  bug shows up — a Service selector that drifted from its workload's labels,
+  an annotation that lost precedence to a chart-wide default, a hook Job
+  racing its own ServiceAccount — it is fixed in the library once, covered
+  by a golden-snapshot regression test, and every consumer inherits the fix
+  on its next dependency bump.
+
+## Requirements
+
+`platform` targets Helm 4.x and a rolling three-minor-version Kubernetes
+support window (currently 1.34–1.36; see the render matrix in
+[Capability catalog](/capability-catalog/)). It is versioned independently
+of any consumer chart — a consumer pins a version range
+(`">=2.0.0-0"`, `"^2.0.0"`, ...) in its own `Chart.yaml` `dependencies`
+entry, the same way it would for any other chart dependency.
+
+Because the library's own `values.yaml` wraps every default under
+`exports.defaults`, the `import-values: [defaults]` line is not optional
+decoration — without it none of the library's defaults reach the consumer's
+root values scope, and every generator sees an empty configuration. This is
+covered in detail, with the exact failure mode, in
+[Getting started](/getting-started/).

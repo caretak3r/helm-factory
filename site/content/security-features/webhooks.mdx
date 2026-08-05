@@ -1,0 +1,99 @@
+---
+title: Webhooks
+description: Admission webhook configuration with a generated serving certificate.
+---
+
+import { Callout } from 'nextra/components'
+
+# Webhooks
+
+`webhooks.enabled: true` renders a
+`ValidatingWebhookConfiguration`/`MutatingWebhookConfiguration` (built-in
+`admissionregistration.k8s.io/v1` — no capability-registry gate needed)
+backed by a generated CA and serving certificate. Requires
+`service.enabled: true`, since `clientConfig.service` targets the release
+Service.
+
+```yaml
+webhooks:
+  enabled: true
+  ca:
+    validityDays: 3650
+    renewBeforeDays: 30
+  port: 443
+  certMountPath: /etc/webhook-tls
+  validating:
+    - name: validate.example.com
+      path: /validate
+      rules:
+        - apiGroups: [""]
+          apiVersions: ["v1"]
+          operations: ["CREATE", "UPDATE"]
+          resources: ["pods"]
+```
+
+## Required per entry
+
+Every entry under `validating` or `mutating` requires `name`, `path`, and
+`rules` — `values.schema.json` enforces this (and a `name` pattern) ahead
+of template execution, so a missing field fails at `helm template`/`helm
+lint` time with a schema validation error rather than producing a
+malformed webhook object. `rules` is a verbatim
+`admissionregistration.k8s.io` `RuleWithOperations` passthrough — write it
+the same way you would in a raw Kubernetes manifest.
+
+## Defaults applied per entry
+
+| Field | Default when omitted |
+|---|---|
+| `failurePolicy` | `Fail` |
+| `sideEffects` | `None` |
+| `timeoutSeconds` | `10` |
+| `matchPolicy` | `Equivalent` |
+| `admissionReviewVersions` | `[v1]` |
+| `namespaceSelector` / `objectSelector` | `{}` (no restriction) |
+| `reinvocationPolicy` (mutating only) | Kubernetes API default (`Never`) |
+
+<Callout type="warning">
+**`failurePolicy: Fail` is cluster-wide blast radius.** Both webhook
+configuration objects are cluster-scoped — a webhook that starts
+rejecting or timing out with `failurePolicy: Fail` blocks admission for
+*every* resource matching its `rules`, cluster-wide, not just resources in
+your namespace. Scope `rules`, `namespaceSelector`, and
+`objectSelector` as tightly as the webhook's actual purpose allows, and
+treat a `failurePolicy: Fail` webhook with the same review scrutiny as a
+cluster-admin RBAC grant.
+</Callout>
+
+## Certificate lifecycle
+
+The CA and serving certificate live in one Secret,
+`<fullname>-webhook-cert`, with all four keys (`ca.crt`, `ca.key`,
+`tls.crt`, `tls.key`) reused together or regenerated together — never a
+partial mix, since the serving certificate must always chain to whichever
+CA is currently live. Reuse continues until the recorded expiry
+(`platform/tls-not-after` annotation) is within `webhooks.ca.renewBeforeDays`,
+at which point both regenerate. As with every self-signed feature in this
+library, `lookup` returns nothing under `helm template`/client-side
+`--dry-run`, so offline renders always regenerate.
+
+The serving certificate is mounted read-only into every container in the
+pod at `certMountPath` (default `/etc/webhook-tls`) — same per-container
+coverage as the hardening pass and the `tlsSelfSigned.mtls` mount feature.
+`caBundle` on every webhook entry is exactly the Secret's `ca.crt` —
+there's no separate CA distribution step to manage.
+
+## Naming
+
+Both configuration objects are named `<namespace>-<fullname>` — the
+namespace prefix exists because these objects are cluster-scoped
+(`ValidatingWebhookConfiguration`/`MutatingWebhookConfiguration` have no
+namespace of their own), so two releases of the same chart in different
+namespaces need distinguishable names.
+
+## Rotating the certificate
+
+To force rotation immediately (bypassing the reuse-until-near-expiry
+lifecycle), delete `<fullname>-webhook-cert` and run `helm upgrade` — the
+next render finds no existing Secret and generates a fresh CA and serving
+certificate.

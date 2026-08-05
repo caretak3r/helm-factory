@@ -1,0 +1,274 @@
+---
+title: Conventions & tricks
+description: The Helm idioms and deliberate patterns the library uses, with source citations.
+---
+
+import { Callout } from 'nextra/components'
+
+# Conventions & tricks
+
+These are the Helm primitives and idioms that turn ~30 lines of consumer
+values into hardened manifests. Every item cites its source file under
+`platform-library/templates/`. Read this before authoring a new Kind or
+debugging a render — several of these patterns encode fixes for real
+production bugs, so they aren't style preferences.
+
+<Callout type="info">
+These mechanics implement the six [design invariants](/design-invariants/)
+(fail closed, capability negotiation, specific-beats-common,
+goldens-are-the-contract, guarded gates, default-on hardening). Break one of
+these idioms and you've written a bug, not a variant.
+</Callout>
+
+## Library purity: `_*.yaml` vs `_*.tpl`
+
+`platform-library` is `type: library` and must never gain a non-underscore
+template file. Two kinds of file live under `templates/`:
+
+- `_*.yaml` — object generators, one `define "platform.<thing>"` block each.
+- `_*.tpl` — helper-only files (`_capabilities.tpl`, `_util.tpl`,
+  `_helpers.tpl`, `_notes.tpl`).
+
+A renderable (non-underscore) template would break `type: library` purity
+and let the chart render itself. A consumer's own template surface is just
+one file, `templates/app.yaml`, holding `{{ include "platform.render" . }}`.
+
+## The `platform.emit` separator trick
+
+Everything renders from one consumer template file, so without an explicit
+`---` between generated objects, adjacent YAML documents merge into one and
+you get duplicate-key errors. `platform.emit` (`_util.tpl`) puts a `---` in
+front of each non-empty rendered document:
+
+```gotemplate
+{{- define "platform.emit" -}}
+{{- $content := . | trim -}}
+{{- if $content }}
+---
+{{ $content }}
+{{- end }}
+{{- end -}}
+```
+
+The non-empty check is the whole reason it exists: a generator gated off
+(capability-skipped, or `.enabled: false`) renders to an empty string, and
+`platform.emit` must not turn that into a bare `---` with no document
+under it — that would be a stray empty YAML document in the output.
+Generators never write their own leading `---`; `platform.emit` adds it.
+Multi-document generators are the one exception, and put `---` only
+*between* their own documents (`_mtls.yaml`, `_gateway-api.yaml`).
+
+## Map precedence: `range` + `set`, never bare `merge`
+
+Specific beats common — a resource-specific value, label, or annotation
+always wins over `common*`/`global` on key collision. Sprig's `merge` keeps
+the *destination* map's keys, so both `merge $specific $common` and
+`merge $common $specific` get this wrong, just in opposite directions. Two
+idioms avoid the trap:
+
+```gotemplate
+{{/* range + set: iterate the common map, set each key only where the specific map hasn't already claimed it */}}
+{{- range $k, $v := $common }}{{- if not (hasKey $specific $k) }}
+  {{- $_ := set $specific $k $v }}{{- end }}{{- end }}
+
+{{/* or mergeOverwrite with the SPECIFIC map passed LAST, so it overwrites on collision */}}
+{{- $merged := mergeOverwrite (deepCopy $default) $specific -}}
+```
+
+`mergeOverwrite` (last map wins) backs the container `securityContext` merge
+in `_helpers.tpl` and the Gateway API `specOverrides` merge in
+`_gateway-api.yaml`. Always `deepCopy` the base map first — `mergeOverwrite`
+mutates its first argument in place, and mutating a shared default map would
+leak one container's override into every other container that reuses it.
+
+## Fail closed: `required` and prescriptive `fail`
+
+Invalid or ambiguous config fails at template time with a named error. The
+library never renders a dangling or malformed object and leaves the API
+server — or worse, production — to discover the problem.
+
+```gotemplate
+{{- required "extraObjects.<Kind>[].name is required" $spec.name -}}
+{{- if not $ok }}{{ fail "mtls.policy must be STRICT|PERMISSIVE|DISABLE" }}{{ end -}}
+```
+
+Fail messages are prescriptive: they name the values path at fault and say
+what a valid value looks like (`_helpers.tpl`, `_mtls.yaml`, `_util.tpl` all
+have examples). Every `fail` call has a matching negative test in
+`scripts/lint-library.sh` that greps for its message — the message and the
+test change together, and a new guard has to be proven able to go red by
+temporarily reverting the fix it protects.
+
+## Calling conventions: list-unpack and named-dict helpers
+
+A helper that needs more than the root context takes either a positional
+list or a named dict as its argument. Never assume `.` is the root context
+inside a multi-arg helper — it's the list or dict you passed in.
+
+```gotemplate
+{{/* positional: unpack with index . N */}}
+{{- define "platform.capabilities.apiVersionFor" -}}
+{{- $top := index . 0 -}}{{- $kind := index . 1 -}}
+{{- end -}}
+{{- include "platform.capabilities.apiVersionFor" (list $top "Role") -}}
+
+{{/* named dict, for readability at call sites with several arguments */}}
+{{- include "platform.genericResource" (dict "root" $top "kind" "Role" "resource" $spec) -}}
+```
+
+The most common template bug in this library is reading `.Values` directly
+inside a list-args helper, where `.` is the argument list, not the release
+root — you have to unpack `$top` first and read `$top.Values`.
+
+## The holder-dict idiom for computed values
+
+Go templates can't reassign a variable across a scope boundary — a
+`{{- $x = ... }}` assignment inside a `range` block doesn't survive past the
+loop. The fix is a one-key dict you `set` into instead of reassigning:
+
+```gotemplate
+{{- $out := dict "value" "" -}}
+{{- range $candidate := $prefs }}
+  {{- if include "platform.capabilities.has" (list $top $candidate) }}
+    {{- $_ := set $out "value" $candidate }}{{- end }}{{- end }}
+{{- $out.value -}}
+```
+
+This idiom shows up anywhere a value gets computed inside a loop — most
+notably negotiated apiVersions in `_helpers.tpl`. Lists work the same way:
+`append` into a variable across the loop, then a single `toYaml | nindent`
+after it ends.
+
+## Rendering blocks cleanly
+
+- **Strip control keys before you emit.** Probe and securityContext blocks
+  carry an `enabled` flag that isn't a valid Kubernetes field; render them
+  with `omit ... "enabled"` (see `_cronjob.yaml`).
+- **Quote user scalars.** A consumer-supplied scalar going into an
+  annotation or label value goes through `{{ $v | quote }}`. Left unquoted,
+  values like `true`, `123`, or `y` land as the wrong YAML type and can fail
+  admission or silently coerce.
+- **Use `printf "%v"` for numeric-capable fields.** An image tag might be
+  `1.24` (parsed as a float) or `"1.24.0"` (a string). `platform.image`
+  passes the tag through `printf "%v"` so a bare-number tag never renders as
+  the truncated `1.24` and pulls the wrong image (`_helpers.tpl`).
+
+## Capability negotiation as a primitive
+
+The library never emits an apiVersion the target cluster doesn't serve. Two
+low-level helpers over the `platform.capabilities.registry` table do the
+work underneath the higher-level `apiVersionFor`/`apiVersionForOrDefault`
+helpers generators actually call:
+
+- `platform.capabilities.has (list $top "group/version[/Kind]")` — unions
+  live discovery (`.Capabilities.APIVersions.Has`) with the force-assume
+  list at `.Values.capabilities.apiVersions`.
+- `platform.capabilities.apiVersion (list $top $prefList)` — walks an
+  ordered preference list and returns the first served `group/version`, or
+  `""` if none are.
+
+See [Architecture](/architecture/) for how generators consume these through
+`apiVersionFor`/`apiVersionForOrDefault`, and
+[Capability catalog](/capability-catalog/) for the full apiVersion registry.
+
+<Callout type="warning">
+**The `--api-versions` exact-string trap.** `helm template --api-versions`
+only satisfies the gate in the full `group/version/Kind` form
+(`cert-manager.io/v1/Certificate`). `.Capabilities.APIVersions.Has` is an
+exact-string test — a discovery set holding only `cert-manager.io/v1` never
+answers true for `cert-manager.io/v1/Certificate`. Pass the bare
+`group/version` form and you get the worst kind of failure: a clean exit 0
+with the object silently missing from the output. Only the
+`capabilities.apiVersions` **values list** accepts the bare `group/version`
+form, because the library matches each entry against the queried Kind's
+`group/version` itself.
+</Callout>
+
+## Hardening is default-on and per-container
+
+Pod Security Standards "restricted" is evaluated per container, so one
+unhardened sidecar fails admission for the whole pod. Passthrough containers
+(init containers, sidecars) go through the exact same hardening pass as the
+main container:
+
+```gotemplate
+{{- include "platform.hardenContainers" (list $ctx $ctx.Values.initContainers.containers) -}}
+```
+
+`platform.hardenContainers` (`_helpers.tpl`) applies the restricted
+`securityContext` to every container in the list it's given. User-supplied
+keys always win, via `mergeOverwrite $default $userSecurityContext` with the
+user's map passed last. It runs at every container render site: the main
+workload container, CronJob containers, and the init/sidecar passthrough
+paths.
+
+## Hook ordering and the distinct hook ServiceAccount
+
+Pre-install hook Jobs depend on a script ConfigMap and a hook-scoped
+ServiceAccount with a distinct name (`<fullname>-preinstall`), weight-ordered
+below the Job (`_configmap-script.yaml`, `_job-preinstall.yaml`,
+`platform.renderHookJob`).
+
+The distinct name earns its keep. A same-named hook copy of the release
+ServiceAccount would let `helm.sh/hook-delete-policy: before-hook-creation`
+delete the *live* ServiceAccount at the start of every upgrade's hook phase —
+which invalidates the bound tokens of pods that are still running. This was
+a real production incident, not a hypothetical. Two more hook facts that
+look like races but aren't:
+
+- The ServiceAccount admission controller always looks up a pod's
+  ServiceAccount, even with `automountServiceAccountToken: false` set. A
+  missing ServiceAccount is a hard admission failure regardless — "just omit
+  the ServiceAccount since automount is off anyway" does not work.
+- `hook-succeeded` deletions run only after every hook in a weight phase has
+  finished (Helm loops the hooks, then loops again to delete). A ConfigMap
+  at a lower weight survives until the Job above it completes.
+
+## Selector labels are immutable: keep `commonLabels` out
+
+`platform.selectorLabels` is the deliberately narrow, immutable subset of
+labels — chart name and release instance only. A Service or workload
+selector can never change on a live object, so a *mutable* label in a
+selector (like `commonLabels`, which a consumer edits freely) orphans the
+workload on the next `helm upgrade`:
+
+```gotemplate
+selector:
+  {{- include "platform.selectorLabels" . | nindent 4 }}   # name + instance ONLY
+```
+
+Leaking `commonLabels` into a selector was a real production bug, fixed by
+scoping `_service.yaml` and `_service-headless.yaml` to
+`platform.selectorLabels` only. Every non-selector object still gets the
+full `platform.labels`, plus a `range` over `commonLabels` (quoted values),
+plus any block-specific labels — selectors are the one place `commonLabels`
+must never reach.
+
+## Gate outside `fromYaml`
+
+Enable and capability gating happens in the dispatcher (`_app.yaml`), before
+a generator runs at all, and outside any `fromYaml` round-trip. `fromYaml ""`
+returns `{}`, which serializes to a bogus empty document — the gate has a
+guarded, mutation-tested check that no `{}` document is ever emitted.
+Generators also repeat their own `.enabled` guard defensively inside their
+own `define` block (`_mtls.yaml`, `_secret.yaml`), so both layers hold even
+if a future dispatcher change ever missed a gate.
+
+## The two escape hatches
+
+When the opinionated tier-1 blocks don't model your Kind, two layers exist,
+in order of preference:
+
+- **`extraObjects`** — a map of `Kind: [ {name, ...passthrough} ]`, rendered
+  by the single `platform.genericResource`. Every key outside the reserved
+  set (`name`, `namespace`, `labels`, `annotations`, `apiVersion`, `kind`,
+  `clusterScoped`) passes through verbatim. It's capability-negotiated and
+  namespace-aware like tier-1. Cluster-scoped Kinds need
+  `allowClusterScopedExtras: true` (opt-in, and warned in NOTES).
+- **`extraManifests`** — a list of full manifest maps or template strings.
+  String entries render through `tpl`, so they can hold template
+  expressions; you supply the whole `apiVersion`/`kind` yourself. This layer
+  does no negotiation, labeling, or namespacing — it's the raw escape hatch
+  for the truly bespoke case.
+
+See [Examples & recipes](/examples-recipes/) for worked `extraObjects` usage.
