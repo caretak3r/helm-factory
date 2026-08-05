@@ -411,6 +411,7 @@ spec:
       {{- if $ctx.Values.ports }}
       ports: {{- toYaml $ctx.Values.ports | nindent 8 }}
       {{- end }}
+      {{- /* the omit guard skips rendering when enabled:true is set with no other probe fields (omit yields an empty, falsy dict) */}}
       {{- if and $ctx.Values.livenessProbe.enabled (omit $ctx.Values.livenessProbe "enabled") }}
       livenessProbe: {{- toYaml (omit $ctx.Values.livenessProbe "enabled") | nindent 8 }}
       {{- end }}
