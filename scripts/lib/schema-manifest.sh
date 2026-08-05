@@ -46,6 +46,8 @@ NATIVE_SCHEMA_KINDS=(
   persistentvolumeclaim-v1
   statefulset-apps-v1
   daemonset-apps-v1
+  validatingwebhookconfiguration-admissionregistration-v1
+  mutatingwebhookconfiguration-admissionregistration-v1
 )
 
 # CRD schemas from datreeio/CRDs-catalog, one per {{ .Group }}/{{
