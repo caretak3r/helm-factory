@@ -17,11 +17,14 @@
 #
 # Env:
 #   KEEP_SCENARIO_DIR=1   leave the scaffold on disk and print its path
+#   SCENARIO_LIBRARY_REPOSITORY=file://...  override the source library path
+#                                             (used by the packaged-artifact leg)
 # =============================================================================
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SCHEMA_DIR="$REPO_ROOT/tests/schemas"
+LIBRARY_REPOSITORY="${SCENARIO_LIBRARY_REPOSITORY:-file://$REPO_ROOT/platform-library}"
 
 # shellcheck source=scripts/lib/schema-manifest.sh
 source "$REPO_ROOT/scripts/lib/schema-manifest.sh"   # sets KUBE_VERSIONS
@@ -81,7 +84,7 @@ rm -rf "$work/headroom"
 echo "==> scaffold: scripts/new-app-chart.sh scenario"
 "$REPO_ROOT/scripts/new-app-chart.sh" scenario \
   --dir "$chart" \
-  --repo "file://$REPO_ROOT/platform-library" >/dev/null
+  --repo "$LIBRARY_REPOSITORY" >/dev/null
 
 # A representative overlay, not a kitchen sink: workload + service come from the
 # scaffold, and ingress + serviceMonitor add one core Kind and one CRD-backed
@@ -98,8 +101,8 @@ serviceMonitor:
   enabled: true
 EOF
 
-echo "==> dependency: helm dependency update"
-if ! dep=$(helm dependency update "$chart" 2>&1); then
+echo "==> dependency: helm dependency build"
+if ! dep=$(helm dependency build --skip-refresh "$chart" 2>&1); then
   printf '%s\n' "$dep"
   echo "  FAIL: the scaffolded chart cannot resolve platform-library"
   exit 1
