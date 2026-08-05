@@ -103,3 +103,25 @@ choice is never silently clobbered — but the *default*, absent an
 explicit override, is always the hardened one. Full detail, including the
 `ServiceAccount` naming rule that protects hook Jobs from invalidating
 live pods' tokens, lives in [Security model](/security-model/).
+
+## How these are enforced
+
+Invariants 4 and 5 are not aspirational — they are a pipeline. Every
+change renders four curated consumer fixtures across the supported
+Kubernetes version matrix, validates against vendored schemas, diffs
+against the byte-exact goldens, and runs the guardrail suite; a separate
+smoke leg exercises the consumer scaffold generator end to end:
+
+```mermaid
+flowchart LR
+    accTitle: The verification pipeline enforcing the invariants
+    accDescr: Fixtures feed a render matrix, whose output goes through kubeconform, golden diffs, and the guardrail suite; a separate scenario-consumer smoke leg exercises the scaffold generator. All paths must pass.
+    F["Fixtures<br/>tests/fixtures/{minimal,full,stateful,daemon}"] --> R["tests/render.sh<br/>(render matrix: 4 fixtures x 3 K8s versions)"]
+    R --> KC["kubeconform -strict<br/>(vendored schemas, tests/schemas/)"]
+    R --> G["golden diff<br/>tests/golden/*.yaml"]
+    R --> GR["guardrail suite<br/>scripts/lint-library.sh, mutation-tested at introduction"]
+    SC["scripts/scenario-consumer.sh<br/>(make smoke: exercises the scaffold generator itself)"] --> RESULT
+    KC --> RESULT["PASS"]
+    G --> RESULT
+    GR --> RESULT
+```

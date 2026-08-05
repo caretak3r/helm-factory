@@ -35,10 +35,12 @@ webhooks:
 ## Required per entry
 
 Every entry under `validating` or `mutating` requires `name`, `path`, and
-`rules` — `values.schema.json` enforces this (and a `name` pattern) ahead
-of template execution, so a missing field fails at `helm template`/`helm
-lint` time with a schema validation error rather than producing a
-malformed webhook object. `rules` is a verbatim
+`rules`. The library enforces this at template time with a named error
+(for example `webhooks.validating[0].path is required.`) — a malformed
+entry can never render a broken webhook object. If your chart also ships a
+`values.schema.json` copied from the reference schema (the scaffold does
+this for you), the same requirements plus an FQDN pattern on `name` are
+caught even earlier, as a schema validation error. `rules` is a verbatim
 `admissionregistration.k8s.io` `RuleWithOperations` passthrough — write it
 the same way you would in a raw Kubernetes manifest.
 

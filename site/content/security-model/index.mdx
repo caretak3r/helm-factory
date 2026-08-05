@@ -59,6 +59,41 @@ ServiceAccount means the hook's own lifecycle (create, delete-on-recreate,
 delete-on-hook-succeeded) never touches the identity your running
 workload depends on.
 
+The full hook sequence on install — the script ConfigMap and the hook
+ServiceAccount share a weight one below the Job's, so both exist strictly
+before it runs, and the release ServiceAccount is never in the hook's
+lifecycle at all:
+
+```mermaid
+sequenceDiagram
+    accTitle: Pre-install hook ordering and ServiceAccount isolation
+    accDescr: The script ConfigMap and hook ServiceAccount are created at the same hook weight, strictly before the hook Job. The release ServiceAccount is never created or deleted by the hook lifecycle, so running pods' tokens stay valid.
+    participant U as helm install
+    participant CM as ConfigMap (script)<br/>weight hookWeight-1
+    participant SA as ServiceAccount (hook)<br/>&lt;fullname&gt;-preinstall<br/>weight hookWeight-1
+    participant J as Job<br/>weight hookWeight (default -5)
+    participant RSA as Release ServiceAccount<br/>&lt;fullname&gt; (running pods' identity)
+
+    Note over CM,SA: before-hook-creation clears any leftover from a prior failed attempt
+    par same weight - relative order between these two not guaranteed
+        U->>CM: create
+        U->>SA: create
+    end
+    Note over RSA: never touched - distinct name from the hook SA
+    U->>J: create (strictly after CM/SA - higher weight)
+    J->>CM: mount script.sh
+    J->>SA: run as this identity (not RSA)
+    alt Job succeeds
+        U->>CM: hook-succeeded delete
+        U->>SA: hook-succeeded delete
+        U->>J: hook-succeeded delete
+        Note over RSA: still live - tokens of running pods stay valid
+    else Job fails
+        Note over CM,J: left behind for debugging
+        Note over U: next attempt's before-hook-creation clears them
+    end
+```
+
 This also means the ServiceAccount admission controller's usual rule —
 "a pod always looks up its ServiceAccount, even with
 `automountServiceAccountToken: false`" — still requires the hook
