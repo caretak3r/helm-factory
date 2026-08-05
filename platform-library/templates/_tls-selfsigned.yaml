@@ -1,6 +1,8 @@
 {{- define "platform.tls.selfsigned" -}}
 {{- if and .Values.tlsSelfSigned.enabled .Values.ingress.hostname -}}
+{{- $top := . -}}
 {{- $secretName := include "platform.tlsSecretName" . -}}
+{{- $mtlsEnabled := .Values.tlsSelfSigned.mtls.enabled -}}
 {{- /*
 DEV-ONLY convenience. Reuse the existing Secret's certificate material on
 upgrades so the CA and private key are NOT rotated on every `helm upgrade`,
@@ -25,6 +27,7 @@ production use the cert-manager `certificate` block instead of tlsSelfSigned.
 {{- if and $existing $existing.metadata $existing.metadata.annotations (hasKey $existing.metadata.annotations "platform/tls-not-after") -}}
   {{- $existingNotAfter = index $existing.metadata.annotations "platform/tls-not-after" -}}
 {{- end -}}
+{{- $validity := int .Values.tlsSelfSigned.validityDays -}}
 {{- $renewBeforeDays := int .Values.tlsSelfSigned.renewBeforeDays -}}
 {{- $canReuse := false -}}
 {{- if and $hasData (ne $existingNotAfter "") -}}
@@ -32,6 +35,59 @@ production use the cert-manager `certificate` block instead of tlsSelfSigned.
   {{- $renewThresholdEpoch := now | dateModify (printf "%dh" (mul $renewBeforeDays 24)) | unixEpoch -}}
   {{- $canReuse = lt $renewThresholdEpoch $expiryEpoch -}}
 {{- end -}}
+
+{{- /*
+mTLS: persisted CA (only computed/rendered when tlsSelfSigned.mtls.enabled).
+The base flow above signs the server cert with a throwaway genCA and
+discards the signer — there is nothing else that needs to chain to it. mTLS
+needs the SAME CA to keep signing client certs across upgrades, so it is
+persisted as its own Secret <fullname>-ca (kubernetes.io/tls: tls.crt/
+tls.key) with the identical lookup/expiry-reuse idiom as the server Secret
+above, reusing the same tlsSelfSigned.validityDays/renewBeforeDays knobs (no
+new ones). On reuse the signer is reconstructed from the looked-up base64
+material via buildCustomCert so freshly (re)signed server/client certs keep
+chaining to the same CA.
+*/ -}}
+{{- $caSecretName := printf "%s-ca" (include "platform.fullname" .) -}}
+{{- $caCrtB64 := "" -}}
+{{- $caKeyB64 := "" -}}
+{{- $caNotAfter := "" -}}
+{{- $ca := dict -}}
+{{- if $mtlsEnabled -}}
+  {{- $existingCa := lookup "v1" "Secret" .Release.Namespace $caSecretName -}}
+  {{- $caHasData := and $existingCa $existingCa.data (index $existingCa.data "tls.crt") (index $existingCa.data "tls.key") -}}
+  {{- $existingCaNotAfter := "" -}}
+  {{- if and $existingCa $existingCa.metadata $existingCa.metadata.annotations (hasKey $existingCa.metadata.annotations "platform/tls-not-after") -}}
+    {{- $existingCaNotAfter = index $existingCa.metadata.annotations "platform/tls-not-after" -}}
+  {{- end -}}
+  {{- $caCanReuse := false -}}
+  {{- if and $caHasData (ne $existingCaNotAfter "") -}}
+    {{- $caExpiryEpoch := $existingCaNotAfter | toDate "2006-01-02T15:04:05Z07:00" | unixEpoch -}}
+    {{- $caRenewThresholdEpoch := now | dateModify (printf "%dh" (mul $renewBeforeDays 24)) | unixEpoch -}}
+    {{- $caCanReuse = lt $caRenewThresholdEpoch $caExpiryEpoch -}}
+  {{- end -}}
+  {{- if $caCanReuse -}}
+    {{- /* Values from lookup .data are already base64-encoded — do NOT b64enc. */ -}}
+    {{- $caCrtB64 = index $existingCa.data "tls.crt" -}}
+    {{- $caKeyB64 = index $existingCa.data "tls.key" -}}
+    {{- $caNotAfter = $existingCaNotAfter -}}
+    {{- $ca = buildCustomCert $caCrtB64 $caKeyB64 -}}
+  {{- else -}}
+    {{- $ca = genCA (printf "%s-ca" (include "platform.fullname" .)) $validity -}}
+    {{- $caCrtB64 = $ca.Cert | b64enc -}}
+    {{- $caKeyB64 = $ca.Key | b64enc -}}
+    {{- $caNotAfter = now | dateModify (printf "%dh" (mul $validity 24)) | date "2006-01-02T15:04:05Z07:00" -}}
+  {{- end -}}
+  {{- /* Forced one-time rotation: a server cert whose ca.crt does not
+         byte-match the persisted CA (including "the CA Secret doesn't exist
+         yet") is regenerated even if otherwise date-reusable, so mTLS is
+         never enabled onto a server cert signed by a different, discarded
+         CA. Same rule applies per client Secret below. */ -}}
+  {{- if and $canReuse (ne (index $existing.data "ca.crt") $caCrtB64) -}}
+    {{- $canReuse = false -}}
+  {{- end -}}
+{{- end -}}
+
 {{- $crt := "" -}}
 {{- $key := "" -}}
 {{- $caCrt := "" -}}
@@ -48,12 +104,14 @@ production use the cert-manager `certificate` block instead of tlsSelfSigned.
   {{- if not $dnsNames }}
     {{- $dnsNames = list .Values.ingress.hostname -}}
   {{- end }}
-  {{- $validity := int .Values.tlsSelfSigned.validityDays -}}
-  {{- $ca := genCA (printf "%s-ca" (include "platform.fullname" .)) $validity -}}
-  {{- $cert := genSignedCert $cn nil $dnsNames $validity $ca -}}
+  {{- $signingCa := $ca -}}
+  {{- if not $mtlsEnabled -}}
+    {{- $signingCa = genCA (printf "%s-ca" (include "platform.fullname" .)) $validity -}}
+  {{- end -}}
+  {{- $cert := genSignedCert $cn nil $dnsNames $validity $signingCa -}}
   {{- $crt = $cert.Cert | b64enc -}}
   {{- $key = $cert.Key | b64enc -}}
-  {{- $caCrt = $ca.Cert | b64enc -}}
+  {{- $caCrt = $signingCa.Cert | b64enc -}}
   {{- $notAfter = now | dateModify (printf "%dh" (mul $validity 24)) | date "2006-01-02T15:04:05Z07:00" -}}
 {{- end -}}
 apiVersion: v1
@@ -76,5 +134,110 @@ data:
   tls.crt: {{ $crt }}
   tls.key: {{ $key }}
   ca.crt: {{ $caCrt }}
+{{- if $mtlsEnabled }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $caSecretName }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+    {{- range $k, $v := .Values.commonLabels }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+  annotations:
+    platform/tls-not-after: {{ $caNotAfter | quote }}
+    {{- range $k, $v := .Values.commonAnnotations }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+type: kubernetes.io/tls
+data:
+  tls.crt: {{ $caCrtB64 }}
+  tls.key: {{ $caKeyB64 }}
+{{- range $i, $client := .Values.tlsSelfSigned.mtls.clients }}
+{{- $clientName := $client.name -}}
+{{- $clientSecretName := printf "%s-mtls-client-%s" (include "platform.fullname" $top) $clientName -}}
+{{- $clientExisting := lookup "v1" "Secret" $top.Release.Namespace $clientSecretName -}}
+{{- $clientHasData := and $clientExisting $clientExisting.data (index $clientExisting.data "tls.crt") (index $clientExisting.data "tls.key") (index $clientExisting.data "ca.crt") -}}
+{{- $clientExistingNotAfter := "" -}}
+{{- if and $clientExisting $clientExisting.metadata $clientExisting.metadata.annotations (hasKey $clientExisting.metadata.annotations "platform/tls-not-after") -}}
+  {{- $clientExistingNotAfter = index $clientExisting.metadata.annotations "platform/tls-not-after" -}}
+{{- end -}}
+{{- $clientCanReuse := false -}}
+{{- if and $clientHasData (ne $clientExistingNotAfter "") -}}
+  {{- $clientExpiryEpoch := $clientExistingNotAfter | toDate "2006-01-02T15:04:05Z07:00" | unixEpoch -}}
+  {{- $clientRenewThresholdEpoch := now | dateModify (printf "%dh" (mul $renewBeforeDays 24)) | unixEpoch -}}
+  {{- $clientCanReuse = lt $clientRenewThresholdEpoch $clientExpiryEpoch -}}
+{{- end -}}
+{{- /* Forced one-time rotation: chain to the persisted CA or regenerate. */ -}}
+{{- if and $clientCanReuse (ne (index $clientExisting.data "ca.crt") $caCrtB64) -}}
+  {{- $clientCanReuse = false -}}
+{{- end -}}
+{{- $clientCrt := "" -}}
+{{- $clientKey := "" -}}
+{{- $clientNotAfter := "" -}}
+{{- if $clientCanReuse -}}
+  {{- /* Values from lookup .data are already base64-encoded — do NOT b64enc. */ -}}
+  {{- $clientCrt = index $clientExisting.data "tls.crt" -}}
+  {{- $clientKey = index $clientExisting.data "tls.key" -}}
+  {{- $clientNotAfter = $clientExistingNotAfter -}}
+{{- else -}}
+  {{- $clientCn := default $clientName $client.commonName -}}
+  {{- $clientDnsNames := $client.dnsNames | default list -}}
+  {{- $clientCert := genSignedCert $clientCn nil $clientDnsNames $validity $ca -}}
+  {{- $clientCrt = $clientCert.Cert | b64enc -}}
+  {{- $clientKey = $clientCert.Key | b64enc -}}
+  {{- $clientNotAfter = now | dateModify (printf "%dh" (mul $validity 24)) | date "2006-01-02T15:04:05Z07:00" -}}
+{{- end }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $clientSecretName }}
+  namespace: {{ $top.Release.Namespace }}
+  labels:
+    {{- include "platform.labels" $top | nindent 4 }}
+    {{- range $k, $v := $top.Values.commonLabels }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+  annotations:
+    platform/tls-not-after: {{ $clientNotAfter | quote }}
+    {{- range $k, $v := $top.Values.commonAnnotations }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+type: kubernetes.io/tls
+data:
+  tls.crt: {{ $clientCrt }}
+  tls.key: {{ $clientKey }}
+  ca.crt: {{ $caCrtB64 }}
+{{- end }}
+{{- if .Values.tlsSelfSigned.mtls.trustBundle.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ printf "%s-ca-bundle" (include "platform.fullname" .) }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+    {{- range $k, $v := .Values.commonLabels }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+  {{- $bundleAnnotations := dict -}}
+  {{- range $k, $v := .Values.commonAnnotations }}
+    {{- $_ := set $bundleAnnotations $k $v -}}
+  {{- end }}
+  {{- /* Forced last: the redaction marker must win even if a user-supplied
+         annotation key collides with it. */ -}}
+  {{- $_ := set $bundleAnnotations "platform/generated" "true" }}
+  annotations:
+    {{- range $k, $v := $bundleAnnotations }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+binaryData:
+  ca.crt: {{ $caCrtB64 }}
+{{- end }}
+{{- end }}
 {{- end }}
 {{- end }}

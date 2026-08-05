@@ -176,7 +176,44 @@
         "commonName": { "type": "string" },
         "dnsNames": { "type": "array", "items": { "type": "string" } },
         "validityDays": { "type": "integer", "minimum": 1, "description": "Certificate lifetime in days, applied when the cert is (re)generated." },
-        "renewBeforeDays": { "type": "integer", "minimum": 0, "description": "Regenerate the self-signed cert when within this many days of its recorded expiry (platform/tls-not-after annotation) instead of reusing the looked-up Secret. A legacy Secret without that annotation regenerates once, acquiring rotation metadata." }
+        "renewBeforeDays": { "type": "integer", "minimum": 0, "description": "Regenerate the self-signed cert when within this many days of its recorded expiry (platform/tls-not-after annotation) instead of reusing the looked-up Secret. A legacy Secret without that annotation regenerates once, acquiring rotation metadata." },
+        "mtls": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Requires tlsSelfSigned.enabled: true. Persists a CA Secret <fullname>-ca and issues one client certificate per entry in clients, each chained to it.",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "clients": {
+              "type": "array",
+              "description": "Required, non-empty when enabled. Each entry becomes Secret <fullname>-mtls-client-<name>.",
+              "items": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "name": { "type": "string", "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" },
+                  "commonName": { "type": "string", "description": "Defaults to the entry name when omitted." },
+                  "dnsNames": { "type": "array", "items": { "type": "string" } }
+                },
+                "required": ["name"]
+              }
+            },
+            "trustBundle": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "enabled": { "type": "boolean", "description": "Emit ConfigMap <fullname>-ca-bundle (binaryData: ca.crt)." }
+              }
+            },
+            "mount": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "enabled": { "type": "boolean", "description": "Inject the server pair, each client pair, and the trust bundle as read-only volumes into every pod container." },
+                "basePath": { "type": "string", "minLength": 1 }
+              }
+            }
+          }
+        }
       }
     },
     "mtls": {

@@ -398,6 +398,35 @@ exports:
       validityDays: 365
       renewBeforeDays: 30
 
+      # ---------------------------------------------------------------------
+      # mTLS (DEV-ONLY, requires tlsSelfSigned.enabled: true)
+      # ---------------------------------------------------------------------
+      # Persists a CA Secret "<fullname>-ca" (same lookup/reuse/renewal rules
+      # as the server cert above) and issues one client certificate per
+      # entry under clients, each chained to that CA:
+      # Secret <fullname>-mtls-client-<name>. Enabling mtls after the server
+      # cert already exists rotates it ONCE so it chains to the persisted CA
+      # — see NOTES.txt at install/upgrade time.
+      mtls:
+        enabled: false
+        # Required, non-empty when enabled. commonName defaults to the entry
+        # name; dnsNames is optional.
+        # clients:
+        #   - name: worker                # -> Secret <fullname>-mtls-client-worker
+        #     commonName: ""
+        #     dnsNames: []
+        clients: []
+        trustBundle:
+          # ConfigMap <fullname>-ca-bundle (binaryData: ca.crt) for consumers
+          # that trust the CA without a client identity of their own.
+          enabled: true
+        mount:
+          # Injects the server pair, each client pair, and the trust bundle
+          # (when enabled) as read-only volumes into every container in the
+          # pod (main, sidecars, initContainers) — same coverage as hardening.
+          enabled: true
+          basePath: /etc/platform-tls   # server/ client-<name>/ ca/
+
     # -----------------------------------------------------------------------------
     # Jobs (Helm Hooks)
     # -----------------------------------------------------------------------------

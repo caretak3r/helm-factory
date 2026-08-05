@@ -25,6 +25,43 @@
 {{- fail (printf "certificate.enabled and tlsSelfSigned.enabled are both true: both target the Secret %q (certificate.secretName defaults to it), so enabling both collides. Set only one to true — certificate.enabled for cert-manager-issued certificates in production, tlsSelfSigned.enabled for local dev/CI self-signed convenience." (include "platform.tlsSecretName" .)) -}}
 {{- end }}
 
+{{- /*
+tlsSelfSigned.mtls guards. Evaluated unconditionally (not nested under
+tlsSelfSigned.enabled) so a misconfiguration fails closed even when
+tlsSelfSigned.enabled is false — platform.tls.selfsigned itself never
+renders in that case, so these checks would otherwise silently never run.
+*/}}
+{{- if and .Values.tlsSelfSigned.mtls.enabled (not .Values.tlsSelfSigned.enabled) -}}
+{{- fail "tlsSelfSigned.mtls.enabled is true but tlsSelfSigned.enabled is false: mTLS CA/client certificate material is only generated as part of the self-signed TLS flow. Set tlsSelfSigned.enabled: true, or disable tlsSelfSigned.mtls.enabled." -}}
+{{- end }}
+
+{{- if .Values.tlsSelfSigned.mtls.enabled -}}
+{{- $top := . -}}
+{{- if not .Values.tlsSelfSigned.mtls.clients -}}
+{{- fail "tlsSelfSigned.mtls.enabled is true but tlsSelfSigned.mtls.clients is empty: at least one client is required, e.g.\n  tlsSelfSigned:\n    mtls:\n      clients:\n        - name: worker" -}}
+{{- end -}}
+{{- $mtlsReservedSuffixes := list "-tls" "-ca" "-secret" "-webhook-cert" -}}
+{{- $mtlsSeenNames := dict -}}
+{{- range $i, $client := .Values.tlsSelfSigned.mtls.clients -}}
+{{- $cname := $client.name | default "" -}}
+{{- if not $cname -}}
+{{- fail (printf "tlsSelfSigned.mtls.clients[%d].name is required." $i) -}}
+{{- end -}}
+{{- if not (regexMatch "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" $cname) -}}
+{{- fail (printf "tlsSelfSigned.mtls.clients[%d].name %q is not a valid DNS-1123 label: lowercase alphanumerics and '-', must start and end alphanumeric." $i $cname) -}}
+{{- end -}}
+{{- if hasKey $mtlsSeenNames $cname -}}
+{{- fail (printf "tlsSelfSigned.mtls.clients contains duplicate name %q: entry names must be unique (each becomes Secret %s-mtls-client-%s)." $cname (include "platform.fullname" $top) $cname) -}}
+{{- end -}}
+{{- $_ := set $mtlsSeenNames $cname true -}}
+{{- range $suffix := $mtlsReservedSuffixes -}}
+{{- if hasSuffix $suffix $cname -}}
+{{- fail (printf "tlsSelfSigned.mtls.clients[%d].name %q collides with a reserved release Secret name pattern (-tls, -ca, -secret, -webhook-cert): pick a different name." $i $cname) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end }}
+
 {{- if include "platform.capabilities.gateOpen" (list . "Certificate") }}
 {{- include "platform.emit" (include "platform.certificate" .) }}
 {{- end }}

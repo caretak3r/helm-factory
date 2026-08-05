@@ -1,13 +1,21 @@
 # DaemonSet coverage fixture. Exercises: workload.type=DaemonSet,
 # initContainers, sidecars, daemonSet nodeSelector/tolerations merge,
-# tlsSelfSigned (dev-only self-signed TLS Secret), and resizePolicy
-# passthrough on the main container plus a sidecar and an initContainer.
+# tlsSelfSigned (dev-only self-signed TLS Secret), tlsSelfSigned.mtls
+# (client certificate issuance), and resizePolicy passthrough on the main
+# container plus a sidecar and an initContainer.
 #
 # NOTE on tlsSelfSigned: the generator gate also requires ingress.hostname,
 # whose library default ("app.local") satisfies it. Under `helm template`
 # the Secret lookup is empty, so a fresh throwaway cert is generated on
 # EVERY render — lint-library.sh normalizes tls.crt/tls.key/ca.crt in the
 # golden snapshot for this reason.
+#
+# NOTE on tlsSelfSigned.mtls: this fixture (not full) is the mtls home,
+# because it already has tlsSelfSigned.enabled=true with no certificate.enabled
+# collision to avoid — full stays on the cert-manager Certificate path
+# untouched. The pod here has a main container, 2 sidecars, and 1
+# initContainer, which is exactly the per-container mount coverage the mtls
+# design cares about (see lint-library.sh's mtls mount assertion).
 workload:
   type: DaemonSet
 
@@ -19,6 +27,15 @@ tlsSelfSigned:
   enabled: true
   commonName: daemon.local
   dnsNames: [daemon.local]
+  mtls:
+    enabled: true
+    clients:
+      - name: worker
+      - name: reader
+    trustBundle:
+      enabled: true
+    mount:
+      enabled: true
 
 resizePolicy:
   - resourceName: cpu

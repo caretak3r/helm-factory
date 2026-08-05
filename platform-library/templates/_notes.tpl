@@ -88,6 +88,9 @@ Usage (consumer chart templates/NOTES.txt):
 {{- if not (empty .Values.generatedSecrets) -}}
 {{- $warnings = append $warnings "generatedSecrets is set: the generated credential material lives in cluster Secrets AND in Helm release state (it is not re-derived from anything). Rotate a key by deleting it from values (or the whole Secret from the cluster) and running helm upgrade." -}}
 {{- end -}}
+{{- if .Values.tlsSelfSigned.mtls.enabled -}}
+{{- $warnings = append $warnings "tlsSelfSigned.mtls.enabled=true: self-signed mTLS is DEV-ONLY, not for production. A CA Secret and per-client certificates are generated and persisted alongside the server cert. If the server cert already existed from a prior release without mtls, THIS UPGRADE ROTATES IT ONCE so it chains to the new CA — anything holding the old server cert/CA pair must be updated." -}}
+{{- end -}}
 {{- if not (empty .Values.ingress.secrets) -}}
 {{- $warnings = append $warnings "ingress.secrets contains inline TLS cert/key material in values (DISCOURAGED). Prefer cert-manager (certificate block) or a pre-created Secret via ingress.existingSecret." -}}
 {{- end -}}
