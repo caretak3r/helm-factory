@@ -8,7 +8,9 @@ commands, and the architecture overview. Read that section before your first
 change; the strict gate (`make lint`, which ends `==> PASS`) is the definition
 of done. CI runs the same Makefile targets, so local green and CI green cannot
 disagree; `make tools` reports your toolchain against the pins in
-`scripts/lib/tool-versions.sh`.
+`scripts/lib/tool-versions.sh`. For the render-pipeline deep dive with
+diagrams, read
+[docs/specs/platform-library-v2-architecture.md](docs/specs/platform-library-v2-architecture.md).
 
 This project uses **bd** (beads) for issue tracking. Run `bd onboard` to get started.
 
