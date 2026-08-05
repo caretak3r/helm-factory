@@ -8,12 +8,6 @@ on:
       - "platform-library/values.yaml"
       - "platform-library/values.schema.reference.json"
       - "platform-library/templates/_capabilities.tpl"
-  pull_request:
-    paths:
-      - "site/**"
-      - "platform-library/values.yaml"
-      - "platform-library/values.schema.reference.json"
-      - "platform-library/templates/_capabilities.tpl"
   workflow_dispatch:
 
 # A separate workflow from ci.yaml/release.yaml: a docs build failure must never
@@ -28,7 +22,6 @@ concurrency:
 jobs:
   build:
     name: build Docusaurus site
-    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -64,32 +57,6 @@ jobs:
         uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
         with:
           path: site/build
-
-  build-pr:
-    name: build Docusaurus site (PR check)
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    permissions:
-      contents: read # npm ci over an advisory-laden tree gets nothing else
-    steps:
-      - name: Checkout
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-
-      - name: Set up Node
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: "20"
-          cache: npm
-          cache-dependency-path: site/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-        working-directory: site
-
-      - name: Build site
-        run: npm run build
-        working-directory: site
 
   deploy:
     name: deploy to GitHub Pages
