@@ -9,6 +9,38 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
 
 ## [Unreleased]
 
+### Added — `tlsSelfSigned.mtls` (client certificate issuance)
+
+- New `tlsSelfSigned.mtls` block issues client certificates from the same
+  self-signed chain as `tlsSelfSigned`, for workloads that need mutual TLS
+  without a cert-manager `Issuer`. The CA is now persisted as its own Secret
+  `<fullname>-ca` (`kubernetes.io/tls`), reused across upgrades via
+  `lookup` + a `platform/tls-not-after` annotation and reconstructed with
+  `buildCustomCert` on reuse, exactly like the existing server certificate.
+  Enabling `mtls` forces a one-time rotation of the server Secret
+  `<fullname>-tls` if it wasn't already chained to the persisted CA (or the
+  CA doesn't exist yet), so mTLS can be turned on for an existing release
+  without a manual Secret delete.
+- Each entry in `tlsSelfSigned.mtls.clients` (`name`, optional `commonName`,
+  optional `dnsNames`) renders its own client Secret
+  `<fullname>-mtls-client-<name>`, signed by the persisted CA.
+- `tlsSelfSigned.mtls.trustBundle.enabled` (default `true`) renders a
+  `<fullname>-ca-bundle` ConfigMap holding the CA certificate under
+  `binaryData.ca.crt`, stamped `platform/generated: "true"` like the other
+  reconciled-on-every-render objects.
+- `tlsSelfSigned.mtls.mount.enabled` (default `true`) auto-mounts the server,
+  every client, and the CA trust bundle read-only under
+  `tlsSelfSigned.mtls.mount.basePath` (default `/etc/platform-tls`) into
+  every container in the pod, including sidecars and initContainers — no env
+  injection. Secret mounts use `defaultMode: 0400`, the trust-bundle
+  ConfigMap mount uses `0444`.
+- Fails closed on: `mtls.enabled` without `tlsSelfSigned.enabled`,
+  `mtls.enabled` with an empty `clients` list, and any client `name` that is
+  missing, not a valid DNS-1123 label, a duplicate, or a collision with a
+  reserved release Secret suffix (`-tls`, `-ca`, `-secret`, `-webhook-cert`).
+- `mtls.enabled` defaults to `false`; with it disabled, rendered output is
+  byte-identical to before this change.
+
 ### Added — `generatedSecrets` (cluster-generated credential material)
 
 - New `generatedSecrets` values block renders one Opaque Secret per entry

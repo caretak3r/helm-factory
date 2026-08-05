@@ -178,11 +178,22 @@ global.imageRegistry by design (a consumer who wrote a fully-qualified
 reference must not get double-prefixed). Containers without an explicit
 imagePullPolicy get the resolved library default (global.imagePullPolicy,
 else the dict's pullPolicy, else image.pullPolicy, else IfNotPresent).
+
+An optional 3rd list element is a slice of extra volumeMounts appended to
+EVERY container in $containers (after any mounts the container already
+declares) — used by the mTLS mount wiring so init/sidecar containers get the
+same tls-selfsigned mounts as the main container. Omitting it (the 2-arg
+form) is fully backward compatible: no volumeMounts key is touched.
 Usage: include "platform.hardenContainers" (list $ctx $containers)
+       include "platform.hardenContainers" (list $ctx $containers $extraMounts)
 */}}
 {{- define "platform.hardenContainers" -}}
 {{- $ctx := index . 0 -}}
 {{- $containers := index . 1 -}}
+{{- $extraMounts := list -}}
+{{- if gt (len .) 2 -}}
+  {{- $extraMounts = index . 2 -}}
+{{- end -}}
 {{- $hardened := list -}}
 {{- range $containers }}
   {{- $container := deepCopy . -}}
@@ -202,6 +213,10 @@ Usage: include "platform.hardenContainers" (list $ctx $containers)
     {{- $_ := set $container "image" (include "platform.imageRef" (dict "ctx" $ctx "image" $container.image "path" $path)) -}}
   {{- else if not $container.imagePullPolicy }}
     {{- $_ := set $container "imagePullPolicy" (include "platform.imagePullPolicy" $ctx) -}}
+  {{- end }}
+  {{- if gt (len $extraMounts) 0 }}
+    {{- $existingMounts := $container.volumeMounts | default list -}}
+    {{- $_ := set $container "volumeMounts" (concat $existingMounts $extraMounts) -}}
   {{- end }}
   {{- $hardened = append $hardened $container -}}
 {{- end }}
@@ -343,6 +358,35 @@ Render the full Pod template spec shared across workloads
 */}}
 {{- define "platform.podTemplateSpec" -}}
 {{- $ctx := . -}}
+{{- /*
+mTLS mount wiring (tlsSelfSigned.mtls.mount.enabled): server cert pair,
+each client cert pair, and the CA trust bundle mounted read-only into
+EVERY container (main + init + sidecars) — the same per-container coverage
+as the hardening pass above, since one unmounted sidecar that still needs to
+present a client cert is as broken as one unhardened one. Computed once here
+so it can feed both the main container's $mounts below and the
+hardenContainers calls for initContainers/sidecars. Empty lists when
+disabled, so this is a no-op on the byte-identical non-mtls path.
+*/ -}}
+{{- $mtlsMounts := list -}}
+{{- $mtlsVolumes := list -}}
+{{- if and $ctx.Values.tlsSelfSigned.mtls.enabled $ctx.Values.tlsSelfSigned.mtls.mount.enabled }}
+  {{- $basePath := $ctx.Values.tlsSelfSigned.mtls.mount.basePath -}}
+  {{- $mtlsMounts = append $mtlsMounts (dict "name" "mtls-server" "mountPath" (printf "%s/server" $basePath) "readOnly" true) -}}
+  {{- /* defaultMode is a leading-zero Go template numeric literal (octal) —
+         0400/0444 evaluate to the decimal 256/292 K8s stores, matching the
+         conventional octal notation used for Secret/ConfigMap file modes. */ -}}
+  {{- $mtlsVolumes = append $mtlsVolumes (dict "name" "mtls-server" "secret" (dict "secretName" (include "platform.tlsSecretName" $ctx) "defaultMode" 0400)) -}}
+  {{- range $ctx.Values.tlsSelfSigned.mtls.clients }}
+    {{- $clientName := .name -}}
+    {{- $mtlsMounts = append $mtlsMounts (dict "name" (printf "mtls-client-%s" $clientName) "mountPath" (printf "%s/client-%s" $basePath $clientName) "readOnly" true) -}}
+    {{- $mtlsVolumes = append $mtlsVolumes (dict "name" (printf "mtls-client-%s" $clientName) "secret" (dict "secretName" (printf "%s-mtls-client-%s" (include "platform.fullname" $ctx) $clientName) "defaultMode" 0400)) -}}
+  {{- end }}
+  {{- if $ctx.Values.tlsSelfSigned.mtls.trustBundle.enabled }}
+    {{- $mtlsMounts = append $mtlsMounts (dict "name" "mtls-ca-bundle" "mountPath" (printf "%s/ca" $basePath) "readOnly" true) -}}
+    {{- $mtlsVolumes = append $mtlsVolumes (dict "name" "mtls-ca-bundle" "configMap" (dict "name" (printf "%s-ca-bundle" (include "platform.fullname" $ctx)) "defaultMode" 0444)) -}}
+  {{- end }}
+{{- end -}}
 metadata:
   labels:
     {{- include "platform.selectorLabels" $ctx | nindent 4 }}
@@ -378,7 +422,7 @@ spec:
   {{- include "platform.podPolicy.imagePullSecrets" (list $ctx 2) }}
   {{- include "platform.podPolicy.securityContext" (list $ctx 2) }}
   {{- if and $ctx.Values.initContainers.enabled $ctx.Values.initContainers.containers }}
-  initContainers: {{- include "platform.hardenContainers" (list $ctx $ctx.Values.initContainers.containers) | nindent 4 }}
+  initContainers: {{- include "platform.hardenContainers" (list $ctx $ctx.Values.initContainers.containers $mtlsMounts) | nindent 4 }}
   {{- end }}
   containers:
     - name: {{ $ctx.Chart.Name }}
@@ -450,11 +494,14 @@ spec:
           {{- $mounts = append $mounts . -}}
         {{- end }}
       {{- end }}
+      {{- range $mtlsMounts }}
+        {{- $mounts = append $mounts . -}}
+      {{- end }}
       {{- if gt (len $mounts) 0 }}
       volumeMounts: {{- toYaml $mounts | nindent 8 }}
       {{- end }}
     {{- if and $ctx.Values.sidecars.enabled $ctx.Values.sidecars.containers }}
-    {{- include "platform.hardenContainers" (list $ctx $ctx.Values.sidecars.containers) | nindent 4 }}
+    {{- include "platform.hardenContainers" (list $ctx $ctx.Values.sidecars.containers $mtlsMounts) | nindent 4 }}
     {{- end }}
   {{- $volumes := list -}}
   {{- if $ctx.Values.configMap.enabled }}
@@ -468,6 +515,9 @@ spec:
     {{- range $ctx.Values.extraVolumes }}
       {{- $volumes = append $volumes . -}}
     {{- end }}
+  {{- end }}
+  {{- range $mtlsVolumes }}
+    {{- $volumes = append $volumes . -}}
   {{- end }}
   {{- if gt (len $volumes) 0 }}
   volumes: {{- toYaml $volumes | nindent 4 }}

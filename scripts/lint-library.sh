@@ -109,7 +109,7 @@ expected_kinds() {
     minimal)  echo 3 ;;
     full)     echo 34 ;;
     stateful) echo 8 ;;
-    daemon)   echo 3 ;;
+    daemon)   echo 7 ;;
     *)        echo "unknown fixture: $1" >&2; return 1 ;;
   esac
 }
@@ -1704,6 +1704,98 @@ else
   echo "  FAIL: certificate/tlsSelfSigned collision failed without the expected message"; echo "$out" | tail -3; fail=1
 fi
 
+echo "==> tlsSelfSigned.mtls guards"
+# mtls.enabled requires tlsSelfSigned.enabled=true. This guard is evaluated
+# unconditionally (not nested under tlsSelfSigned.enabled), so it must be
+# provable even when tlsSelfSigned is off — use minimal, which defaults
+# tlsSelfSigned.enabled=false, rather than full (certificate.enabled=true
+# there would trip the TLS mechanism collision guard first) or daemon
+# (tlsSelfSigned.enabled=true there by default).
+if out=$("$RENDER" minimal --set tlsSelfSigned.mtls.enabled=true 2>&1); then
+  echo "  FAIL: render succeeded with tlsSelfSigned.mtls.enabled=true and tlsSelfSigned.enabled=false"; fail=1
+elif grep -q "tlsSelfSigned.mtls.enabled is true but tlsSelfSigned.enabled is false" <<<"$out"; then
+  echo "  OK: mtls without tlsSelfSigned.enabled rejected"
+else
+  echo "  FAIL: mtls/tlsSelfSigned collision failed without the expected message"; echo "$out" | tail -3; fail=1
+fi
+
+# clients must be non-empty when mtls.enabled. daemon fixture has
+# tlsSelfSigned.mtls.enabled=true with 2 clients by default.
+if out=$("$RENDER" daemon --set tlsSelfSigned.mtls.clients=null 2>&1); then
+  echo "  FAIL: render succeeded with tlsSelfSigned.mtls.enabled=true and empty clients"; fail=1
+elif grep -q "tlsSelfSigned.mtls.clients is empty" <<<"$out"; then
+  echo "  OK: mtls with empty clients rejected"
+else
+  echo "  FAIL: empty mtls.clients failed without the expected message"; echo "$out" | tail -3; fail=1
+fi
+
+# client name must be a DNS-1123 label, unique, and not collide with a
+# reserved release Secret name suffix. --skip-schema-validation: the
+# reference schema's own pattern constraint on clients[].name would
+# otherwise reject this before the template guard runs — same reasoning as
+# the ExternalName/certificate.issuer legs above.
+if out=$("$RENDER" daemon --skip-schema-validation --set 'tlsSelfSigned.mtls.clients[0].name=Worker_1' \
+    --set 'tlsSelfSigned.mtls.clients[1].name=reader' 2>&1); then
+  echo "  FAIL: render succeeded with an invalid mtls client name"; fail=1
+elif grep -q "is not a valid DNS-1123 label" <<<"$out"; then
+  echo "  OK: invalid mtls client name rejected"
+else
+  echo "  FAIL: invalid mtls client name failed without the expected message"; echo "$out" | tail -3; fail=1
+fi
+
+if out=$("$RENDER" daemon --set 'tlsSelfSigned.mtls.clients[0].name=worker' \
+    --set 'tlsSelfSigned.mtls.clients[1].name=worker' 2>&1); then
+  echo "  FAIL: render succeeded with duplicate mtls client names"; fail=1
+elif grep -q "contains duplicate name" <<<"$out"; then
+  echo "  OK: duplicate mtls client name rejected"
+else
+  echo "  FAIL: duplicate mtls client name failed without the expected message"; echo "$out" | tail -3; fail=1
+fi
+
+if out=$("$RENDER" daemon --set 'tlsSelfSigned.mtls.clients[0].name=worker-ca' \
+    --set 'tlsSelfSigned.mtls.clients[1].name=reader' 2>&1); then
+  echo "  FAIL: render succeeded with a reserved-suffix mtls client name"; fail=1
+elif grep -q "collides with a reserved release Secret name pattern" <<<"$out"; then
+  echo "  OK: reserved-suffix mtls client name rejected"
+else
+  echo "  FAIL: reserved-suffix mtls client name failed without the expected message"; echo "$out" | tail -3; fail=1
+fi
+
+# Per-container mount coverage: the daemon fixture's pod has a main
+# container, 2 sidecars (metrics-proxy, log-shipper), and 1 initContainer
+# (init-wait) — 4 containers total. mtls.mount.enabled must wire the same 4
+# volumeMounts (server, 2 clients, ca-bundle) into ALL of them, not just the
+# main container. mountPath only appears under containers[].volumeMounts
+# (the pod-level volumes: block uses secretName/configMap.name instead), so
+# counting mountPath occurrences is a clean per-container-instance count.
+if out=$("$RENDER" daemon 2>&1); then
+  validate_render "mtls mount coverage (daemon, per-container)" "$out"
+  server_mounts=$(grep -c 'mountPath: /etc/platform-tls/server$' <<<"$out" || true)
+  worker_mounts=$(grep -c 'mountPath: /etc/platform-tls/client-worker$' <<<"$out" || true)
+  reader_mounts=$(grep -c 'mountPath: /etc/platform-tls/client-reader$' <<<"$out" || true)
+  ca_mounts=$(grep -c 'mountPath: /etc/platform-tls/ca$' <<<"$out" || true)
+  if [[ "$server_mounts" -eq 4 && "$worker_mounts" -eq 4 && "$reader_mounts" -eq 4 && "$ca_mounts" -eq 4 ]]; then
+    echo "  OK: all 4 mtls mounts (server/client-worker/client-reader/ca) present in all 4 containers"
+  else
+    echo "  FAIL: expected 4/4/4/4 mtls mounts (server/worker/reader/ca) across containers, got $server_mounts/$worker_mounts/$reader_mounts/$ca_mounts"; fail=1
+  fi
+  # Isolate the pod-level volumes: list (a single list, not per-container) so
+  # this can't accidentally double-count the volumeMounts already checked
+  # above. Sprig's toYaml sorts dict keys alphabetically, so the ca-bundle
+  # entry's own "name" key sorts after "configMap" and lands on a
+  # continuation line rather than the leading "- name:" the other 3 use —
+  # match on the isolated block's content, not a single line shape.
+  volumes_block=$(awk '/^      volumes:$/{flag=1; next} /^      [a-zA-Z]/{flag=0} flag' <<<"$out")
+  volumes=$(grep -c 'name: mtls-' <<<"$volumes_block" || true)
+  if [[ "$volumes" -eq 4 ]]; then
+    echo "  OK: exactly 4 pod-level mtls volumes (not duplicated per container)"
+  else
+    echo "  FAIL: expected 4 pod-level mtls volumes, got $volumes"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for mtls mount coverage check"; echo "$out" | tail -5; fail=1
+fi
+
 echo "==> HPA/VPA conflict guard"
 # full fixture already has autoscaling.enabled=true (targetCPU 80) and
 # verticalAutoscaling.enabled=true with updateMode "Off" (recommend-only,
@@ -1758,9 +1850,13 @@ ingress_tls_secret_of() {
 if out=$("$RENDER" daemon --set ingress.enabled=true --set ingress.tls=true \
   --set service.enabled=true 2>&1); then
   validate_render "TLS secret convergence (daemon, tlsSelfSigned)" "$out"
-  # kind+type keyed: the name of the (single) kubernetes.io/tls Secret document.
+  # kind+type keyed: the name of the server kubernetes.io/tls Secret document.
+  # mtls (default-enabled on this fixture) also writes a CA Secret
+  # (<fullname>-ca) and one per client (<fullname>-mtls-client-<name>), all
+  # equally type: kubernetes.io/tls — exclude those so this stays scoped to
+  # the one Secret the Ingress is actually supposed to converge on.
   tls_secret=$(awk '
-    function flush() { if (kd == "Secret" && tls) print nm; kd = ""; nm = ""; tls = 0 }
+    function flush() { if (kd == "Secret" && tls && nm !~ /-ca$/ && nm !~ /-mtls-client-/) print nm; kd = ""; nm = ""; tls = 0 }
     /^---[[:space:]]*$/ { flush(); next }
     /^kind: / { kd = $2 }
     /^  name: / && nm == "" { nm = $2 }

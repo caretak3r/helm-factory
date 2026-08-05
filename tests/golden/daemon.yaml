@@ -37,6 +37,86 @@ data:
   ca.crt: REDACTED
 ---
 # Source: daemon/templates/app.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: t-daemon-ca
+  namespace: default
+  labels:
+    helm.sh/chart: daemon-0.1.0
+    app.kubernetes.io/name: daemon
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/component: app
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    platform/tls-not-after: REDACTED
+type: kubernetes.io/tls
+data:
+  tls.crt: REDACTED
+  tls.key: REDACTED
+---
+# Source: daemon/templates/app.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: t-daemon-mtls-client-worker
+  namespace: default
+  labels:
+    helm.sh/chart: daemon-0.1.0
+    app.kubernetes.io/name: daemon
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/component: app
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    platform/tls-not-after: REDACTED
+type: kubernetes.io/tls
+data:
+  tls.crt: REDACTED
+  tls.key: REDACTED
+  ca.crt: REDACTED
+---
+# Source: daemon/templates/app.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: t-daemon-mtls-client-reader
+  namespace: default
+  labels:
+    helm.sh/chart: daemon-0.1.0
+    app.kubernetes.io/name: daemon
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/component: app
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    platform/tls-not-after: REDACTED
+type: kubernetes.io/tls
+data:
+  tls.crt: REDACTED
+  tls.key: REDACTED
+  ca.crt: REDACTED
+---
+# Source: daemon/templates/app.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: t-daemon-ca-bundle
+  namespace: default
+  labels:
+    helm.sh/chart: daemon-0.1.0
+    app.kubernetes.io/name: daemon
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/component: app
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    platform/generated: "true"
+binaryData:
+  ca.crt: REDACTED
+---
+# Source: daemon/templates/app.yaml
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -95,6 +175,19 @@ spec:
             runAsUser: 1001
             seccompProfile:
               type: RuntimeDefault
+          volumeMounts:
+          - mountPath: /etc/platform-tls/server
+            name: mtls-server
+            readOnly: true
+          - mountPath: /etc/platform-tls/client-worker
+            name: mtls-client-worker
+            readOnly: true
+          - mountPath: /etc/platform-tls/client-reader
+            name: mtls-client-reader
+            readOnly: true
+          - mountPath: /etc/platform-tls/ca
+            name: mtls-ca-bundle
+            readOnly: true
       containers:
         - name: daemon
           securityContext:
@@ -118,6 +211,19 @@ spec:
               restartPolicy: NotRequired
             - resourceName: memory
               restartPolicy: RestartContainer
+          volumeMounts:
+            - mountPath: /etc/platform-tls/server
+              name: mtls-server
+              readOnly: true
+            - mountPath: /etc/platform-tls/client-worker
+              name: mtls-client-worker
+              readOnly: true
+            - mountPath: /etc/platform-tls/client-reader
+              name: mtls-client-reader
+              readOnly: true
+            - mountPath: /etc/platform-tls/ca
+              name: mtls-ca-bundle
+              readOnly: true
         - command:
           - sh
           - -c
@@ -138,6 +244,19 @@ spec:
             runAsUser: 65532
             seccompProfile:
               type: RuntimeDefault
+          volumeMounts:
+          - mountPath: /etc/platform-tls/server
+            name: mtls-server
+            readOnly: true
+          - mountPath: /etc/platform-tls/client-worker
+            name: mtls-client-worker
+            readOnly: true
+          - mountPath: /etc/platform-tls/client-reader
+            name: mtls-client-reader
+            readOnly: true
+          - mountPath: /etc/platform-tls/ca
+            name: mtls-ca-bundle
+            readOnly: true
         - command:
           - sh
           - -c
@@ -155,6 +274,36 @@ spec:
             runAsUser: 1001
             seccompProfile:
               type: RuntimeDefault
+          volumeMounts:
+          - mountPath: /etc/platform-tls/server
+            name: mtls-server
+            readOnly: true
+          - mountPath: /etc/platform-tls/client-worker
+            name: mtls-client-worker
+            readOnly: true
+          - mountPath: /etc/platform-tls/client-reader
+            name: mtls-client-reader
+            readOnly: true
+          - mountPath: /etc/platform-tls/ca
+            name: mtls-ca-bundle
+            readOnly: true
+      volumes:
+        - name: mtls-server
+          secret:
+            defaultMode: 256
+            secretName: t-daemon-tls
+        - name: mtls-client-worker
+          secret:
+            defaultMode: 256
+            secretName: t-daemon-mtls-client-worker
+        - name: mtls-client-reader
+          secret:
+            defaultMode: 256
+            secretName: t-daemon-mtls-client-reader
+        - configMap:
+            defaultMode: 292
+            name: t-daemon-ca-bundle
+          name: mtls-ca-bundle
       nodeSelector:
         kubernetes.io/os: "linux"
       tolerations:
