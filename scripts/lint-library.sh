@@ -107,7 +107,7 @@ fail=0
 expected_kinds() {
   case "$1" in
     minimal)  echo 3 ;;
-    full)     echo 33 ;;
+    full)     echo 34 ;;
     stateful) echo 8 ;;
     daemon)   echo 3 ;;
     *)        echo "unknown fixture: $1" >&2; return 1 ;;
@@ -118,11 +118,36 @@ expected_kinds() {
 # generates a fresh throwaway cert (and a freshly computed not-after
 # timestamp) on every offline render (its Secret lookup is empty without a
 # cluster), so the tls Secret data lines and the platform/tls-not-after
-# annotation are redacted.
+# annotation are redacted. generatedSecrets is the same story for arbitrary
+# credential material (random passwords, bcrypt htpasswd hashes): every
+# Secret it emits carries annotation `platform/generated: "true"`, so the
+# awk pass below redacts every `data:` line of any document carrying that
+# annotation, doc-scoped so unrelated Secrets/ConfigMaps are untouched.
 normalize_render() {
   sed -E \
     -e 's/^(  (tls\.crt|tls\.key|ca\.crt): ).*/\1REDACTED/' \
-    -e 's#^(    platform/tls-not-after: ).*#\1REDACTED#'
+    -e 's#^(    platform/tls-not-after: ).*#\1REDACTED#' \
+  | awk '
+      function flush() {
+        in_data = 0
+        for (i = 1; i <= n; i++) {
+          line = buf[i]
+          if (marked && line == "data:") { in_data = 1; print line; continue }
+          if (marked && in_data && match(line, /^  [A-Za-z0-9._-]+: /)) {
+            print substr(line, 1, RLENGTH) "REDACTED"; continue
+          }
+          if (in_data && line !~ /^  /) { in_data = 0 }
+          print line
+        }
+        n = 0; marked = 0
+      }
+      /^---[[:space:]]*$/ { flush(); print; next }
+      {
+        n++; buf[n] = $0
+        if ($0 == "    platform/generated: \"true\"") marked = 1
+      }
+      END { flush() }
+    '
 }
 
 # Shared per-document extractor: prints the rendered document whose kind is $1
@@ -908,6 +933,43 @@ if out=$("$RENDER" stateful --set secret.existingSecret=preexisting \
   fi
 else
   echo "  FAIL: render failed while checking secret.existingSecret suppression"; echo "$out" | tail -3; fail=1
+fi
+
+# generatedSecrets: duplicate entry names must fail closed.
+if out=$("$RENDER" minimal --set-json 'generatedSecrets=[{"name":"admin","keys":[{"key":"password","kind":"password"}]},{"name":"admin","keys":[{"key":"password","kind":"password"}]}]' 2>&1); then
+  echo "  FAIL: render succeeded with duplicate generatedSecrets entry names"; fail=1
+elif grep -q 'generatedSecrets contains duplicate name "admin"' <<<"$out"; then
+  echo "  OK: duplicate generatedSecrets entry name rejected"
+else
+  echo "  FAIL: duplicate generatedSecrets entry name failed without the expected message"; echo "$out" | tail -3; fail=1
+fi
+
+# generatedSecrets: duplicate key within one entry must fail closed.
+if out=$("$RENDER" minimal --set-json 'generatedSecrets=[{"name":"admin","keys":[{"key":"password","kind":"password"},{"key":"password","kind":"password"}]}]' 2>&1); then
+  echo "  FAIL: render succeeded with a duplicate generatedSecrets key"; fail=1
+elif grep -q 'has duplicate key "password"' <<<"$out"; then
+  echo "  OK: duplicate generatedSecrets key rejected"
+else
+  echo "  FAIL: duplicate generatedSecrets key failed without the expected message"; echo "$out" | tail -3; fail=1
+fi
+
+# generatedSecrets: entry name colliding with a reserved release Secret suffix
+# must fail closed (naming hygiene, not a real name collision).
+if out=$("$RENDER" minimal --set-json 'generatedSecrets=[{"name":"app-secret","keys":[{"key":"password","kind":"password"}]}]' 2>&1); then
+  echo "  FAIL: render succeeded with a reserved-suffix generatedSecrets name"; fail=1
+elif grep -q 'collides with a reserved release Secret name pattern' <<<"$out"; then
+  echo "  OK: reserved-suffix generatedSecrets name rejected"
+else
+  echo "  FAIL: reserved-suffix generatedSecrets name failed without the expected message"; echo "$out" | tail -3; fail=1
+fi
+
+# generatedSecrets: htpasswd password/passwordFrom are mutually exclusive.
+if out=$("$RENDER" minimal --set-json 'generatedSecrets=[{"name":"admin","keys":[{"key":"password","kind":"password"},{"key":"auth","kind":"htpasswd","username":"admin","password":"x","passwordFrom":"password"}]}]' 2>&1); then
+  echo "  FAIL: render succeeded with both htpasswd password and passwordFrom set"; fail=1
+elif grep -q 'password and passwordFrom are mutually exclusive' <<<"$out"; then
+  echo "  OK: htpasswd password/passwordFrom XOR violation rejected"
+else
+  echo "  FAIL: htpasswd password/passwordFrom XOR violation failed without the expected message"; echo "$out" | tail -3; fail=1
 fi
 
 echo "==> container hardening posture: user-supplied containers cannot render unhardened"

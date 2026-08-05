@@ -9,6 +9,30 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
 
 ## [Unreleased]
 
+### Added — `generatedSecrets` (cluster-generated credential material)
+
+- New `generatedSecrets` values block renders one Opaque Secret per entry
+  (`<fullname>-gen-<name>`), with keys of kind `password` (`randAlphaNum`) or
+  `htpasswd` (bcrypt, derived from a sibling `password` key via
+  `passwordFrom`, or an explicit plaintext). On upgrade, each requested key is
+  reconciled independently against the live Secret: a key already present is
+  reused verbatim, a key not yet present is generated fresh, and a live key no
+  longer listed under values is dropped — values are the contract, same as
+  `tlsSelfSigned`'s lookup-reuse. An `htpasswd` key sourced via `passwordFrom`
+  regenerates whenever its source password was freshly generated this render,
+  so a rotated password can never leave behind a stale hash. There is no
+  expiry/rotation tracking: rotate by deleting the key (or the Secret) and
+  running `helm upgrade`.
+- Every rendered Secret carries `platform/generated: "true"`; the lint gate's
+  `normalize_render` redacts `data:` under that annotation the same way it
+  already does for `tlsSelfSigned`, since offline (`helm template`) renders
+  regenerate every key on every run.
+- Fails closed on: duplicate entry names, duplicate keys within an entry, an
+  entry name colliding with a reserved release Secret suffix (`-tls`, `-ca`,
+  `-secret`, `-webhook-cert`, `-mtls-client-*`), an empty `keys` list, and
+  `htpasswd` `password`/`passwordFrom` XOR violations (both, neither, or a
+  dangling reference).
+
 ### Fixed — `new-app-chart.sh` name validation
 
 - The scaffolder validated the chart name's charset against RFC 1123 but not

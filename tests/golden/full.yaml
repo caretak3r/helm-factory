@@ -180,6 +180,26 @@ automountServiceAccountToken: false
 ---
 # Source: full/templates/app.yaml
 apiVersion: v1
+kind: Secret
+metadata:
+  name: t-full-gen-admin
+  namespace: default
+  labels:
+    helm.sh/chart: full-0.1.0
+    app.kubernetes.io/name: full
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/component: app
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    platform/generated: "true"
+type: Opaque
+data:
+  auth: REDACTED
+  password: REDACTED
+---
+# Source: full/templates/app.yaml
+apiVersion: v1
 kind: ConfigMap
 metadata:
   name: t-full-config

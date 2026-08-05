@@ -68,6 +68,37 @@
         "stringData": { "type": "object", "description": "DISCOURAGED: plaintext secret material in values ends up in git and in Helm release manifests. Prefer existingSecret." }
       }
     },
+    "generatedSecrets": {
+      "type": "array",
+      "description": "Cluster-generated credential material. One Opaque Secret per entry, named \"<fullname>-gen-<name>\", reconciled per-key against the live Secret on upgrade (a key present live is reused, a key no longer listed is dropped). No expiry/rotation tracking — rotate by deleting the key or Secret and running helm upgrade.",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["name", "keys"],
+        "properties": {
+          "name": { "type": "string", "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$", "description": "DNS-1123 label; becomes Secret <fullname>-gen-<name>." },
+          "labels": { "type": "object" },
+          "annotations": { "type": "object" },
+          "keys": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": true,
+              "required": ["key", "kind"],
+              "properties": {
+                "key": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$", "description": "Secret data key." },
+                "kind": { "type": "string", "enum": ["password", "htpasswd"] },
+                "length": { "type": "integer", "minimum": 16, "maximum": 128, "default": 32, "description": "kind: password only. randAlphaNum length." },
+                "username": { "type": "string", "description": "kind: htpasswd only. Required." },
+                "passwordFrom": { "type": "string", "description": "kind: htpasswd only. Name of a sibling key of kind password in the same entry; mutually exclusive with password." },
+                "password": { "type": "string", "description": "kind: htpasswd only. Explicit plaintext (DISCOURAGED: ends up in values/release manifests); mutually exclusive with passwordFrom." }
+              }
+            }
+          }
+        }
+      }
+    },
     "ingress": {
       "type": "object",
       "additionalProperties": true,

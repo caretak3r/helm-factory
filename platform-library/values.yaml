@@ -247,6 +247,32 @@ exports:
       labels: {}
 
     # -----------------------------------------------------------------------------
+    # Generated Secrets
+    # -----------------------------------------------------------------------------
+    # Cluster-generated credential material: one Opaque Secret per entry, named
+    # "<fullname>-gen-<name>", stamped with annotation platform/generated:
+    # "true". Reconciled per-key on upgrade (lookup-reuse): a key already
+    # present in the live Secret is kept; a key no longer listed is dropped.
+    # Under `helm template` / --dry-run (no cluster) every key regenerates on
+    # every render — expected, and why the lint gate redacts these Secrets'
+    # data in goldens. No expiry/rotation tracking: rotate by deleting the key
+    # (or the whole Secret) and running `helm upgrade`.
+    # generatedSecrets:
+    #   - name: admin                  # -> Secret <fullname>-gen-admin
+    #     labels: {}
+    #     annotations: {}
+    #     keys:
+    #       - key: password
+    #         kind: password            # randAlphaNum
+    #         length: 32                # 16-128, default 32
+    #       - key: auth
+    #         kind: htpasswd            # bcrypt "user:$2a$..." line
+    #         username: admin
+    #         passwordFrom: password     # sibling key of kind password — XOR with:
+    #         password: ""              # explicit plaintext (discouraged, supported)
+    generatedSecrets: []
+
+    # -----------------------------------------------------------------------------
     # Environment Variables
     # -----------------------------------------------------------------------------
     envVars: {}
