@@ -9,6 +9,40 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
 
 ## [Unreleased]
 
+### Added — `webhooks` (admission webhook configuration)
+
+- New `webhooks` values block renders a `ValidatingWebhookConfiguration`
+  and/or a `MutatingWebhookConfiguration` (`admissionregistration.k8s.io/v1`,
+  built-in — gated by `webhooks.enabled`, not the capability registry) from
+  `webhooks.validating`/`webhooks.mutating` entry lists. Both objects are
+  cluster-scoped, named `<namespace>-<fullname>`, with one webhook item per
+  entry: `clientConfig.service` targets the release Service on
+  `webhooks.port` at the entry's `path`, and `failurePolicy` (`Fail`),
+  `sideEffects` (`None`), `timeoutSeconds` (`10`), `matchPolicy`
+  (`Equivalent`), `namespaceSelector`/`objectSelector` (`{}`), and
+  `admissionReviewVersions` (`[v1]`) all default and can be overridden per
+  entry. `reinvocationPolicy` is mutating-only.
+- The serving certificate is a CA + leaf pair persisted in Secret
+  `<fullname>-webhook-cert` (Opaque), reused across upgrades via `lookup` +
+  a `platform/tls-not-after` annotation exactly like `tlsSelfSigned` — same
+  offline-always-regenerates story, same reuse-or-regenerate-atomically
+  guarantee (a partial Secret is never trusted; missing or expiring-soon
+  triggers a full regeneration of every key). The leaf's SANs are the
+  release Service's in-cluster DNS names
+  (`<fullname>.<namespace>.svc[.cluster.local]`); every webhook item's
+  `caBundle` is the same render's `ca.crt`, byte-identical by construction.
+  The Secret is auto-mounted read-only at `webhooks.certMountPath` (default
+  `/etc/webhook-tls`, `defaultMode: 0400`) into every container in the pod,
+  via the same `$mtlsMounts`/`$mtlsVolumes` mechanism `tlsSelfSigned.mtls`
+  uses.
+- Fails closed on: `webhooks.enabled` with `service.enabled` false (every
+  `clientConfig.service` targets it), `webhooks.enabled` with both
+  `validating` and `mutating` empty, and any entry missing `name` or an
+  empty/missing `rules` list.
+- `webhooks.enabled` defaults to `false`; with it disabled, rendered output
+  is byte-identical to before this change. CRD-conversion webhooks are out
+  of scope for this change.
+
 ### Added — `tlsSelfSigned.mtls` (client certificate issuance)
 
 - New `tlsSelfSigned.mtls` block issues client certificates from the same

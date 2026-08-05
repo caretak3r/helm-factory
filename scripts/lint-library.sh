@@ -107,7 +107,7 @@ fail=0
 expected_kinds() {
   case "$1" in
     minimal)  echo 3 ;;
-    full)     echo 34 ;;
+    full)     echo 37 ;;
     stateful) echo 8 ;;
     daemon)   echo 7 ;;
     *)        echo "unknown fixture: $1" >&2; return 1 ;;
@@ -118,14 +118,22 @@ expected_kinds() {
 # generates a fresh throwaway cert (and a freshly computed not-after
 # timestamp) on every offline render (its Secret lookup is empty without a
 # cluster), so the tls Secret data lines and the platform/tls-not-after
-# annotation are redacted. generatedSecrets is the same story for arbitrary
-# credential material (random passwords, bcrypt htpasswd hashes): every
-# Secret it emits carries annotation `platform/generated: "true"`, so the
-# awk pass below redacts every `data:` line of any document carrying that
-# annotation, doc-scoped so unrelated Secrets/ConfigMaps are untouched.
+# annotation are redacted. webhooks' cert Secret follows the identical
+# whole-Secret lookup/reuse idiom (same offline-always-regenerates story) and
+# adds a ca.key sibling key, so it rides the same pattern rather than the
+# separate platform/generated marker below — house-consistent with
+# tlsSelfSigned, whose Secrets also don't carry that marker. The caBundle
+# stamped into every ValidatingWebhookConfiguration/MutatingWebhookConfiguration
+# item is that same freshly-generated ca.crt, so it is redacted too.
+# generatedSecrets is the same story for arbitrary credential material
+# (random passwords, bcrypt htpasswd hashes): every Secret it emits carries
+# annotation `platform/generated: "true"`, so the awk pass below redacts
+# every `data:` line of any document carrying that annotation, doc-scoped so
+# unrelated Secrets/ConfigMaps are untouched.
 normalize_render() {
   sed -E \
-    -e 's/^(  (tls\.crt|tls\.key|ca\.crt): ).*/\1REDACTED/' \
+    -e 's/^(  (tls\.crt|tls\.key|ca\.crt|ca\.key): ).*/\1REDACTED/' \
+    -e 's/^(      caBundle: ).*/\1REDACTED/' \
     -e 's#^(    platform/tls-not-after: ).*#\1REDACTED#' \
   | awk '
       function flush() {
@@ -1965,7 +1973,11 @@ fi
 
 # Gateway API routes default their backendRefs to the release Service; guard
 # fires only for that defaulted path — explicit backendRefs stay allowed.
-if out=$("$RENDER" full --set service.enabled=false --set ingress.enabled=false 2>&1); then
+# webhooks.enabled=false: full's fixture defaults webhooks on, and its own
+# service.enabled guard would otherwise fire first and mask the guard this
+# test targets.
+if out=$("$RENDER" full --set service.enabled=false --set ingress.enabled=false \
+  --set webhooks.enabled=false 2>&1); then
   echo "  FAIL: render succeeded with a defaulted HTTPRoute backend and service.enabled=false"; fail=1
 elif grep -q "gatewayApi.httpRoute has no backendRefs" <<<"$out"; then
   echo "  OK: defaulted HTTPRoute backend without the Service rejected"
@@ -1977,6 +1989,7 @@ fi
 # and is reached only once HTTPRoute's copy is satisfied (explicit backendRefs
 # below), so it needs its own negative render or the branch stays dead.
 if out=$("$RENDER" full --set service.enabled=false --set ingress.enabled=false \
+  --set webhooks.enabled=false \
   --set 'gatewayApi.httpRoute.backendRefs[0].name=other' \
   --set 'gatewayApi.httpRoute.backendRefs[0].port=8080' 2>&1); then
   echo "  FAIL: render succeeded with a defaulted GRPCRoute backend and service.enabled=false"; fail=1
@@ -1987,6 +2000,7 @@ else
 fi
 
 if out=$("$RENDER" full --set service.enabled=false --set ingress.enabled=false \
+  --set webhooks.enabled=false \
   --set 'gatewayApi.httpRoute.backendRefs[0].name=other' \
   --set 'gatewayApi.httpRoute.backendRefs[0].port=8080' \
   --set 'gatewayApi.grpcRoute.backendRefs[0].name=other-grpc' \
@@ -2020,6 +2034,147 @@ elif grep -q "gatewayApi.grpcRoute.enabled but no parentRefs configured" <<<"$ou
   echo "  OK: GRPCRoute without parentRefs rejected"
 else
   echo "  FAIL: GRPCRoute-without-parentRefs failed without the expected message"; echo "$out" | tail -3; fail=1
+fi
+
+echo "==> webhooks guardrails"
+# clientConfig.service on every webhook item targets the release Service.
+if out=$("$RENDER" minimal --set webhooks.enabled=true --set service.enabled=false 2>&1); then
+  echo "  FAIL: render succeeded with webhooks.enabled=true and service.enabled=false"; fail=1
+elif grep -q "webhooks.enabled is true but service.enabled is false" <<<"$out"; then
+  echo "  OK: webhooks without the backing Service rejected"
+else
+  echo "  FAIL: webhooks-without-service failed without the expected message"; echo "$out" | tail -3; fail=1
+fi
+
+if out=$("$RENDER" minimal --set webhooks.enabled=true 2>&1); then
+  echo "  FAIL: render succeeded with webhooks.enabled=true and no validating/mutating entries"; fail=1
+elif grep -q "webhooks.enabled is true but both webhooks.validating and webhooks.mutating are empty" <<<"$out"; then
+  echo "  OK: webhooks with no entries rejected"
+else
+  echo "  FAIL: empty webhooks.validating/mutating failed without the expected message"; echo "$out" | tail -3; fail=1
+fi
+
+# --skip-schema-validation: the reference schema's own required:[name,path,rules]
+# would otherwise reject these before the template guard runs — same reasoning
+# as the ExternalName/certificate.issuer/mtls-client-name legs above.
+if out=$("$RENDER" minimal --skip-schema-validation --set webhooks.enabled=true \
+    --set 'webhooks.validating[0].path=/validate' \
+    --set 'webhooks.validating[0].rules[0].apiGroups[0]=' \
+    --set 'webhooks.validating[0].rules[0].apiVersions[0]=v1' \
+    --set 'webhooks.validating[0].rules[0].operations[0]=CREATE' \
+    --set 'webhooks.validating[0].rules[0].resources[0]=pods' 2>&1); then
+  echo "  FAIL: render succeeded with a webhooks.validating entry missing name"; fail=1
+elif grep -q 'webhooks.validating\[0\].name is required' <<<"$out"; then
+  echo "  OK: validating entry missing name rejected"
+else
+  echo "  FAIL: missing validating name failed without the expected message"; echo "$out" | tail -3; fail=1
+fi
+
+if out=$("$RENDER" minimal --skip-schema-validation --set webhooks.enabled=true \
+    --set 'webhooks.validating[0].name=validate.example.com' \
+    --set 'webhooks.validating[0].rules[0].apiGroups[0]=' \
+    --set 'webhooks.validating[0].rules[0].apiVersions[0]=v1' \
+    --set 'webhooks.validating[0].rules[0].operations[0]=CREATE' \
+    --set 'webhooks.validating[0].rules[0].resources[0]=pods' 2>&1); then
+  echo "  FAIL: render succeeded with a webhooks.validating entry missing path"; fail=1
+elif grep -q 'webhooks.validating\[0\].path is required' <<<"$out"; then
+  echo "  OK: validating entry missing path rejected"
+else
+  echo "  FAIL: missing validating path failed without the expected message"; echo "$out" | tail -3; fail=1
+fi
+
+if out=$("$RENDER" minimal --skip-schema-validation --set webhooks.enabled=true \
+    --set 'webhooks.validating[0].name=validate.example.com' \
+    --set 'webhooks.validating[0].path=/validate' 2>&1); then
+  echo "  FAIL: render succeeded with a webhooks.validating entry missing rules"; fail=1
+elif grep -q 'webhooks.validating\[0\].rules is required and must be non-empty' <<<"$out"; then
+  echo "  OK: validating entry missing rules rejected"
+else
+  echo "  FAIL: missing validating rules failed without the expected message"; echo "$out" | tail -3; fail=1
+fi
+
+# The mutating leg is a separately-ranged block with its own fail message —
+# prove it independently rather than assuming the validating leg's coverage
+# extends to it.
+if out=$("$RENDER" minimal --skip-schema-validation --set webhooks.enabled=true \
+    --set 'webhooks.mutating[0].path=/mutate' \
+    --set 'webhooks.mutating[0].rules[0].apiGroups[0]=' \
+    --set 'webhooks.mutating[0].rules[0].apiVersions[0]=v1' \
+    --set 'webhooks.mutating[0].rules[0].operations[0]=CREATE' \
+    --set 'webhooks.mutating[0].rules[0].resources[0]=pods' 2>&1); then
+  echo "  FAIL: render succeeded with a webhooks.mutating entry missing name"; fail=1
+elif grep -q 'webhooks.mutating\[0\].name is required' <<<"$out"; then
+  echo "  OK: mutating entry missing name rejected"
+else
+  echo "  FAIL: missing mutating name failed without the expected message"; echo "$out" | tail -3; fail=1
+fi
+
+if out=$("$RENDER" minimal --skip-schema-validation --set webhooks.enabled=true \
+    --set 'webhooks.mutating[0].name=mutate.example.com' \
+    --set 'webhooks.mutating[0].rules[0].apiGroups[0]=' \
+    --set 'webhooks.mutating[0].rules[0].apiVersions[0]=v1' \
+    --set 'webhooks.mutating[0].rules[0].operations[0]=CREATE' \
+    --set 'webhooks.mutating[0].rules[0].resources[0]=pods' 2>&1); then
+  echo "  FAIL: render succeeded with a webhooks.mutating entry missing path"; fail=1
+elif grep -q 'webhooks.mutating\[0\].path is required' <<<"$out"; then
+  echo "  OK: mutating entry missing path rejected"
+else
+  echo "  FAIL: missing mutating path failed without the expected message"; echo "$out" | tail -3; fail=1
+fi
+
+# The mutating leg's rules guard was covered in the template from the start
+# but had no lint test proving it — add it alongside path for full independent
+# coverage of the mutating range, matching the validating range above.
+if out=$("$RENDER" minimal --skip-schema-validation --set webhooks.enabled=true \
+    --set 'webhooks.mutating[0].name=mutate.example.com' \
+    --set 'webhooks.mutating[0].path=/mutate' 2>&1); then
+  echo "  FAIL: render succeeded with a webhooks.mutating entry missing rules"; fail=1
+elif grep -q 'webhooks.mutating\[0\].rules is required and must be non-empty' <<<"$out"; then
+  echo "  OK: mutating entry missing rules rejected"
+else
+  echo "  FAIL: missing mutating rules failed without the expected message"; echo "$out" | tail -3; fail=1
+fi
+
+# Per-container mount coverage: the daemon fixture's pod has a main
+# container, 2 sidecars (metrics-proxy, log-shipper), and 1 initContainer
+# (init-wait) — 4 containers total, same shape the mtls coverage check above
+# exercises. webhooks.enabled must wire the serving-cert mount into ALL of
+# them via the same $mtlsMounts/$mtlsVolumes mechanism. daemon defaults
+# service.enabled to false (no explicit service: block), so it is set
+# explicitly here. Also asserts caBundle on both webhook items byte-equals
+# the Secret's ca.crt — doc_of isolates the webhook-cert Secret specifically,
+# since daemon's tlsSelfSigned.enabled=true default renders its own Secret
+# with the same ca.crt/tls.crt/tls.key key names.
+if out=$("$RENDER" daemon --set service.enabled=true --set webhooks.enabled=true \
+    --set 'webhooks.validating[0].name=validate.example.com' \
+    --set 'webhooks.validating[0].path=/validate' \
+    --set 'webhooks.validating[0].rules[0].apiGroups[0]=' \
+    --set 'webhooks.validating[0].rules[0].apiVersions[0]=v1' \
+    --set 'webhooks.validating[0].rules[0].operations[0]=CREATE' \
+    --set 'webhooks.validating[0].rules[0].resources[0]=pods' \
+    --set 'webhooks.mutating[0].name=mutate.example.com' \
+    --set 'webhooks.mutating[0].path=/mutate' \
+    --set 'webhooks.mutating[0].rules[0].apiGroups[0]=' \
+    --set 'webhooks.mutating[0].rules[0].apiVersions[0]=v1' \
+    --set 'webhooks.mutating[0].rules[0].operations[0]=CREATE' \
+    --set 'webhooks.mutating[0].rules[0].resources[0]=pods' 2>&1); then
+  validate_render "webhooks mount coverage (daemon, per-container)" "$out"
+  webhook_mounts=$(grep -c 'mountPath: /etc/webhook-tls$' <<<"$out" || true)
+  if [[ "$webhook_mounts" -eq 4 ]]; then
+    echo "  OK: webhook-tls mount present in all 4 containers"
+  else
+    echo "  FAIL: expected 4 webhook-tls mounts across containers, got $webhook_mounts"; fail=1
+  fi
+  secret_doc=$(doc_of "Secret" "t-daemon-webhook-cert" <<<"$out")
+  ca_crt=$(grep '^  ca\.crt: ' <<<"$secret_doc" | awk '{print $2}')
+  bundle_count=$(grep -c "^      caBundle: $ca_crt\$" <<<"$out" || true)
+  if [[ -n "$ca_crt" && "$bundle_count" -eq 2 ]]; then
+    echo "  OK: caBundle byte-equals the Secret's ca.crt on both webhook items"
+  else
+    echo "  FAIL: expected 2 caBundle occurrences equal to ca.crt, got $bundle_count (ca_crt empty: $([[ -z "$ca_crt" ]] && echo yes || echo no))"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for webhooks mount coverage check"; echo "$out" | tail -5; fail=1
 fi
 
 echo "==> hook script source guard"

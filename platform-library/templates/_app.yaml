@@ -78,6 +78,47 @@ renders in that case, so these checks would otherwise silently never run.
 {{- include "platform.emit" (include "platform.mtls" .) }}
 {{- end }}
 
+{{- /*
+webhooks guards. Nested under webhooks.enabled (unlike the tlsSelfSigned.mtls
+guards above, which have their own independent sub-flag) since webhooks has
+no separate sub-flag — platform.webhooks itself never renders when disabled,
+so these checks would otherwise never run.
+*/}}
+{{- if .Values.webhooks.enabled -}}
+{{- if not .Values.service.enabled -}}
+{{- fail (printf "webhooks.enabled is true but service.enabled is false: clientConfig.service on every webhook item targets the release Service %q, which would not exist. Set service.enabled: true, or disable webhooks." (include "platform.fullname" .)) -}}
+{{- end -}}
+{{- if and (not .Values.webhooks.validating) (not .Values.webhooks.mutating) -}}
+{{- fail "webhooks.enabled is true but both webhooks.validating and webhooks.mutating are empty: at least one webhook entry is required, e.g.\n  webhooks:\n    validating:\n      - name: validate.example.com\n        path: /validate\n        rules:\n          - apiGroups: [\"\"]\n            apiVersions: [\"v1\"]\n            operations: [\"CREATE\", \"UPDATE\"]\n            resources: [\"pods\"]" -}}
+{{- end -}}
+{{- range $i, $entry := .Values.webhooks.validating -}}
+{{- if not $entry.name -}}
+{{- fail (printf "webhooks.validating[%d].name is required." $i) -}}
+{{- end -}}
+{{- if not $entry.path -}}
+{{- fail (printf "webhooks.validating[%d].path is required." $i) -}}
+{{- end -}}
+{{- if not $entry.rules -}}
+{{- fail (printf "webhooks.validating[%d].rules is required and must be non-empty." $i) -}}
+{{- end -}}
+{{- end -}}
+{{- range $i, $entry := .Values.webhooks.mutating -}}
+{{- if not $entry.name -}}
+{{- fail (printf "webhooks.mutating[%d].name is required." $i) -}}
+{{- end -}}
+{{- if not $entry.path -}}
+{{- fail (printf "webhooks.mutating[%d].path is required." $i) -}}
+{{- end -}}
+{{- if not $entry.rules -}}
+{{- fail (printf "webhooks.mutating[%d].rules is required and must be non-empty." $i) -}}
+{{- end -}}
+{{- end -}}
+{{- end }}
+
+{{- if .Values.webhooks.enabled }}
+{{- include "platform.emit" (include "platform.webhooks" .) }}
+{{- end }}
+
 {{- if .Values.persistence.enabled }}
 {{- include "platform.emit" (include "platform.pvc" .) }}
 {{- end }}

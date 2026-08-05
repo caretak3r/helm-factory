@@ -367,6 +367,11 @@ present a client cert is as broken as one unhardened one. Computed once here
 so it can feed both the main container's $mounts below and the
 hardenContainers calls for initContainers/sidecars. Empty lists when
 disabled, so this is a no-op on the byte-identical non-mtls path.
+
+The webhook serving cert (webhooks.enabled) rides this SAME $mtlsMounts/
+$mtlsVolumes mechanism below, for the same per-container coverage reason —
+an admission webhook server running as a sidecar needs its serving cert as
+much as the main container does.
 */ -}}
 {{- $mtlsMounts := list -}}
 {{- $mtlsVolumes := list -}}
@@ -386,6 +391,10 @@ disabled, so this is a no-op on the byte-identical non-mtls path.
     {{- $mtlsMounts = append $mtlsMounts (dict "name" "mtls-ca-bundle" "mountPath" (printf "%s/ca" $basePath) "readOnly" true) -}}
     {{- $mtlsVolumes = append $mtlsVolumes (dict "name" "mtls-ca-bundle" "configMap" (dict "name" (printf "%s-ca-bundle" (include "platform.fullname" $ctx)) "defaultMode" 0444)) -}}
   {{- end }}
+{{- end -}}
+{{- if $ctx.Values.webhooks.enabled }}
+  {{- $mtlsMounts = append $mtlsMounts (dict "name" "webhook-tls" "mountPath" $ctx.Values.webhooks.certMountPath "readOnly" true) -}}
+  {{- $mtlsVolumes = append $mtlsVolumes (dict "name" "webhook-tls" "secret" (dict "secretName" (printf "%s-webhook-cert" (include "platform.fullname" $ctx)) "defaultMode" 0400)) -}}
 {{- end -}}
 metadata:
   labels:

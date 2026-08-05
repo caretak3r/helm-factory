@@ -1,0 +1,163 @@
+{{- define "platform.webhooks" -}}
+{{- if .Values.webhooks.enabled -}}
+{{- $top := . -}}
+{{- $fullname := include "platform.fullname" . -}}
+{{- $svcName := $fullname -}}
+{{- $secretName := printf "%s-webhook-cert" $fullname -}}
+{{- $objName := printf "%s-%s" .Release.Namespace $fullname -}}
+{{- $dnsNames := list (printf "%s.%s.svc" $svcName .Release.Namespace) (printf "%s.%s.svc.cluster.local" $svcName .Release.Namespace) -}}
+{{- /*
+Whole-Secret lookup/reuse, same idiom as tlsSelfSigned: the CA and the
+serving cert it signs must stay one consistent set (the caBundle stamped
+into the webhook items below is byte-identical to this Secret's ca.crt), so
+either ALL four keys are reused from the existing Secret or ALL four are
+regenerated together in this render pass — never a partial mix. `lookup`
+returns an empty dict during `helm template` / client-side --dry-run, so
+offline renders always regenerate; real install/upgrade and
+`--dry-run=server` perform the lookup and reuse until
+webhooks.ca.renewBeforeDays of the recorded expiry.
+*/ -}}
+{{- $existing := lookup "v1" "Secret" .Release.Namespace $secretName -}}
+{{- $hasData := and $existing $existing.data (index $existing.data "ca.crt") (index $existing.data "ca.key") (index $existing.data "tls.crt") (index $existing.data "tls.key") -}}
+{{- $existingNotAfter := "" -}}
+{{- if and $existing $existing.metadata $existing.metadata.annotations (hasKey $existing.metadata.annotations "platform/tls-not-after") -}}
+  {{- $existingNotAfter = index $existing.metadata.annotations "platform/tls-not-after" -}}
+{{- end -}}
+{{- $validity := int .Values.webhooks.ca.validityDays -}}
+{{- $renewBeforeDays := int .Values.webhooks.ca.renewBeforeDays -}}
+{{- $canReuse := false -}}
+{{- if and $hasData (ne $existingNotAfter "") -}}
+  {{- $expiryEpoch := $existingNotAfter | toDate "2006-01-02T15:04:05Z07:00" | unixEpoch -}}
+  {{- $renewThresholdEpoch := now | dateModify (printf "%dh" (mul $renewBeforeDays 24)) | unixEpoch -}}
+  {{- $canReuse = lt $renewThresholdEpoch $expiryEpoch -}}
+{{- end -}}
+
+{{- $caCrtB64 := "" -}}
+{{- $caKeyB64 := "" -}}
+{{- $crt := "" -}}
+{{- $key := "" -}}
+{{- $notAfter := "" -}}
+{{- if $canReuse -}}
+  {{- /* Values from lookup .data are already base64-encoded — do NOT b64enc. */ -}}
+  {{- $caCrtB64 = index $existing.data "ca.crt" -}}
+  {{- $caKeyB64 = index $existing.data "ca.key" -}}
+  {{- $crt = index $existing.data "tls.crt" -}}
+  {{- $key = index $existing.data "tls.key" -}}
+  {{- $notAfter = $existingNotAfter -}}
+{{- else -}}
+  {{- $ca := genCA (printf "%s-webhook-ca" $fullname) $validity -}}
+  {{- $caCrtB64 = $ca.Cert | b64enc -}}
+  {{- $caKeyB64 = $ca.Key | b64enc -}}
+  {{- $cert := genSignedCert (first $dnsNames) nil $dnsNames $validity $ca -}}
+  {{- $crt = $cert.Cert | b64enc -}}
+  {{- $key = $cert.Key | b64enc -}}
+  {{- $notAfter = now | dateModify (printf "%dh" (mul $validity 24)) | date "2006-01-02T15:04:05Z07:00" -}}
+{{- end -}}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $secretName }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+    {{- range $k, $v := .Values.commonLabels }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+  annotations:
+    platform/tls-not-after: {{ $notAfter | quote }}
+    {{- range $k, $v := .Values.commonAnnotations }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+type: Opaque
+data:
+  ca.crt: {{ $caCrtB64 }}
+  ca.key: {{ $caKeyB64 }}
+  tls.crt: {{ $crt }}
+  tls.key: {{ $key }}
+{{- if .Values.webhooks.validating }}
+---
+apiVersion: {{ include "platform.capabilities.apiVersionForOrDefault" (list . "ValidatingWebhookConfiguration") }}
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: {{ $objName }}
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+    {{- range $k, $v := .Values.commonLabels }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+  {{- $vAnnotations := dict -}}
+  {{- range $k, $v := .Values.commonAnnotations }}
+    {{- $_ := set $vAnnotations $k $v -}}
+  {{- end }}
+  {{- if gt (len $vAnnotations) 0 }}
+  annotations:
+    {{- range $k, $v := $vAnnotations }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+  {{- end }}
+webhooks:
+{{- range $entry := .Values.webhooks.validating }}
+  - name: {{ $entry.name }}
+    admissionReviewVersions: {{- toYaml ($entry.admissionReviewVersions | default (list "v1")) | nindent 6 }}
+    clientConfig:
+      service:
+        namespace: {{ $top.Release.Namespace }}
+        name: {{ $svcName }}
+        port: {{ $top.Values.webhooks.port }}
+        path: {{ $entry.path }}
+      caBundle: {{ $caCrtB64 }}
+    rules: {{- toYaml $entry.rules | nindent 6 }}
+    failurePolicy: {{ $entry.failurePolicy | default "Fail" }}
+    sideEffects: {{ $entry.sideEffects | default "None" }}
+    timeoutSeconds: {{ $entry.timeoutSeconds | default 10 }}
+    matchPolicy: {{ $entry.matchPolicy | default "Equivalent" }}
+    namespaceSelector: {{- toYaml ($entry.namespaceSelector | default dict) | nindent 6 }}
+    objectSelector: {{- toYaml ($entry.objectSelector | default dict) | nindent 6 }}
+{{- end }}
+{{- end }}
+{{- if .Values.webhooks.mutating }}
+---
+apiVersion: {{ include "platform.capabilities.apiVersionForOrDefault" (list . "MutatingWebhookConfiguration") }}
+kind: MutatingWebhookConfiguration
+metadata:
+  name: {{ $objName }}
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+    {{- range $k, $v := .Values.commonLabels }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+  {{- $mAnnotations := dict -}}
+  {{- range $k, $v := .Values.commonAnnotations }}
+    {{- $_ := set $mAnnotations $k $v -}}
+  {{- end }}
+  {{- if gt (len $mAnnotations) 0 }}
+  annotations:
+    {{- range $k, $v := $mAnnotations }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+  {{- end }}
+webhooks:
+{{- range $entry := .Values.webhooks.mutating }}
+  - name: {{ $entry.name }}
+    admissionReviewVersions: {{- toYaml ($entry.admissionReviewVersions | default (list "v1")) | nindent 6 }}
+    clientConfig:
+      service:
+        namespace: {{ $top.Release.Namespace }}
+        name: {{ $svcName }}
+        port: {{ $top.Values.webhooks.port }}
+        path: {{ $entry.path }}
+      caBundle: {{ $caCrtB64 }}
+    rules: {{- toYaml $entry.rules | nindent 6 }}
+    failurePolicy: {{ $entry.failurePolicy | default "Fail" }}
+    sideEffects: {{ $entry.sideEffects | default "None" }}
+    timeoutSeconds: {{ $entry.timeoutSeconds | default 10 }}
+    matchPolicy: {{ $entry.matchPolicy | default "Equivalent" }}
+    namespaceSelector: {{- toYaml ($entry.namespaceSelector | default dict) | nindent 6 }}
+    objectSelector: {{- toYaml ($entry.objectSelector | default dict) | nindent 6 }}
+    {{- if $entry.reinvocationPolicy }}
+    reinvocationPolicy: {{ $entry.reinvocationPolicy }}
+    {{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
