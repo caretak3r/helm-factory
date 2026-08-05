@@ -324,6 +324,15 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
   README's Releasing section documents `cosign verify` for consumers and
   drops the "future work" caveat (hf-j30).
 
+### Added — GitHub Release on tag
+
+- A new `github-release` job runs after `release` succeeds (gate, GHCR push,
+  and cosign signing all green): it extracts the tag's `## [X.Y.Z]` section
+  from `CHANGELOG.md` and runs `gh release create`, attaching the packaged
+  chart `.tgz`. Skips with no error if the Release already exists, so a
+  rerun is idempotent, and holds only `contents: write` — nothing else
+  (helm-factory-q7t).
+
 ## [2.1.0] - 2026-07-20
 
 Correctness batch: thirteen library defects fixed since 2.0.0, all with new

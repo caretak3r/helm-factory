@@ -120,3 +120,59 @@ jobs:
         run: |
           cosign login ghcr.io --username "$GH_ACTOR" --password "$GH_TOKEN"
           cosign sign --yes "${{ steps.push.outputs.chart_ref }}@${{ steps.push.outputs.digest }}"
+
+      - name: Upload packaged chart for the GitHub Release job
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: chart-tgz
+          path: dist/platform-*.tgz
+          retention-days: 7
+
+  github-release:
+    name: create GitHub Release
+    needs: release # only runs once the gate + GHCR push + signing all succeed
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Download packaged chart
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: chart-tgz
+          path: dist/
+
+      - name: Extract CHANGELOG excerpt for this version
+        run: |
+          tag_version="${GITHUB_REF_NAME#v}"
+          heading="## [${tag_version}]"
+          if ! excerpt=$(awk -v heading="$heading" '
+            index($0, heading) == 1 { found=1; next }
+            found && index($0, "## [") == 1 { exit }
+            found { print }
+          ' CHANGELOG.md); then
+            echo "::error::failed to extract a CHANGELOG excerpt for ${tag_version}"
+            exit 1
+          fi
+          if [[ -z "$excerpt" ]]; then
+            echo "::error::CHANGELOG excerpt for ${tag_version} was empty — heading '${heading}' not found"
+            exit 1
+          fi
+          printf '%s\n' "$excerpt" > /tmp/release-notes.md
+
+      - name: Create GitHub Release (skip if it already exists)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $GITHUB_REF_NAME already exists — skipping (idempotent rerun)"
+            exit 0
+          fi
+          gh release create "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file /tmp/release-notes.md \
+            dist/platform-*.tgz
