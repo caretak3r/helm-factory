@@ -1,0 +1,234 @@
+---
+title: Values reference
+description: Every configurable key, organized by feature block.
+---
+
+import { Callout } from 'nextra/components'
+
+# Values reference
+
+Every default below lives in `platform-library/values.yaml`, nested under
+`exports.defaults` and exported to the consumer's root scope by
+`import-values: [defaults]`. Set any of these directly in the consumer
+chart's own `values.yaml` — there's no separate namespace to reach into.
+Enums, patterns, and required-key rules come from
+`values.schema.reference.json`, the schema every generated consumer chart
+ships as its own `values.schema.json`.
+
+<Callout type="info">
+This page covers the keys teams actually touch. `values.yaml` is the
+line-by-line source of truth — every key carries an inline comment there,
+and blocks with a deep-dive page ([Security features](/security-features/),
+[Security model](/security-model/)) link out instead of repeating.
+</Callout>
+
+## Naming & global
+
+| Key | Default | Notes |
+|---|---|---|
+| `nameOverride` | `""` | Overrides the chart-name portion of generated names. |
+| `fullnameOverride` | `""` | Overrides the full release-derived name outright. |
+| `global.imageRegistry` | `""` | Prefixed onto `image.registry` when set — for a mirror/proxy registry shared across many charts. |
+| `global.imagePullPolicy` / `global.imagePullSecrets` | `""` / `[]` | Chart-wide fallback; resource-specific values win (invariant 3, [Design invariants](/design-invariants/)). |
+
+## Image
+
+```yaml
+image:
+  registry: docker.io
+  repository: ""      # required
+  tag: ""              # tag or digest required — no `latest` fallback
+  digest: ""           # wins over tag when both are set
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+```
+
+The schema rejects `tag: latest` outright — floating tags aren't a
+supported deployment story here. Set a digest (`sha256:...`, preferred,
+immutable) or a real semver/build tag.
+
+## Workload
+
+| Key | Default | Notes |
+|---|---|---|
+| `workload.type` | `Deployment` | `Deployment`, `StatefulSet`, or `DaemonSet` (enum). |
+| `replicaCount` | `1` | Ignored for DaemonSet. |
+| `revisionHistoryLimit` | `10` | |
+| `minReadySeconds` | `0` | Omitted from the manifest at `0`. |
+| `ports` | one `http`/`8080`/`TCP` entry | Container ports; `name` is what `service.ports[].targetPort` and probes reference. |
+| `resources` | `{}` | Standard `requests`/`limits`. |
+| `resizePolicy` | `[]` | In-place vertical scaling (`InPlacePodVerticalScaling`); each entry `{resourceName: cpu\|memory, restartPolicy: NotRequired\|RestartContainer}`. |
+| `updateStrategy` | `RollingUpdate`, `25%`/`25%` | Deployment-shaped; StatefulSet/DaemonSet have their own `statefulSet.updateStrategy`/`daemonSet.updateStrategy`. |
+| `command` / `args` | `[]` / `[]` | Overrides the image entrypoint/cmd. |
+
+**Probes** (`startupProbe`, `livenessProbe`, `readinessProbe`) are each
+`enabled: false` by default with a sensible `httpGet` shape pre-filled —
+flip `enabled: true` and adjust `path`/`port` rather than writing the block
+from scratch.
+
+**Init containers and sidecars** (`initContainers`, `sidecars`, each
+`{enabled, containers: []}`) accept full native container specs under
+`containers`; every container in both lists goes through the same
+hardening pass as the primary container (see
+[Security model](/security-model/)).
+
+## Service
+
+```yaml
+service:
+  enabled: false
+  type: ClusterIP        # ClusterIP | NodePort | LoadBalancer | ExternalName
+  ports:
+    - name: http
+      port: 80
+      targetPort: http    # matches a ports[].name above
+      protocol: TCP
+```
+
+`type: ExternalName` is a conditional shape in the schema: set
+`externalName` and the Service renders only `type` + `externalName` —
+`ports` and the selector are omitted, since an ExternalName Service is a
+DNS CNAME, not a proxied backend. The dual-stack/traffic-routing long tail
+(`ipFamilies`, `ipFamilyPolicy`, `internalTrafficPolicy`,
+`trafficDistribution`, `publishNotReadyAddresses`) is unset by default —
+each field only renders if you set it, and `publishNotReadyAddresses` also
+flows into a StatefulSet's managed headless Service if one is generated.
+
+## Ingress & Gateway API
+
+`ingress.hostname` follows an RFC 1123 DNS label pattern. TLS is opt-in:
+setting `ingress.tls: true` with a hostname resolves the Secret name in
+order — `ingress.existingSecret`, else the release-managed `<fullname>-tls`
+Secret (if `tlsSelfSigned.enabled` or `certificate.enabled`), else the
+conventional `<hostname>-tls`, which you provision yourself. Serving a
+hostname with `tls: false` prints an install-time NOTES warning.
+
+`gatewayApi.enabled` covers `httpRoute` and `grpcRoute`, negotiated
+independently (see [Capability catalog](/capability-catalog/)) — each has
+its own nested `enabled`, `hostnames`, `parentRefs`, `matches`/`filters`,
+`backendRefs`, and a `specOverrides` escape hatch. `parentRefs` entries are
+schema-validated: `kind: Gateway` requires `name`; `kind: HTTPRoute` (route
+delegation) forbids it.
+
+## TLS & mTLS
+
+Three independent TLS features, don't confuse them:
+
+| Block | Purpose | Detail |
+|---|---|---|
+| `certificate.*` | cert-manager `Certificate` for a real issuer (ACME, internal CA) | this page, below |
+| `tlsSelfSigned.*` | dev-only self-signed server cert, plus optional client certs under `tlsSelfSigned.mtls.*` | [Security features → mTLS](/security-features/mtls/) |
+| `mtls.*` (top level) | Istio `PeerAuthentication`/`AuthorizationPolicy` mesh policy | [Security model](/security-model/) |
+
+`certificate.issuerKind` is `ClusterIssuer` by default (cluster-scoped);
+switch to `Issuer` for a namespaced, multi-tenant cert-manager setup — the
+schema requires `issuer` to be set whichever kind you pick. `certificate`
+and `tlsSelfSigned` are mutually exclusive when they'd write the same
+Secret name — enabling both against the same `secretName` fails closed
+(row 3½ of the [dispatch table](/architecture/#tier-1-dispatch-order)).
+
+## Autoscaling
+
+```yaml
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPU: 80
+  targetMemory: ""
+  metrics: []      # custom/external metrics, verbatim
+  behavior: {}     # HPA scaling behavior, verbatim
+
+verticalAutoscaling:
+  enabled: false
+  updateMode: Auto   # Auto | Recreate | Initial | Off
+  resourcePolicy: {}
+```
+
+Enabling both HPA and VPA to act on CPU/memory at the same time fails
+closed *unless* `verticalAutoscaling.updateMode: "Off"` (recommend-only
+mode) — see [Design invariants](/design-invariants/). VPA is CRD-backed
+(`autoscaling.k8s.io/v1`) and gated like any other optional Kind.
+
+## PDB, NetworkPolicy, ResourceQuota, LimitRange
+
+`podDisruptionBudget.minAvailable`/`maxUnavailable` are mutually
+exclusive — set exactly one, or leave both empty for the library's default
+(`minAvailable: 1`). `networkPolicy.policyTypes` defaults to `[Ingress,
+Egress]`; `ingress`/`egress` are verbatim rule-list passthroughs.
+`resourceQuota.hard` and `limitRange.{default,defaultRequest,max,min}` are
+opt-in namespace-QoS governance — the library doesn't size these for you,
+they're a verbatim `spec` passthrough sized off your own workload.
+
+## ServiceAccount & RBAC
+
+A dedicated ServiceAccount is created by default
+(`serviceAccount.create: true`) with `automountServiceAccountToken: false`
+— apps that call the Kubernetes API must opt in explicitly.
+`serviceAccount.name` follows the same RFC 1123 pattern as other generated
+names. `rbac.enabled: true` with an empty `rules` list fails closed (an
+empty Role is a silent 403 discovered later, not a template-time error) —
+and RBAC here is namespaced only by design; cluster-scoped grants go
+through `extraObjects` + `allowClusterScopedExtras`. The schema also
+rejects `nonResourceURLs` on these rules — that's a ClusterRole-only
+field, and this block only ever renders a namespaced Role.
+
+## Jobs & CronJob
+
+`jobs.preInstall`/`jobs.postInstall` are Helm hook Jobs (`hookWeight: -5`
+and `5` respectively) — each needs `script`, `scriptFile`, or `command` to
+do anything. The hook Job's image inherits from the top-level `image:`
+block when `jobs.image.*` is left empty (digest inherits only when the
+repository matches). `cronJob.*` is a separate, always-standalone
+CronJob — `schedule` (cron syntax), `concurrencyPolicy`
+(`Allow`/`Forbid`/`Replace`), and history/suspend controls.
+
+## Persistence, StatefulSet, DaemonSet
+
+`persistence.enabled` adds a PVC (`accessModes: [ReadWriteOnce]`, `size:
+8Gi` by default) or an `existingClaim` reference. `statefulSet.*` covers
+`serviceName` (auto-managed headless Service if left unset — see
+[Architecture](/architecture/)), `podManagementPolicy`, and
+`persistentVolumeClaimRetentionPolicy` (`Retain`/`Delete` per
+`whenDeleted`/`whenScaled`, defaulting to the Kubernetes `Retain`/`Retain`
+behavior when unset). `daemonSet.*` covers its own `updateStrategy` and
+scheduling fields.
+
+## Monitors (Prometheus Operator)
+
+`serviceMonitor`, `podMonitor`, and `prometheusRule` are each independent,
+CRD-gated (`monitoring.coreos.com/v1`) opt-ins — `port`/`path` for the
+first two, a verbatim `groups` passthrough (alerting + recording rules)
+for the third. All three accept an optional `scheme`, Prometheus Operator
+`tlsConfig` (for scraping mTLS-protected targets — pairs naturally with
+this library's `mtls.*` or `tlsSelfSigned.mtls.*`), and `sampleLimit`.
+
+## Admission webhooks & generated secrets
+
+Both are 2.x feature blocks with their own deep-dive pages in
+[Security features](/security-features/): `webhooks.*`
+(`ValidatingWebhookConfiguration`/`MutatingWebhookConfiguration`, fails
+closed on a missing `name`/`path`/`rules`) and `generatedSecrets` (a list
+of cluster-generated credential Secrets, reconciled per-key on upgrade).
+
+## Labels, annotations & precedence
+
+`commonLabels`/`commonAnnotations` apply chart-wide; `labels`/`annotations`
+apply to the workload object specifically; `podLabels`/`podAnnotations`
+apply to the pod template. On a key collision, resource-specific always
+wins over `common*`, which wins over any `global` value a consumer sets —
+see [Design invariants](/design-invariants/) for the precedence rule and
+[Conventions & tricks](/conventions-and-tricks/) for the template idiom
+that implements it correctly.
+
+## Capability negotiation & the long tail
+
+`capabilities.apiVersions` force-assumes API groups for offline renders
+(full mechanics: [Capability catalog](/capability-catalog/)).
+`extraObjects` (a map of `Kind -> [specs]`) and `extraManifests` (a raw
+list) are the tier-2/tier-3 escape hatches — see
+[Architecture](/architecture/#the-generic-renderer-platformgenericresource)
+for the renderer contract and [Examples & recipes](/examples-recipes/) for
+a worked `extraObjects` entry. `allowClusterScopedExtras: false` by
+default — a namespaced app chart granting itself a cluster-scoped object
+is a deliberate, reviewed opt-in, not a default.

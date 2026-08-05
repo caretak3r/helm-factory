@@ -1,0 +1,84 @@
+---
+title: mTLS (dev certificates)
+description: Self-signed client certificates chained to a persisted CA, for local mTLS testing.
+---
+
+import { Callout } from 'nextra/components'
+
+# mTLS (dev certificates)
+
+`tlsSelfSigned.mtls` issues client certificates chained to the same
+self-signed CA used for the server certificate, for testing mutual TLS
+locally without a real PKI. This is a different feature from the top-level
+`mtls.*` block, which configures Istio mesh policy — see
+[Security model](/security-model/) for that one.
+
+<Callout type="error">
+**Dev-only.** Requires `tlsSelfSigned.enabled: true`. For production TLS,
+use the cert-manager `certificate` block instead — see
+[Values reference](/values-reference/#tls--mtls).
+</Callout>
+
+## The CA gets persisted
+
+The base `tlsSelfSigned` flow signs the server certificate with a
+throwaway CA and discards the signer — there's nothing else that needs to
+chain to it. mTLS needs the *same* CA to keep signing client certificates
+across upgrades, so enabling `tlsSelfSigned.mtls.enabled: true` persists
+the CA as its own Secret, `<fullname>-ca` (`kubernetes.io/tls`), reused on
+subsequent upgrades with the same lookup/expiry-reuse rules as the server
+Secret. Enabling mTLS after the server certificate already exists
+triggers a one-time rotation of the server certificate so it chains to
+the now-persisted CA — a `helm upgrade` NOTES message flags this.
+
+## Client certificates
+
+```yaml
+tlsSelfSigned:
+  enabled: true
+  mtls:
+    enabled: true
+    clients:
+      - name: worker            # -> Secret <fullname>-mtls-client-worker
+        commonName: ""          # defaults to the entry name
+        dnsNames: []
+```
+
+Each entry issues one client certificate, `Secret
+<fullname>-mtls-client-<name>` (`kubernetes.io/tls`), chained to the
+persisted CA. `commonName` defaults to the entry's `name`; `dnsNames` is
+optional. Client certificates follow the same reuse-until-near-expiry
+lifecycle as the server and CA certificates, keyed off the same
+`tlsSelfSigned.validityDays`/`renewBeforeDays` — there are no separate
+knobs per client.
+
+## Trust bundle and mounts
+
+```yaml
+tlsSelfSigned:
+  mtls:
+    trustBundle:
+      enabled: true      # default
+    mount:
+      enabled: true      # default
+      basePath: /etc/platform-tls
+```
+
+`trustBundle.enabled` (default `true`) renders a ConfigMap,
+`<fullname>-ca-bundle`, holding just `ca.crt` — for consumers that need to
+trust the CA without needing a client identity of their own.
+`mount.enabled` (default `true`) injects the server certificate pair,
+every configured client certificate pair, and the trust bundle (when
+enabled) as read-only volumes into **every** container in the pod — main,
+sidecars, init containers — the same per-container coverage the hardening
+pass uses, under `basePath` (default `/etc/platform-tls`, laid out as
+`server/`, `client-<name>/`, and `ca/` subdirectories).
+
+## Offline renders
+
+Same rule as every self-signed/generated feature: `lookup` returns nothing
+under `helm template` or client-side `--dry-run`, so an offline render
+always generates a fresh, throwaway CA and certificate set. This is
+expected — the golden tests redact this data — but it does mean two
+successive offline renders of the same values never produce byte-identical
+certificate material, only identical *structure*.

@@ -1,0 +1,197 @@
+---
+title: Getting started
+description: Scaffold a chart, add the platform dependency, and render your first release.
+---
+
+import { Steps, Callout } from 'nextra/components'
+
+# Getting started
+
+`platform` (chart name `platform`, directory `platform-library/`, `type:
+library`) is a **pure** Helm library chart: it ships no installable
+templates of its own. Product charts depend on it and render everything
+through a single entrypoint, `platform.render`. Service teams never write
+manifests — they set values, and the library generates the resources.
+
+The library targets **Kubernetes 1.34–1.36** and **Helm 4.0+**. The support
+policy is n-2: the latest supported Kubernetes minor plus the two behind it.
+Upgrading a chart from library v1? See the [Migration guide](/migration-guide/).
+
+## Fastest path: scaffold a new chart
+
+<Steps>
+
+### Scaffold
+
+```bash
+scripts/new-app-chart.sh my-service
+```
+
+Run from the repository root, this generates `my-service/` already wired to
+the library: a `Chart.yaml` with the `platform` dependency and
+`import-values: [defaults]`, a one-line `templates/app.yaml` entrypoint, an
+overrides-only `values.yaml`, a `templates/NOTES.txt`, and a
+`values.schema.json` copied from the library's reference schema. By default
+it points the dependency at `file://../platform-library` (relative to the
+new chart), which is the right choice for local development inside this
+repository. For a real deployment, pass `--repo oci://ghcr.io/caretak3r/charts
+--version "^2.0.0"` to point at the published chart instead.
+
+### Set an image
+
+The scaffolded `values.yaml` needs an `image.repository` and either a
+`tag` or a `digest` before it renders — the library has no default image
+and a floating `latest` tag is rejected. Edit `my-service/values.yaml`:
+
+```yaml filename="my-service/values.yaml"
+image:
+  repository: example/my-service
+  tag: "1.0.0"
+
+service:
+  enabled: true
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
+```
+
+### Render
+
+```bash
+helm dependency update my-service
+helm template my-service my-service
+```
+
+`helm dependency update` resolves the `platform` dependency (from the local
+path or the OCI registry) into `my-service/charts/`. `helm template` then
+renders the full manifest set to stdout — no cluster required for a basic
+render like this one.
+
+</Steps>
+
+## Doing it by hand
+
+The scaffold script is optional; the four pieces it wires up are simple
+enough to add to an existing chart directly.
+
+### 1. Add the dependency
+
+```yaml filename="Chart.yaml"
+apiVersion: v2
+name: my-service
+version: 1.0.0
+dependencies:
+  - name: platform                       # the chart name, not "platform-library"
+    version: "^2.0.0"
+    repository: "oci://ghcr.io/caretak3r/charts"
+    import-values:
+      - defaults                         # REQUIRED — see the callout below
+```
+
+### 2. Add the entrypoint template
+
+The library is pure; your chart renders it. Create exactly one template:
+
+```gotemplate filename="templates/app.yaml"
+{{ include "platform.render" . }}
+```
+
+Any additional non-underscore template file in your consumer chart works
+fine — `platform.render` is just one include among your own templates. What
+you should not do is hand-write a second copy of an object the library
+already generates (a second Service, a second Deployment): you'll get
+duplicate objects at apply time.
+
+### 3. Configure your service
+
+```yaml filename="values.yaml"
+# values land at the ROOT of this file because of import-values: [defaults]
+image:
+  repository: gcr.io/my-project/my-service
+  tag: v1.0.0
+
+service:
+  enabled: true
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+
+ingress:
+  enabled: true
+  hostname: my-service.example.com
+```
+
+### 4. Render and deploy
+
+```bash
+helm dependency update .
+helm template my-service .
+helm install my-service .
+```
+
+<Callout type="error">
+**The `import-values: [defaults]` footgun.** This is the single most common
+integration failure. The library ships all of its defaults nested under
+`exports.defaults` in its own `values.yaml`. Without `import-values:
+[defaults]` on the dependency entry, those defaults never reach your
+consumer chart's root values scope — every value the templates read comes
+back empty, and you get either a near-empty render or `nil` template
+errors with no obvious cause. If a fresh consumer chart renders almost
+nothing, check this line first.
+</Callout>
+
+## Rendering CRD-gated features without a cluster
+
+`helm template` run with no live cluster gives Helm a threadbare API
+discovery set: built-in Kubernetes Kinds still render (see
+[Capability catalog](/capability-catalog/)), but CRD-backed objects —
+Certificate, Gateway API routes, ServiceMonitor, PodMonitor, PrometheusRule,
+VerticalPodAutoscaler, and anything your `extraObjects` place under a CRD
+Kind — skip themselves instead of rendering a manifest the cluster can't
+accept.
+
+To exercise those features locally or in CI, force-assume the groups you
+use, either in values:
+
+```yaml filename="values.yaml"
+capabilities:
+  apiVersions:
+    - gateway.networking.k8s.io/v1
+    - cert-manager.io/v1
+    - monitoring.coreos.com/v1
+```
+
+or on the command line, with `--api-versions` and `--kube-version`:
+
+```bash
+helm template my-service my-service \
+  --api-versions cert-manager.io/v1/Certificate \
+  --kube-version 1.34
+```
+
+<Callout type="warning">
+**`--api-versions` needs the full `group/version/Kind` form.** Helm's
+`.Capabilities.APIVersions.Has` — what the library's gate calls under the
+hood — is an exact-string membership test. A set holding only
+`cert-manager.io/v1` never answers true for `cert-manager.io/v1/Certificate`.
+Passing the bare `group/version` form is the nastiest kind of failure: a
+clean `exit 0` with the object silently missing from the output. Only the
+`capabilities.apiVersions` **values** list (not the CLI flag) accepts the
+bare `group/version` form, because the library matches each entry there
+against the queried Kind's `group/version` on your behalf.
+</Callout>
+
+## Where to go next
+
+- [Architecture](/architecture/) — the render pipeline and dispatch order,
+  with diagrams.
+- [Values reference](/values-reference/) — every configurable key.
+- [Capability catalog](/capability-catalog/) — which Kinds render and how
+  `apiVersion` negotiation works.
+- [Design invariants](/design-invariants/) — the rules a change to this
+  library must never break.
+- [Examples & recipes](/examples-recipes/) — worked examples per workload
+  type.

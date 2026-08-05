@@ -1,0 +1,27 @@
+---
+title: Security features
+description: Three cluster-generated credential and identity features — one deep dive each.
+---
+
+# Security features
+
+Three feature blocks generate credential or identity material rather than
+just consuming it from values. Each has its own reuse-on-upgrade lifecycle
+and its own fail-closed rules, detailed on its own page:
+
+- **[Generated secrets](/security-features/generated-secrets/)** — Opaque
+  Secrets filled with cluster-generated passwords or bcrypt htpasswd
+  lines, reconciled per-key on every upgrade.
+- **[mTLS](/security-features/mtls/)** — dev-only self-signed client
+  certificates chained to a persisted CA, for testing mutual TLS locally
+  without a real PKI.
+- **[Webhooks](/security-features/webhooks/)** — admission
+  ValidatingWebhookConfiguration/MutatingWebhookConfiguration objects with
+  a generated serving certificate, fail-closed on missing configuration.
+
+All three share one idiom: `lookup` a previous release's Secret, reuse
+what's still valid, regenerate what isn't, and — because `lookup` returns
+nothing under `helm template` or a client-side `--dry-run` — always
+regenerate everything on an offline render. That's expected, not a bug:
+it's why the golden-snapshot tests redact these Secrets' `data:` fields
+before comparing.
