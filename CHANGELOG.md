@@ -9,6 +9,14 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
 
 ## [Unreleased]
 
+### Fixed — quote `extraObjects` metadata.name and namespace emission
+
+- `platform.genericResource` emitted `metadata.name` and `metadata.namespace`
+  unquoted. Internal correctness fix only — rendered YAML is semantically
+  identical, since K8s names/namespaces are DNS-1123 and hold no
+  YAML-hostile characters — but templated values (via
+  `extraObjects[].template: true`) make quoting the safe default.
+
 ### Added — opt-in tpl expansion for `extraObjects` entries
 
 - Any `extraObjects` entry can now carry a reserved `template: true` control

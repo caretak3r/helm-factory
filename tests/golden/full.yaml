@@ -3,7 +3,7 @@
 apiVersion: scheduling.k8s.io/v1
 kind: PriorityClass
 metadata:
-  name: full-high
+  name: "full-high"
   labels:
     helm.sh/chart: full-0.1.0
     app.kubernetes.io/name: full
@@ -84,8 +84,8 @@ spec:
 apiVersion: v1
 kind: ResourceQuota
 metadata:
-  name: full-quota
-  namespace: default
+  name: "full-quota"
+  namespace: "default"
   labels:
     helm.sh/chart: full-0.1.0
     app.kubernetes.io/name: full
@@ -167,8 +167,8 @@ automountServiceAccountToken: true
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: extra-sa
-  namespace: default
+  name: "extra-sa"
+  namespace: "default"
   labels:
     helm.sh/chart: full-0.1.0
     app.kubernetes.io/name: full
@@ -241,8 +241,8 @@ data:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: extra-config
-  namespace: default
+  name: "extra-config"
+  namespace: "default"
   labels:
     helm.sh/chart: full-0.1.0
     app.kubernetes.io/name: full
@@ -257,8 +257,8 @@ data:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: t-full-scripts
-  namespace: default
+  name: "t-full-scripts"
+  namespace: "default"
   labels:
     helm.sh/chart: full-0.1.0
     app.kubernetes.io/name: full
@@ -282,7 +282,7 @@ metadata:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: full-cluster-reader
+  name: "full-cluster-reader"
   labels:
     helm.sh/chart: full-0.1.0
     app.kubernetes.io/name: full
@@ -335,8 +335,8 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: app-reader
-  namespace: default
+  name: "app-reader"
+  namespace: "default"
   labels:
     helm.sh/chart: full-0.1.0
     app.kubernetes.io/name: full
@@ -381,8 +381,8 @@ subjects:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: app-reader-binding
-  namespace: default
+  name: "app-reader-binding"
+  namespace: "default"
   labels:
     helm.sh/chart: full-0.1.0
     app.kubernetes.io/name: full
