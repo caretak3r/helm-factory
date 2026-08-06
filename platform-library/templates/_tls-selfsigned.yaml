@@ -127,7 +127,7 @@ metadata:
   annotations:
     platform/tls-not-after: {{ $notAfter | quote }}
     {{- range $k, $v := .Values.commonAnnotations }}
-    {{ $k }}: {{ $v | quote }}
+    {{ $k }}: {{ include "platform.tplValue" (dict "ctx" $top "value" $v) | quote }}
     {{- end }}
 type: kubernetes.io/tls
 data:
@@ -149,7 +149,7 @@ metadata:
   annotations:
     platform/tls-not-after: {{ $caNotAfter | quote }}
     {{- range $k, $v := .Values.commonAnnotations }}
-    {{ $k }}: {{ $v | quote }}
+    {{ $k }}: {{ include "platform.tplValue" (dict "ctx" $top "value" $v) | quote }}
     {{- end }}
 type: kubernetes.io/tls
 data:
@@ -204,7 +204,7 @@ metadata:
   annotations:
     platform/tls-not-after: {{ $clientNotAfter | quote }}
     {{- range $k, $v := $top.Values.commonAnnotations }}
-    {{ $k }}: {{ $v | quote }}
+    {{ $k }}: {{ include "platform.tplValue" (dict "ctx" $top "value" $v) | quote }}
     {{- end }}
 type: kubernetes.io/tls
 data:
@@ -233,7 +233,7 @@ metadata:
   {{- $_ := set $bundleAnnotations "platform/generated" "true" }}
   annotations:
     {{- range $k, $v := $bundleAnnotations }}
-    {{ $k }}: {{ $v | quote }}
+    {{ $k }}: {{ include "platform.tplValue" (dict "ctx" $top "value" $v) | quote }}
     {{- end }}
 binaryData:
   ca.crt: {{ $caCrtB64 }}

@@ -998,6 +998,96 @@ else
   echo "  FAIL: render failed for non-flagged extraObjects entry with literal {{ }}"; echo "$out" | tail -3; fail=1
 fi
 
+# tpl: value-prefix expansion (helm-factory-0ou.10), sibling to the
+# extraObjects template: true mechanism above but for flat annotation/env
+# string values. Positive: the full fixture's sentinel-prefixed podAnnotations
+# and envVars map-form values (vault.example/role, NAMESPACE) expand against
+# the release context, the commonAnnotations sentinel expands on a
+# NON-workload document too (Service — pins "one helper, every emission
+# site" beyond just the workload/pod), and the tpl: marker itself never
+# reaches rendered output.
+if out=$("$RENDER" full 2>&1); then
+  validate_render "tpl: value-prefix expansion, positive (full fixture)" "$out"
+  svc_doc=$(doc_of Service t-full <<<"$out")
+  if grep -q 'vault.example/role: "t-app"' <<<"$out" \
+    && grep -A1 'name: NAMESPACE' <<<"$out" | grep -q 'value: "default"' \
+    && grep -q 'platform.example/release: "t"' <<<"$svc_doc"; then
+    echo "  OK: tpl: prefixed podAnnotations/envVars/commonAnnotations values expand against the release context, including on a non-workload document (Service)"
+  else
+    echo "  FAIL: tpl: prefixed values did not expand as expected"; fail=1
+  fi
+  if grep -q 'tpl:' <<<"$out"; then
+    echo "  FAIL: the tpl: sentinel leaked into rendered output"; fail=1
+  else
+    echo "  OK: the tpl: sentinel never leaks into rendered output"
+  fi
+else
+  echo "  FAIL: render failed for full fixture with tpl: prefixed values"; echo "$out" | tail -3; fail=1
+fi
+
+# tpl: value-prefix expansion, shadowed-key precedence: commonAnnotations and
+# podAnnotations both carry a "shadow-test" key (sentinel vs. plain literal).
+# Merge/precedence resolves on the RAW strings first (spec rule 2), so the
+# pod template — where podAnnotations shadows commonAnnotations — must show
+# the literal untouched, while the Deployment's OWN metadata.annotations (no
+# competing podAnnotations there) legitimately shows the commonAnnotations
+# sentinel expanded. Both live in the same document, so assert by exact
+# occurrence count rather than a bare substring grep.
+if out=$("$RENDER" full 2>&1); then
+  deploy_doc=$(doc_of Deployment t-full <<<"$out")
+  workload_shadow=$(grep -c 'shadow-test: "t-common"' <<<"$deploy_doc" || true)
+  pod_shadow=$(grep -c 'shadow-test: "literal-wins"' <<<"$deploy_doc" || true)
+  if [ "$workload_shadow" = "1" ] && [ "$pod_shadow" = "1" ]; then
+    echo "  OK: specific-beats-common holds after expansion — pod template's podAnnotations literal shadows the workload metadata's expanded commonAnnotations sentinel"
+  else
+    echo "  FAIL: shadowed-key precedence broken (workload shadow-test matches: $workload_shadow, pod shadow-test matches: $pod_shadow)"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for full fixture while checking shadowed-key precedence"; echo "$out" | tail -3; fail=1
+fi
+
+# tpl: value-prefix expansion, passthrough: a non-prefixed annotation with
+# literal {{ }} text (alertmanager-style, e.g. the fixture's summary
+# podAnnotation) renders byte-verbatim — expansion is opt-in per value, never
+# unconditional.
+# shellcheck disable=SC2016  # literal $labels below must NOT expand — that's the point of the test
+if out=$("$RENDER" full 2>&1); then
+  if grep -q 'summary: "Pod {{ \$labels.pod }} down"' <<<"$out"; then
+    echo "  OK: non-prefixed literal {{ }} annotation renders verbatim, untouched by tpl"
+  else
+    echo "  FAIL: non-prefixed literal {{ }} annotation was altered"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for full fixture while checking tpl: passthrough"; echo "$out" | tail -3; fail=1
+fi
+
+# tpl: value-prefix expansion, negative: an invalid template after the tpl:
+# marker fails the render with Helm's own tpl error. Fail-closed is
+# preserved; named-error wrapping is impossible for tpl errors (spec rule 5).
+if out=$("$RENDER" minimal --set-json 'podAnnotations={"broken":"tpl:{{ .NoSuch"}' 2>&1); then
+  echo "  FAIL: render succeeded with an invalid tpl: template"; fail=1
+elif grep -q 'unclosed action' <<<"$out"; then
+  echo "  OK: invalid tpl: template fails closed, error names the template problem"
+else
+  echo "  FAIL: invalid tpl: template failed without the expected error"; echo "$out" | tail -3; fail=1
+fi
+
+# tpl: value-prefix expansion, serviceAccount.annotations site: pins the "all
+# sites, one helper" scope — the site most likely to be forgotten in a
+# copy-paste implementation. serviceAccount.annotations is intentionally
+# copied onto the pre-install hook ServiceAccount too, so assert against the
+# release ServiceAccount's OWN document rather than a bare substring grep.
+if out=$("$RENDER" full 2>&1); then
+  sa_doc=$(doc_of ServiceAccount t-full <<<"$out")
+  if grep -q 'vault.example/role: t-app' <<<"$sa_doc"; then
+    echo "  OK: tpl: prefixed serviceAccount.annotations value expands on the release ServiceAccount"
+  else
+    echo "  FAIL: tpl: prefixed serviceAccount.annotations value did not expand"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for full fixture while checking serviceAccount.annotations"; echo "$out" | tail -3; fail=1
+fi
+
 # secret.existingSecret conflicts with inline material.
 if out=$("$RENDER" stateful --set secret.existingSecret=preexisting 2>&1); then
   echo "  FAIL: render succeeded with secret.existingSecret + secret.stringData"; fail=1

@@ -66,7 +66,7 @@ metadata:
   annotations:
     platform/tls-not-after: {{ $notAfter | quote }}
     {{- range $k, $v := .Values.commonAnnotations }}
-    {{ $k }}: {{ $v | quote }}
+    {{ $k }}: {{ include "platform.tplValue" (dict "ctx" $top "value" $v) | quote }}
     {{- end }}
 type: Opaque
 data:
@@ -92,7 +92,7 @@ metadata:
   {{- if gt (len $vAnnotations) 0 }}
   annotations:
     {{- range $k, $v := $vAnnotations }}
-    {{ $k }}: {{ $v | quote }}
+    {{ $k }}: {{ include "platform.tplValue" (dict "ctx" $top "value" $v) | quote }}
     {{- end }}
   {{- end }}
 webhooks:
@@ -133,7 +133,7 @@ metadata:
   {{- if gt (len $mAnnotations) 0 }}
   annotations:
     {{- range $k, $v := $mAnnotations }}
-    {{ $k }}: {{ $v | quote }}
+    {{ $k }}: {{ include "platform.tplValue" (dict "ctx" $top "value" $v) | quote }}
     {{- end }}
   {{- end }}
 webhooks:

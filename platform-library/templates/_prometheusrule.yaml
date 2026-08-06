@@ -16,7 +16,7 @@ metadata:
   {{- if .Values.prometheusRule.annotations }}
   annotations:
     {{- range $k, $v := .Values.prometheusRule.annotations }}
-    {{ $k }}: {{ $v | quote }}
+    {{ $k }}: {{ include "platform.tplValue" (dict "ctx" $ "value" $v) | quote }}
     {{- end }}
   {{- end }}
 spec:

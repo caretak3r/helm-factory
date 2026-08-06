@@ -13,7 +13,7 @@ metadata:
   {{- if .Values.cronJob.annotations }}
   annotations:
     {{- range $k, $v := .Values.cronJob.annotations }}
-    {{ $k }}: {{ $v | quote }}
+    {{ $k }}: {{ include "platform.tplValue" (dict "ctx" $ "value" $v) | quote }}
     {{- end }}
   {{- end }}
 spec:
@@ -44,7 +44,7 @@ spec:
           {{- if .Values.cronJob.podAnnotations }}
           annotations:
             {{- range $k, $v := .Values.cronJob.podAnnotations }}
-            {{ $k }}: {{ $v | quote }}
+            {{ $k }}: {{ include "platform.tplValue" (dict "ctx" $ "value" $v) | quote }}
             {{- end }}
           {{- end }}
         spec:

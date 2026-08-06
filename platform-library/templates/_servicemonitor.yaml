@@ -13,7 +13,7 @@ metadata:
   {{- if .Values.serviceMonitor.annotations }}
   annotations:
     {{- range $k, $v := .Values.serviceMonitor.annotations }}
-    {{ $k }}: {{ $v | quote }}
+    {{ $k }}: {{ include "platform.tplValue" (dict "ctx" $ "value" $v) | quote }}
     {{- end }}
   {{- end }}
 spec:

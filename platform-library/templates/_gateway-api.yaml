@@ -104,7 +104,7 @@ metadata:
   {{- if gt (len $httpAnnotations) 0 }}
   annotations:
     {{- range $k, $v := $httpAnnotations }}
-    {{ $k }}: {{ $v | quote }}
+    {{ $k }}: {{ include "platform.tplValue" (dict "ctx" $ "value" $v) | quote }}
     {{- end }}
   {{- end }}
 spec:
@@ -184,7 +184,7 @@ metadata:
   {{- if gt (len $grpcAnnotations) 0 }}
   annotations:
     {{- range $k, $v := $grpcAnnotations }}
-    {{ $k }}: {{ $v | quote }}
+    {{ $k }}: {{ include "platform.tplValue" (dict "ctx" $ "value" $v) | quote }}
     {{- end }}
   {{- end }}
 spec:

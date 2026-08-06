@@ -21,6 +21,30 @@ shareProcessNamespace: true
 os:
   name: linux
 
+# tpl: value-prefix expansion (helm-factory-0ou.10): vault.example/role and
+# NAMESPACE opt in and resolve against the release context; summary/PLAIN
+# carry no prefix and prove byte-identical passthrough (the summary text is
+# alertmanager-style literal-brace annotation text that must stay untouched).
+# shadow-test pins precedence: it also carries the sentinel in commonAnnotations
+# below, and specific-beats-common means this literal wins on the pod template
+# — the commonAnnotations sentinel still legitimately expands wherever nothing
+# shadows it (the workload's own metadata, Service, Ingress, etc.).
+podAnnotations:
+  vault.example/role: 'tpl:{{ .Release.Name }}-app'
+  summary: 'Pod {{ $labels.pod }} down'
+  shadow-test: 'literal-wins'
+
+# commonAnnotations sentinel: expands on every generated object (workload,
+# Service, Ingress, ConfigMap, ...), pinning the "one helper, every emission
+# site" scope (helm-factory-0ou.10).
+commonAnnotations:
+  platform.example/release: 'tpl:{{ .Release.Name }}'
+  shadow-test: 'tpl:{{ .Release.Name }}-common'
+
+envVars:
+  NAMESPACE: 'tpl:{{ .Release.Namespace }}'
+  PLAIN: 'literal-value'
+
 configMap:
   enabled: true
   mounted: true
@@ -160,6 +184,10 @@ serviceAccount:
   # The Role below is useless without a token to present with it; the library
   # default is false, so an app that actually calls the API must opt in.
   automountServiceAccountToken: true
+  # Pins the "all sites, one helper" scope (helm-factory-0ou.10) — the site
+  # most likely to be forgotten in a copy-paste implementation.
+  annotations:
+    vault.example/role: 'tpl:{{ .Release.Name }}-app'
 
 # Namespaced Role + RoleBinding for this chart's own ServiceAccount.
 rbac:

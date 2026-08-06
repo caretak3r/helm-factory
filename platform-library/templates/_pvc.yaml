@@ -20,7 +20,7 @@ metadata:
   {{- if gt (len $annotations) 0 }}
   annotations:
     {{- range $k, $v := $annotations }}
-    {{ $k }}: {{ $v | quote }}
+    {{ $k }}: {{ include "platform.tplValue" (dict "ctx" $ "value" $v) | quote }}
     {{- end }}
   {{- end }}
 spec:

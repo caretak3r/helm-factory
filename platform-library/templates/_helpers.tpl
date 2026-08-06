@@ -86,6 +86,29 @@ app.kubernetes.io/component: {{ .component }}
 {{- end }}
 
 {{/*
+platform.tplValue — opt-in per-value template expansion for a single
+annotation/env string. Takes (dict "ctx" $top "value" <string|any>). A
+string value with the literal prefix "tpl:" has the marker stripped and the
+remainder passed through tpl against the given (must be ROOT) context;
+every other value — including non-string kinds like an envVars map-form
+valueFrom block — passes through byte-identical. tpl failures fail the
+render natively; there is no named-error wrapping for them. A literal value
+that must itself start with "tpl:" escapes the sentinel by writing
+tpl:{{ "tpl:..." }}.
+Usage: include "platform.tplValue" (dict "ctx" $ctx "value" $v)
+*/}}
+{{- define "platform.tplValue" -}}
+{{- $value := .value -}}
+{{- if not (kindIs "string" $value) -}}
+{{- $value -}}
+{{- else if hasPrefix "tpl:" $value -}}
+{{- tpl (trimPrefix "tpl:" $value) .ctx -}}
+{{- else -}}
+{{- $value -}}
+{{- end -}}
+{{- end }}
+
+{{/*
 platform.workloadMetadata — shared top-level metadata labels/annotations for
 the three primary workload generators (Deployment/StatefulSet/DaemonSet).
 Verbatim move of the block each generator previously inlined; emission order
@@ -104,13 +127,20 @@ Usage (immediately after the namespace: line):
     {{- range $k, $v := .Values.labels }}
     {{ $k }}: {{ $v | quote }}
     {{- end }}
+  {{- $ctx := . -}}
   {{- if or .Values.commonAnnotations .Values.annotations }}
   annotations:
+    {{- /* Merge on RAW strings first (specific beats common); only the
+           WINNING value is tpl-expanded, at emission below. */ -}}
+    {{- $annotations := dict -}}
     {{- range $k, $v := .Values.commonAnnotations }}
-    {{ $k }}: {{ $v | quote }}
+    {{- $_ := set $annotations $k $v -}}
     {{- end }}
     {{- range $k, $v := .Values.annotations }}
-    {{ $k }}: {{ $v | quote }}
+    {{- $_ := set $annotations $k $v -}}
+    {{- end }}
+    {{- range $k, $v := $annotations }}
+    {{ $k }}: {{ include "platform.tplValue" (dict "ctx" $ctx "value" $v) | quote }}
     {{- end }}
   {{- end }}
 {{- end }}
@@ -283,9 +313,13 @@ Usage: {{- include "platform.podPolicy.imagePullSecrets" (list $ctx 2) }}
 {{- end -}}
 
 {{/*
-Render environment variables from map or slice inputs
+Render environment variables from map or slice inputs. Map-form scalar
+values route through platform.tplValue (opt-in "tpl:" prefix expansion);
+slice form is raw passthrough — never sentinel-checked, since a slice
+entry is a structured {name, value/valueFrom} object, not a flat string.
 */}}
 {{- define "platform.envVars" -}}
+{{- $ctx := . -}}
 {{- $env := .Values.envVars -}}
 {{- if kindIs "map" $env }}
   {{- range $k, $v := $env }}
@@ -293,7 +327,7 @@ Render environment variables from map or slice inputs
   {{- if kindIs "map" $v }}
   {{- toYaml $v | nindent 2 }}
   {{- else }}
-  value: {{ $v | quote }}
+  value: {{ include "platform.tplValue" (dict "ctx" $ctx "value" $v) | quote }}
   {{- end }}
   {{- end }}
 {{- else if kindIs "slice" $env }}
@@ -405,6 +439,9 @@ metadata:
     {{- range $k, $v := $ctx.Values.podLabels }}
     {{ $k }}: {{ $v | quote }}
     {{- end }}
+  {{- /* Merge on RAW strings first (specific beats common); only the WINNING
+         value is tpl-expanded, at emission below — a shadowed commonAnnotations
+         sentinel must never fail the render just because it lost the merge. */ -}}
   {{- $podAnnotations := dict -}}
   {{- range $k, $v := $ctx.Values.commonAnnotations }}
     {{- $_ := set $podAnnotations $k $v -}}
@@ -413,16 +450,22 @@ metadata:
     {{- $_ := set $podAnnotations $k $v -}}
   {{- end }}
   {{- $rollout := (include "platform.rolloutAnnotations" $ctx | trim) -}}
+  {{- $rolloutKeys := dict -}}
   {{- if $rollout }}
     {{- $rolloutMap := fromYaml $rollout -}}
     {{- range $k, $v := $rolloutMap }}
       {{- $_ := set $podAnnotations $k $v -}}
+      {{- $_ := set $rolloutKeys $k true -}}
     {{- end }}
   {{- end }}
   {{- if gt (len $podAnnotations) 0 }}
   annotations:
     {{- range $k, $v := $podAnnotations }}
+    {{- if hasKey $rolloutKeys $k }}
     {{ $k }}: {{ $v | quote }}
+    {{- else }}
+    {{ $k }}: {{ include "platform.tplValue" (dict "ctx" $ctx "value" $v) | quote }}
+    {{- end }}
     {{- end }}
   {{- end }}
 spec:
@@ -620,6 +663,7 @@ Create the name of the service account
 */}}
 {{- define "platform.serviceAccount" -}}
 {{- if .Values.serviceAccount.create }}
+{{- $ctx := . -}}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -628,8 +672,12 @@ metadata:
   labels:
     {{- include "platform.labels" . | nindent 4 }}
   {{- with .Values.serviceAccount.annotations }}
+  {{- $expanded := dict -}}
+  {{- range $k, $v := . }}
+    {{- $_ := set $expanded $k (include "platform.tplValue" (dict "ctx" $ctx "value" $v)) -}}
+  {{- end }}
   annotations:
-    {{- toYaml . | nindent 4 }}
+    {{- toYaml $expanded | nindent 4 }}
   {{- end }}
 automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken | default false }}
 {{- end }}
@@ -682,6 +730,7 @@ so the hook keeps the same cloud identity as the workload.
 */}}
 {{- define "platform.serviceAccount.hook" -}}
 {{- if and .Values.serviceAccount.create .Values.jobs.preInstall.enabled }}
+{{- $ctx := . -}}
 {{- $weight := include "platform.job.hookWeight" (dict "job" .Values.jobs.preInstall "type" "preinstall") -}}
 apiVersion: v1
 kind: ServiceAccount
@@ -698,7 +747,11 @@ metadata:
     helm.sh/hook-weight: "{{ sub $weight 1 }}"
     helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
     {{- with .Values.serviceAccount.annotations }}
-    {{- toYaml . | nindent 4 }}
+    {{- $expanded := dict -}}
+    {{- range $k, $v := . }}
+      {{- $_ := set $expanded $k (include "platform.tplValue" (dict "ctx" $ctx "value" $v)) -}}
+    {{- end }}
+    {{- toYaml $expanded | nindent 4 }}
     {{- end }}
 automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken | default false }}
 {{- end }}

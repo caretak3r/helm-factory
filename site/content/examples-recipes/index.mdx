@@ -292,6 +292,45 @@ values BEFORE template expansion — a hostPath path or privileged flag that
 only appears after a `template: true` entry expands will not be flagged.
 </Callout>
 
+## `tpl:` value prefix for annotation and env values
+
+Annotations and `envVars` (map form) don't have a control key to opt into —
+they're flat strings, so the opt-in lives in the value itself. Prefix a
+string with `tpl:` and the remainder is `tpl`-expanded against the release
+context; everything else, prefixed or not, renders byte-identical:
+
+```yaml
+podAnnotations:
+  vault.example/role: 'tpl:{{ .Release.Name }}-app'   # opts in — expanded
+  summary: 'Pod {{ $labels.pod }} down'                # no prefix — untouched
+
+envVars:
+  NAMESPACE: 'tpl:{{ .Release.Namespace }}'
+  PLAIN: 'literal-value'
+
+serviceAccount:
+  annotations:
+    vault.example/role: 'tpl:{{ .Release.Name }}-app'
+```
+
+One shared helper covers every annotation-emitting site in the library:
+`commonAnnotations` and every resource's own `annotations`/`podAnnotations`
+field — the workload, the pod template, `serviceAccount.annotations`, and
+every other generated object (Service, Ingress, ConfigMap, Secret, RBAC,
+webhooks, TLS Secrets, `generatedSecrets`, Gateway API routes, CronJob, and
+the monitoring CRDs) — plus `envVars` map-form values. Merge/precedence
+still resolves on the raw strings first: a `commonAnnotations` sentinel that
+loses to a resource's own literal annotation of the same key is never
+expanded, since it never renders. `envVars` in its slice (list-of-objects)
+form is always a raw passthrough — the `tpl:` prefix is never checked there.
+If a literal value must itself start with `tpl:`, escape it so the sentinel
+doesn't match: `tpl:{{ "tpl:..." }}`.
+
+This is the flat-string sibling of `extraObjects`' `template: true` above —
+structured entries (a whole `extraObjects` item, Kind and all) opt in with a
+control key, while flat string values opt in with a value prefix, since
+there's no key to attach a boolean to.
+
 ## Rendering any of these offline
 
 None of the CRD-backed Kinds above (`gatewayApi`, `serviceMonitor`,
