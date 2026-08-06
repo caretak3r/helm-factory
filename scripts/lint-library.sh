@@ -107,7 +107,7 @@ fail=0
 expected_kinds() {
   case "$1" in
     minimal)  echo 3 ;;
-    full)     echo 37 ;;
+    full)     echo 38 ;;
     stateful) echo 8 ;;
     daemon)   echo 7 ;;
     *)        echo "unknown fixture: $1" >&2; return 1 ;;
@@ -918,6 +918,84 @@ if out=$("$RENDER" minimal --set-json 'extraObjects={"VirtualService":[{"name":"
   fi
 else
   echo "  FAIL: render failed for unserved extraObjects Kind"; echo "$out" | tail -3; fail=1
+fi
+
+# extraObjects opt-in tpl expansion (template: true): the full fixture carries
+# one templated ConfigMap entry (name + data.ns via release context) — confirm
+# it expands, and confirm the control key itself never leaks into output.
+if out=$("$RENDER" full 2>&1); then
+  validate_render "extraObjects template: true expansion (full fixture)" "$out"
+  if grep -q "name: t-full-scripts" <<<"$out" && grep -q "^  ns: default$" <<<"$out"; then
+    echo "  OK: template: true entry expands name and data against release context"
+  else
+    echo "  FAIL: templated extraObjects entry did not expand as expected"; fail=1
+  fi
+  if grep -q "^template:" <<<"$out"; then
+    echo "  FAIL: the template: control key leaked into rendered output"; fail=1
+  else
+    echo "  OK: template: control key is stripped from every rendered object"
+  fi
+else
+  echo "  FAIL: render failed for full fixture with a templated extraObjects entry"; echo "$out" | tail -3; fail=1
+fi
+
+# An explicit template: false on a NON-expanded entry must never leak into
+# rendered output as a spurious field either — this is a different code path
+# than the template: true case above (genericResource's own omit list, not
+# platform.extraObjects's pre-expansion omit).
+if out=$("$RENDER" minimal --set-json 'extraObjects={"ConfigMap":[{"name":"c1","template":false,"data":{"k":"v"}}]}' 2>&1); then
+  validate_render "extraObjects template: false (non-expanded) entry" "$out"
+  if grep -q "^template:" <<<"$out"; then
+    echo "  FAIL: template: false leaked into rendered output on a non-expanded entry"; fail=1
+  else
+    echo "  OK: template: false on a non-expanded entry does not leak into rendered output"
+  fi
+else
+  echo "  FAIL: render failed for a non-expanded extraObjects entry with template: false"; echo "$out" | tail -3; fail=1
+fi
+
+# template: true on an entry whose expansion is invalid YAML fails closed with
+# a named error, not a generic YAML parse failure further downstream.
+if out=$("$RENDER" minimal --set-json 'extraObjects={"ConfigMap":[{"name":"plain-{{ include \"platform.selectorLabels\" . }}","template":true,"data":{}}]}' 2>&1); then
+  echo "  FAIL: render succeeded with an invalid-YAML template expansion"; fail=1
+elif grep -q "template expansion produced invalid YAML" <<<"$out"; then
+  echo "  OK: invalid-YAML template expansion fails closed with a named error"
+else
+  echo "  FAIL: invalid-YAML template expansion failed without the expected message"; echo "$out" | tail -3; fail=1
+fi
+
+# template: true on an entry that expands to nothing fails closed with a named
+# error (invariant 1). This exact input is unreachable through a real,
+# schema-conformant consumer: values.schema.reference.json requires "name" on
+# every entry, so a schema-valid render always trips the older
+# "extraObjects.%s[].name is required" check first. --skip-schema-validation
+# exercises _util.tpl's own empty-result guard directly, the same way it would
+# fire for any consumer chart whose OWN schema doesn't require "name" — the
+# guard is real defense-in-depth, not dead code, and this is the
+# deterministic way to reach it in CI.
+if out=$("$RENDER" minimal --skip-schema-validation --set-json 'extraObjects={"ConfigMap":[{"template":true}]}' 2>&1); then
+  echo "  FAIL: render succeeded with a template: true entry that expands to nothing"; fail=1
+elif grep -q "template expansion produced an empty result" <<<"$out"; then
+  echo "  OK: empty template expansion fails closed with a named error"
+else
+  echo "  FAIL: empty template expansion failed without the expected message"; echo "$out" | tail -3; fail=1
+fi
+
+# Literal-braces safety: a NON-flagged extraObjects entry containing "{{ }}"
+# syntax (e.g. a PrometheusRule alert annotation) must render verbatim, never
+# tpl-expanded — the opt-in flag is what keeps existing consumers with literal
+# Go-template-looking text in annotations safe from unconditional tpl.
+# shellcheck disable=SC2016  # literal $labels below must NOT expand — that's the point of the test
+if out=$("$RENDER" minimal --api-versions monitoring.coreos.com/v1/PrometheusRule \
+  --set-json 'extraObjects={"PrometheusRule":[{"name":"alerts","spec":{"groups":[{"name":"g","rules":[{"alert":"A","annotations":{"summary":"Pod {{ $labels.pod }} down"},"expr":"up == 0"}]}]}}]}' 2>&1); then
+  validate_render "non-flagged extraObjects entry with literal {{ }} renders verbatim" "$out"
+  if grep -q 'summary: Pod {{ \$labels.pod }} down' <<<"$out"; then
+    echo "  OK: non-flagged literal {{ }} in extraObjects renders verbatim, untouched by tpl"
+  else
+    echo "  FAIL: literal {{ }} in a non-flagged extraObjects entry was altered"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for non-flagged extraObjects entry with literal {{ }}"; echo "$out" | tail -3; fail=1
 fi
 
 # secret.existingSecret conflicts with inline material.

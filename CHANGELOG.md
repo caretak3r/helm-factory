@@ -9,6 +9,21 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
 
 ## [Unreleased]
 
+### Added — opt-in tpl expansion for `extraObjects` entries
+
+- Any `extraObjects` entry can now carry a reserved `template: true` control
+  key to opt that ONE entry into `tpl` expansion (`toYaml` -> `tpl` ->
+  `fromYaml`) against the release context, before capability negotiation and
+  validation run — so a templated name, apiVersion, or `clusterScoped` value
+  is resolved before it is checked. Expansion is opt-in per entry, never
+  unconditional, so existing consumers with literal `{{ }}` text (e.g. a
+  PrometheusRule alert annotation like `{{ $labels.pod }}`) keep rendering
+  verbatim. The Kind map key is never templated, only entry contents; the
+  `template` control key itself is always stripped and never reaches
+  rendered output. Fails closed with a named error if expansion produces
+  invalid YAML or an empty result. See
+  [Examples & recipes](https://caretak3r.github.io/helm-factory/examples-recipes/#extraobjects-opt-in-templating-with-template-true).
+
 ### Added — `webhooks` (admission webhook configuration)
 
 - New `webhooks` values block renders a `ValidatingWebhookConfiguration`

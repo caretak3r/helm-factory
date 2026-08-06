@@ -231,4 +231,8 @@ list) are the tier-2/tier-3 escape hatches — see
 for the renderer contract and [Examples & recipes](/examples-recipes/) for
 a worked `extraObjects` entry. `allowClusterScopedExtras: false` by
 default — a namespaced app chart granting itself a cluster-scoped object
-is a deliberate, reviewed opt-in, not a default.
+is a deliberate, reviewed opt-in, not a default. Every `extraObjects` entry
+renders verbatim unless it carries `template: true`, which opts that one
+entry into `tpl` expansion against the release context before rendering —
+see [Examples & recipes](/examples-recipes/#extraobjects-opt-in-templating-with-template-true)
+for the syntax and the literal-`{{`-escaping caveat.
