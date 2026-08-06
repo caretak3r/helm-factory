@@ -524,7 +524,8 @@
             "clusterScoped": { "type": "boolean" },
             "apiVersion": { "type": "string" },
             "labels": { "type": "object" },
-            "annotations": { "type": "object" }
+            "annotations": { "type": "object" },
+            "template": { "type": "boolean", "description": "Opt-in: tpl-expand this entry's body against the release context before rendering. The key itself is stripped and never reaches rendered output." }
           }
         }
       }

@@ -57,7 +57,7 @@ metadata:
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
-{{- range $k, $v := (omit $res "name" "namespace" "labels" "annotations" "apiVersion" "kind" "clusterScoped" "metadata") }}
+{{- range $k, $v := (omit $res "name" "namespace" "labels" "annotations" "apiVersion" "kind" "clusterScoped" "metadata" "template") }}
 {{- if or (kindIs "map" $v) (kindIs "slice" $v) }}
 {{ $k }}:
 {{ toYaml $v | indent 2 }}
@@ -72,6 +72,17 @@ metadata:
 platform.extraObjects — render the tier-2 long tail: a map of Kind -> list of
 specs under .Values.extraObjects. Each object is capability-negotiated and
 skipped when its API is absent.
+
+Opt-in per-entry tpl expansion: an entry carrying the reserved control key
+`template: true` has its whole body (toYaml -> tpl -> fromYaml) expanded
+against the root context BEFORE any validation below, so a templated
+apiVersion/clusterScoped is resolved before it is checked. Expansion is
+opt-in (not unconditional) because existing consumers legitimately carry
+literal "{{ }}" — e.g. PrometheusRule alert annotations like
+"{{ $labels.pod }}" — which `tpl` would otherwise try to execute and fail.
+The Kind map KEY (the range's $kind) is never templated, only entry
+contents; the control key itself is stripped and never reaches rendered
+output (see the `omit` list in platform.genericResource above).
 */}}
 {{- define "platform.extraObjects" -}}
 {{- $top := . -}}
@@ -79,6 +90,17 @@ skipped when its API is absent.
 {{- $registryTable := fromYaml (include "platform.capabilities.registry" $top) -}}
 {{- range $kind, $list := (.Values.extraObjects | default dict) }}
 {{- range $res := $list }}
+{{- if $res.template -}}
+{{- $expanded := tpl (toYaml (omit $res "template")) $top -}}
+{{- $parsed := fromYaml $expanded -}}
+{{- if hasKey $parsed "Error" -}}
+{{- fail (printf "extraObjects.%s (name %q): template expansion produced invalid YAML: %s" $kind ($res.name | default "") $parsed.Error) -}}
+{{- end -}}
+{{- if or (not (kindIs "map" $parsed)) (eq (len $parsed) 0) -}}
+{{- fail (printf "extraObjects.%s (name %q): template expansion produced an empty result" $kind ($res.name | default "")) -}}
+{{- end -}}
+{{- $res = $parsed -}}
+{{- end -}}
 {{- if and (not (hasKey $registryTable $kind)) (not $res.apiVersion) -}}
 {{- fail (printf "extraObjects contains unknown Kind %q (name %q): it is not in the platform capability registry, so its apiVersion cannot be negotiated and the object would be silently dropped. Set apiVersion explicitly on the entry to render it verbatim, or move it to extraManifests." $kind ($res.name | default "")) -}}
 {{- end -}}

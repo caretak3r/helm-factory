@@ -324,6 +324,12 @@ extraObjects:
     - name: extra-config
       data:
         key: value
+    # template: true opt-in — whole entry tpl-expanded before rendering, so the
+    # name and data value below resolve against release context.
+    - name: '{{ include "platform.fullname" . }}-scripts'
+      template: true
+      data:
+        ns: '{{ .Release.Namespace }}'
 
 # Ultimate escape hatch.
 extraManifests:

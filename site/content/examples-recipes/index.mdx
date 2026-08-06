@@ -256,6 +256,42 @@ ServiceAccount, the first-class `rbac` block (see
 `serviceAccount.name` automatically, so it can't drift.
 </Callout>
 
+## extraObjects: opt-in templating with `template: true`
+
+Every `extraObjects` entry renders verbatim by default, so literal `{{ }}`
+text (a PrometheusRule alert annotation like `{{ $labels.pod }}`, say)
+passes through untouched. Set `template: true` on an entry to opt that ONE
+entry into `tpl` expansion against the release context, so it can reference
+things like `{{ include "platform.fullname" . }}` or `.Release.Namespace`:
+
+```yaml
+extraObjects:
+  ConfigMap:
+    - name: '{{ include "platform.fullname" . }}-scripts'
+      template: true          # opt-in: whole entry tpl-expanded
+      data:
+        ns: '{{ .Release.Namespace }}'
+  PrometheusRule:
+    - name: alerts            # no flag — rendered verbatim
+      spec:
+        groups:
+          - rules:
+              - annotations:
+                  summary: 'Pod {{ $labels.pod }} down'   # untouched
+```
+
+The Kind map key (`ConfigMap`, `PrometheusRule` above) is never templated —
+only entry contents are. `template` is itself a reserved control key: it is
+stripped before rendering and never appears in the rendered object. To emit
+a literal `{{` inside a `template: true` entry instead of having it
+evaluated, escape it with `{{ "{{" }}`.
+
+<Callout type="info">
+The NOTES.txt hostPath/privileged advisory sweep inspects `extraObjects`
+values BEFORE template expansion — a hostPath path or privileged flag that
+only appears after a `template: true` entry expands will not be flagged.
+</Callout>
+
 ## Rendering any of these offline
 
 None of the CRD-backed Kinds above (`gatewayApi`, `serviceMonitor`,
