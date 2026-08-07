@@ -925,7 +925,7 @@ fi
 # it expands, and confirm the control key itself never leaks into output.
 if out=$("$RENDER" full 2>&1); then
   validate_render "extraObjects template: true expansion (full fixture)" "$out"
-  if grep -q "name: t-full-scripts" <<<"$out" && grep -q "^  ns: default$" <<<"$out"; then
+  if grep -q 'name: "t-full-scripts"' <<<"$out" && grep -q "^  ns: default$" <<<"$out"; then
     echo "  OK: template: true entry expands name and data against release context"
   else
     echo "  FAIL: templated extraObjects entry did not expand as expected"; fail=1

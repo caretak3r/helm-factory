@@ -44,9 +44,9 @@ Usage: include "platform.genericResource" (dict "root" $top "kind" "Role" "resou
 apiVersion: {{ $api }}
 kind: {{ $kind }}
 metadata:
-  name: {{ required (printf "extraObjects.%s[].name is required" $kind) $res.name }}
+  name: {{ required (printf "extraObjects.%s[].name is required" $kind) $res.name | quote }}
   {{- if not $clusterScoped }}
-  namespace: {{ $res.namespace | default $top.Release.Namespace }}
+  namespace: {{ $res.namespace | default $top.Release.Namespace | quote }}
   {{- end }}
   labels:
     {{- include "platform.labels" $top | nindent 4 }}
