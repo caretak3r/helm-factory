@@ -1088,6 +1088,103 @@ else
   echo "  FAIL: render failed for full fixture while checking serviceAccount.annotations"; echo "$out" | tail -3; fail=1
 fi
 
+# tpl: value-prefix expansion, CronJob metadata.annotations site
+# (helm-factory-0ou.11): closes the 0ou.10 gap at the two CronJob-specific
+# tplValue call sites (_cronjob.yaml:16 metadata.annotations, :47 pod-template
+# podAnnotations) plus the three monitor-CRD sites below — the five wraps the
+# 0ou.10 sweep shipped with zero fixture coverage. cron-owner is a
+# site-unique key, so a substring grep against the CronJob's own document is
+# unambiguous.
+if out=$("$RENDER" full 2>&1); then
+  cron_doc=$(doc_of CronJob t-full-cron <<<"$out")
+  if grep -q 'platform.example/cron-owner: "t-cron"' <<<"$cron_doc"; then
+    echo "  OK: tpl: prefixed cronJob.annotations value expands on the CronJob's own metadata"
+  else
+    echo "  FAIL: tpl: prefixed cronJob.annotations value did not expand"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for full fixture while checking cronJob.annotations"; echo "$out" | tail -3; fail=1
+fi
+
+# tpl: value-prefix expansion, CronJob pod-template podAnnotations site: the
+# sentinel expands against the release context (Release.Namespace -> default)
+# while a sibling literal-brace value (alertmanager-style, mirroring the
+# top-level podAnnotations passthrough check above) proves passthrough
+# survives on the CronJob's OWN pod-template annotations wrap too.
+# shellcheck disable=SC2016  # literal $labels below must NOT expand — that's the point of the test
+if out=$("$RENDER" full 2>&1); then
+  cron_doc=$(doc_of CronJob t-full-cron <<<"$out")
+  if grep -q 'platform.example/cron-pod: "default"' <<<"$cron_doc" \
+    && grep -q 'cron-summary: "Job {{ \$labels.job }} failed"' <<<"$cron_doc"; then
+    echo "  OK: tpl: prefixed cronJob.podAnnotations value expands and a literal-brace sibling renders verbatim"
+  else
+    echo "  FAIL: cronJob.podAnnotations expansion or literal passthrough broken"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for full fixture while checking cronJob.podAnnotations"; echo "$out" | tail -3; fail=1
+fi
+
+# tpl: value-prefix expansion, prometheusRule.annotations site: expanded
+# sentinel plus a literal-brace runbook-note (Prometheus $labels alerting
+# syntax) proves passthrough on the first of the three monitor-CRD
+# generators.
+# shellcheck disable=SC2016  # literal $labels below must NOT expand — that's the point of the test
+if out=$("$RENDER" full 2>&1); then
+  rule_doc=$(doc_of PrometheusRule t-full <<<"$out")
+  if grep -q 'platform.example/rule-owner: "t-rules"' <<<"$rule_doc" \
+    && grep -q 'runbook-note: "Alert {{ \$labels.alertname }} firing"' <<<"$rule_doc"; then
+    echo "  OK: tpl: prefixed prometheusRule.annotations value expands and a literal-brace sibling renders verbatim"
+  else
+    echo "  FAIL: prometheusRule.annotations expansion or literal passthrough broken"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for full fixture while checking prometheusRule.annotations"; echo "$out" | tail -3; fail=1
+fi
+
+# tpl: value-prefix expansion, podMonitor.annotations site.
+if out=$("$RENDER" full 2>&1); then
+  pm_doc=$(doc_of PodMonitor t-full <<<"$out")
+  if grep -q 'platform.example/pm-owner: "t-pm"' <<<"$pm_doc"; then
+    echo "  OK: tpl: prefixed podMonitor.annotations value expands"
+  else
+    echo "  FAIL: tpl: prefixed podMonitor.annotations value did not expand"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for full fixture while checking podMonitor.annotations"; echo "$out" | tail -3; fail=1
+fi
+
+# tpl: value-prefix expansion, serviceMonitor.annotations site: the last of
+# the five 0ou.11 sites.
+if out=$("$RENDER" full 2>&1); then
+  sm_doc=$(doc_of ServiceMonitor t-full <<<"$out")
+  if grep -q 'platform.example/sm-owner: "t-sm"' <<<"$sm_doc"; then
+    echo "  OK: tpl: prefixed serviceMonitor.annotations value expands"
+  else
+    echo "  FAIL: tpl: prefixed serviceMonitor.annotations value did not expand"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for full fixture while checking serviceMonitor.annotations"; echo "$out" | tail -3; fail=1
+fi
+
+# tpl: value-prefix expansion, leak check across the five 0ou.11 sites: the
+# tpl: marker itself must never reach the CronJob or monitor-CRD documents,
+# mirroring the whole-render leak check above but scoped to the four
+# documents these checks pin.
+if out=$("$RENDER" full 2>&1); then
+  cron_doc=$(doc_of CronJob t-full-cron <<<"$out")
+  pm_doc=$(doc_of PodMonitor t-full <<<"$out")
+  rule_doc=$(doc_of PrometheusRule t-full <<<"$out")
+  sm_doc=$(doc_of ServiceMonitor t-full <<<"$out")
+  leaks=$(printf '%s\n%s\n%s\n%s\n' "$cron_doc" "$pm_doc" "$rule_doc" "$sm_doc" | grep -c 'tpl:' || true)
+  if [ "$leaks" = "0" ]; then
+    echo "  OK: the tpl: sentinel never leaks into the CronJob or monitor-CRD documents"
+  else
+    echo "  FAIL: the tpl: sentinel leaked into a CronJob or monitor-CRD document"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for full fixture while checking the CronJob/monitor-CRD leak scope"; echo "$out" | tail -3; fail=1
+fi
+
 # secret.existingSecret conflicts with inline material.
 if out=$("$RENDER" stateful --set secret.existingSecret=preexisting 2>&1); then
   echo "  FAIL: render succeeded with secret.existingSecret + secret.stringData"; fail=1

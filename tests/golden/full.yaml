@@ -621,6 +621,8 @@ metadata:
     app.kubernetes.io/component: cronjob
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/managed-by: Helm
+  annotations:
+    platform.example/cron-owner: "t-cron"
 spec:
   schedule: "*/5 * * * *"
   concurrencyPolicy: Allow
@@ -636,6 +638,9 @@ spec:
             app.kubernetes.io/name: full
             app.kubernetes.io/instance: t
             app.kubernetes.io/component: cronjob
+          annotations:
+            cron-summary: "Job {{ $labels.job }} failed"
+            platform.example/cron-pod: "default"
         spec:
           serviceAccountName: t-full
           automountServiceAccountToken: true
@@ -960,6 +965,8 @@ metadata:
     app.kubernetes.io/component: app
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/managed-by: Helm
+  annotations:
+    platform.example/pm-owner: "t-pm"
 spec:
   podMetricsEndpoints:
     - port: "http"
@@ -988,6 +995,9 @@ metadata:
     app.kubernetes.io/component: app
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/managed-by: Helm
+  annotations:
+    platform.example/rule-owner: "t-rules"
+    runbook-note: "Alert {{ $labels.alertname }} firing"
 spec:
   groups:
     - name: app.rules
@@ -1013,6 +1023,8 @@ metadata:
     app.kubernetes.io/component: app
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/managed-by: Helm
+  annotations:
+    platform.example/sm-owner: "t-sm"
 spec:
   selector:
     matchLabels:

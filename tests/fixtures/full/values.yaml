@@ -204,6 +204,16 @@ rbac:
 cronJob:
   enabled: true
   schedule: "*/5 * * * *"
+  # tpl: value-prefix expansion (helm-factory-0ou.11): pins the CronJob's own
+  # metadata.annotations and pod-template podAnnotations sites, the two
+  # remaining tplValue call sites the 0ou.10 sweep left uncovered. podAnnotations
+  # also carries a literal-brace value (alertmanager-style) to prove
+  # passthrough survives on this Kind too.
+  annotations:
+    platform.example/cron-owner: 'tpl:{{ .Release.Name }}-cron'
+  podAnnotations:
+    platform.example/cron-pod: 'tpl:{{ .Release.Namespace }}'
+    cron-summary: 'Job {{ $labels.job }} failed'
 
 # In-place pod vertical scaling: verbatim container resizePolicy passthrough.
 resizePolicy:
@@ -249,14 +259,24 @@ webhooks:
           resources: ["pods"]
       reinvocationPolicy: IfNeeded
 
+# tpl: value-prefix expansion (helm-factory-0ou.11): pins the three
+# monitor-CRD annotations sites, the remaining tplValue call sites the 0ou.10
+# sweep left uncovered.
 serviceMonitor:
   enabled: true
+  annotations:
+    platform.example/sm-owner: 'tpl:{{ .Release.Name }}-sm'
 
 podMonitor:
   enabled: true
+  annotations:
+    platform.example/pm-owner: 'tpl:{{ .Release.Name }}-pm'
 
 prometheusRule:
   enabled: true
+  annotations:
+    platform.example/rule-owner: 'tpl:{{ .Release.Name }}-rules'
+    runbook-note: 'Alert {{ $labels.alertname }} firing'
   groups:
     - name: app.rules
       rules:
