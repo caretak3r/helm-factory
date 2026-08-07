@@ -161,6 +161,8 @@ metadata:
     app.kubernetes.io/component: app
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/managed-by: Helm
+  annotations:
+    vault.example/role: t-app
 automountServiceAccountToken: true
 ---
 # Source: full/templates/app.yaml
@@ -192,7 +194,9 @@ metadata:
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/managed-by: Helm
   annotations:
+    platform.example/release: "t"
     platform/generated: "true"
+    shadow-test: "t-common"
 type: Opaque
 data:
   auth: REDACTED
@@ -213,6 +217,8 @@ metadata:
     app.kubernetes.io/managed-by: Helm
   annotations:
     platform/tls-not-after: REDACTED
+    platform.example/release: "t"
+    shadow-test: "t-common"
 type: Opaque
 data:
   ca.crt: REDACTED
@@ -233,6 +239,9 @@ metadata:
     app.kubernetes.io/component: app
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/managed-by: Helm
+  annotations:
+    platform.example/release: "t"
+    shadow-test: "t-common"
 data:
   app.properties: |
     mode=full
@@ -312,6 +321,9 @@ metadata:
     app.kubernetes.io/component: app
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/managed-by: Helm
+  annotations:
+    platform.example/release: "t"
+    shadow-test: "t-common"
 rules:
   - apiGroups:
     - ""
@@ -368,6 +380,9 @@ metadata:
     app.kubernetes.io/component: app
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/managed-by: Helm
+  annotations:
+    platform.example/release: "t"
+    shadow-test: "t-common"
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -411,6 +426,9 @@ metadata:
     app.kubernetes.io/component: app
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/managed-by: Helm
+  annotations:
+    platform.example/release: "t"
+    shadow-test: "t-common"
 spec:
   type: ClusterIP
   sessionAffinity: None
@@ -441,6 +459,9 @@ metadata:
     app.kubernetes.io/component: app
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/managed-by: Helm
+  annotations:
+    platform.example/release: "t"
+    shadow-test: "t-common"
 spec:
   revisionHistoryLimit: 10
   selector:
@@ -460,7 +481,11 @@ spec:
         app.kubernetes.io/instance: t
         app.kubernetes.io/component: app
       annotations:
-        checksum/config: "a93d5de51b81e9e0612bae7ead1aac1203d88d85d23f4d0f101b27a01195650e"
+        checksum/config: "b194670b7037f72fb1c66e9ccaf12cfa52826ec0434add18e3cba1f056c1a9a7"
+        platform.example/release: "t"
+        shadow-test: "literal-wins"
+        summary: "Pod {{ $labels.pod }} down"
+        vault.example/role: "t-app"
     spec:
       serviceAccountName: t-full
       automountServiceAccountToken: true
@@ -484,6 +509,12 @@ spec:
               type: RuntimeDefault
           image: docker.io/example/app:1.2.3
           imagePullPolicy: IfNotPresent
+          env:
+            
+            - name: NAMESPACE
+              value: "default"
+            - name: PLAIN
+              value: "literal-value"
           ports:
             - containerPort: 8080
               name: http
@@ -666,6 +697,9 @@ metadata:
     app.kubernetes.io/component: app
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/managed-by: Helm
+  annotations:
+    platform.example/release: "t"
+    shadow-test: "t-common"
 spec:
   rules:
     - host: "app.example.com"
@@ -691,6 +725,9 @@ metadata:
     app.kubernetes.io/component: app
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/managed-by: Helm
+  annotations:
+    platform.example/release: "t"
+    shadow-test: "t-common"
 webhooks:
   - name: mutate.app.example.com
     admissionReviewVersions:
@@ -733,6 +770,9 @@ metadata:
     app.kubernetes.io/component: app
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/managed-by: Helm
+  annotations:
+    platform.example/release: "t"
+    shadow-test: "t-common"
 webhooks:
   - name: validate.app.example.com
     admissionReviewVersions:
@@ -828,6 +868,9 @@ metadata:
     app.kubernetes.io/component: app
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/managed-by: Helm
+  annotations:
+    platform.example/release: "t"
+    shadow-test: "t-common"
 spec:
 
   hostnames:
@@ -861,6 +904,9 @@ metadata:
     app.kubernetes.io/component: app
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/managed-by: Helm
+  annotations:
+    platform.example/release: "t"
+    shadow-test: "t-common"
 spec:
 
   hostnames:
@@ -1032,6 +1078,7 @@ metadata:
     helm.sh/hook: pre-install,pre-upgrade
     helm.sh/hook-weight: "-6"
     helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+    vault.example/role: t-app
 automountServiceAccountToken: true
 ---
 # Source: full/templates/app.yaml

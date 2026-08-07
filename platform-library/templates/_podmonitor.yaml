@@ -13,7 +13,7 @@ metadata:
   {{- if .Values.podMonitor.annotations }}
   annotations:
     {{- range $k, $v := .Values.podMonitor.annotations }}
-    {{ $k }}: {{ $v | quote }}
+    {{ $k }}: {{ include "platform.tplValue" (dict "ctx" $ "value" $v) | quote }}
     {{- end }}
   {{- end }}
 spec:

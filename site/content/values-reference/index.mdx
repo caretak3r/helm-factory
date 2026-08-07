@@ -221,6 +221,23 @@ see [Design invariants](/design-invariants/) for the precedence rule and
 [Conventions & tricks](/conventions-and-tricks/) for the template idiom
 that implements it correctly.
 
+Any annotation value can opt into template expansion by starting with `tpl:`:
+the prefix is stripped and the remainder is rendered with `tpl` against the
+release context, so `vault.example/role: 'tpl:{{ .Release.Name }}-app'`
+resolves to the release name. This covers `commonAnnotations` and every
+resource-specific `annotations`/`podAnnotations` field the library emits —
+the workload object, the pod template, `serviceAccount.annotations`, and
+every other generated object's own annotations (Service, Ingress, ConfigMap,
+Secret, RBAC, webhooks, TLS Secrets, `generatedSecrets`, Gateway API routes,
+CronJob, and the monitoring CRDs) — plus `envVars` map-form values. Values
+without the prefix pass through byte-identical, including literal-brace text
+like `summary: 'Pod {{ $labels.pod }} down'` — precedence still resolves on
+the raw strings first (above), only the winning value gets expanded.
+`envVars` in slice form is always a raw passthrough and never checked. A
+literal value that must itself start with `tpl:` is escaped as
+`tpl:{{ "tpl:..." }}` so the sentinel no longer matches. Worked example:
+[Examples & recipes](/examples-recipes/#tpl-value-prefix-for-annotation-and-env-values).
+
 ## Capability negotiation & the long tail
 
 `capabilities.apiVersions` force-assumes API groups for offline renders

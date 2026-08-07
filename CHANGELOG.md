@@ -17,6 +17,31 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
   YAML-hostile characters — but templated values (via
   `extraObjects[].template: true`) make quoting the safe default.
 
+### Added — opt-in `tpl:` value-prefix expansion for annotation/env values
+
+- Annotation and `envVars` (map form) string values can now opt into `tpl`
+  expansion per-value, by prefixing them with `tpl:` — the prefix is
+  stripped and the remainder is rendered with `tpl` against the release
+  context, so `vault.example/role: 'tpl:{{ .Release.Name }}-app'` resolves
+  to the release name. Values without the prefix pass through
+  byte-identical — zero behavior change for existing consumers, including
+  alertmanager-style literal-brace text (`summary: 'Pod {{ $labels.pod }}
+  down'`). One shared helper (`platform.tplValue`) covers every
+  annotation-emitting site in the library: `commonAnnotations` and every
+  resource's own `annotations`/`podAnnotations` field — the workload, the
+  pod template, `serviceAccount.annotations` (both the release and hook
+  ServiceAccounts), and every other generated object (Service, Ingress,
+  ConfigMap, Secret, RBAC, webhooks, TLS Secrets, `generatedSecrets`,
+  Gateway API routes, CronJob, and the monitoring CRDs) — plus `envVars`
+  map-form values; `envVars` slice form stays a raw passthrough.
+  Merge/precedence is untouched — specific still beats common on the raw
+  strings first, and only the winning value is expanded, at emission time,
+  so a shadowed `commonAnnotations` sentinel never fails a render it would
+  never actually reach. `tpl` failures fail the render with Helm's own
+  error (fail-closed). This is the flat-string sibling of `extraObjects`'
+  `template: true` above. See
+  [Examples & recipes](https://caretak3r.github.io/helm-factory/examples-recipes/#tpl-value-prefix-for-annotation-and-env-values).
+
 ### Added — opt-in tpl expansion for `extraObjects` entries
 
 - Any `extraObjects` entry can now carry a reserved `template: true` control

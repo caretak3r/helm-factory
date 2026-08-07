@@ -19,7 +19,7 @@ metadata:
   {{- if .Values.commonAnnotations }}
   annotations:
     {{- range $k, $v := .Values.commonAnnotations }}
-    {{ $k }}: {{ $v | quote }}
+    {{ $k }}: {{ include "platform.tplValue" (dict "ctx" $ "value" $v) | quote }}
     {{- end }}
   {{- end }}
 spec:
