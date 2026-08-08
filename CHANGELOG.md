@@ -9,6 +9,23 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [2.2.0] - 2026-08-08
+
+Feature batch since 2.1.0. New additive values features: admission `webhooks`,
+`tlsSelfSigned.mtls` client certificates, `generatedSecrets`, namespaced
+`rbac`, opt-in `tpl:` value-prefix expansion, opt-in `extraObjects`
+templating, ResourceQuota/LimitRange, PrometheusRule and
+VerticalPodAutoscaler generators, PDB eviction policy, container
+`resizePolicy`, and pod/Service long-tail fields. Capability gating now runs
+on a structured feature registry — atomic Kind sets skip together, fail
+closed. Contributor toolchain (`Makefile`, consumer scenario smokes),
+checksum-pinned CI, cosign keyless signing, and GitHub Releases complete the
+release engineering. Minor bump: every values change is additive; the
+remaining behavior shifts are fail-closed corrections toward documented
+intent, flagged inline.
+
 ### Fixed — quote `extraObjects` metadata.name and namespace emission
 
 - `platform.genericResource` emitted `metadata.name` and `metadata.namespace`
