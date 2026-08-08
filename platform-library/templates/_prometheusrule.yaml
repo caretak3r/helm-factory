@@ -13,9 +13,16 @@ metadata:
     {{- range $k, $v := .Values.prometheusRule.labels }}
     {{ $k }}: {{ $v | quote }}
     {{- end }}
-  {{- if .Values.prometheusRule.annotations }}
+  {{- if or .Values.commonAnnotations .Values.prometheusRule.annotations }}
   annotations:
+    {{- $annotations := dict -}}
+    {{- range $k, $v := .Values.commonAnnotations }}
+    {{- $_ := set $annotations $k $v -}}
+    {{- end }}
     {{- range $k, $v := .Values.prometheusRule.annotations }}
+    {{- $_ := set $annotations $k $v -}}
+    {{- end }}
+    {{- range $k, $v := $annotations }}
     {{ $k }}: {{ include "platform.tplValue" (dict "ctx" $ "value" $v) | quote }}
     {{- end }}
   {{- end }}

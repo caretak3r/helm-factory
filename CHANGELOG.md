@@ -9,7 +9,21 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed — `commonAnnotations` now merges into CronJob and the monitoring CRDs
+
+- `commonAnnotations` merges into every generated object's annotations,
+  specific-beats-common on key collision — except four Kinds, which used to
+  emit only their own resource-specific `annotations` map: CronJob (both its
+  own `metadata.annotations` and its pod template's), PodMonitor,
+  PrometheusRule, ServiceMonitor. That exemption is now closed; all five
+  sites merge `commonAnnotations` the same way as every other object
+  (`helm-factory-0ou.12`). **Migration note:** consumers that set
+  `commonAnnotations` will see those annotations appear on CronJob,
+  PodMonitor, PrometheusRule, and ServiceMonitor objects for the first time
+  on upgrade. Resource-specific annotations (`cronJob.annotations`,
+  `cronJob.podAnnotations`, `podMonitor.annotations`,
+  `prometheusRule.annotations`, `serviceMonitor.annotations`) still win on
+  key collision, unchanged.
 
 ## [2.2.0] - 2026-08-08
 

@@ -10,9 +10,16 @@ metadata:
     {{- range $k, $v := .Values.commonLabels }}
     {{ $k }}: {{ $v | quote }}
     {{- end }}
-  {{- if .Values.cronJob.annotations }}
+  {{- if or .Values.commonAnnotations .Values.cronJob.annotations }}
   annotations:
+    {{- $annotations := dict -}}
+    {{- range $k, $v := .Values.commonAnnotations }}
+    {{- $_ := set $annotations $k $v -}}
+    {{- end }}
     {{- range $k, $v := .Values.cronJob.annotations }}
+    {{- $_ := set $annotations $k $v -}}
+    {{- end }}
+    {{- range $k, $v := $annotations }}
     {{ $k }}: {{ include "platform.tplValue" (dict "ctx" $ "value" $v) | quote }}
     {{- end }}
   {{- end }}
@@ -41,9 +48,16 @@ spec:
             {{- range $k, $v := .Values.cronJob.podLabels }}
             {{ $k }}: {{ $v | quote }}
             {{- end }}
-          {{- if .Values.cronJob.podAnnotations }}
+          {{- if or .Values.commonAnnotations .Values.cronJob.podAnnotations }}
           annotations:
+            {{- $annotations := dict -}}
+            {{- range $k, $v := .Values.commonAnnotations }}
+            {{- $_ := set $annotations $k $v -}}
+            {{- end }}
             {{- range $k, $v := .Values.cronJob.podAnnotations }}
+            {{- $_ := set $annotations $k $v -}}
+            {{- end }}
+            {{- range $k, $v := $annotations }}
             {{ $k }}: {{ include "platform.tplValue" (dict "ctx" $ "value" $v) | quote }}
             {{- end }}
           {{- end }}
