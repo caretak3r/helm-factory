@@ -623,6 +623,8 @@ metadata:
     app.kubernetes.io/managed-by: Helm
   annotations:
     platform.example/cron-owner: "t-cron"
+    platform.example/release: "t"
+    shadow-test: "t-common"
 spec:
   schedule: "*/5 * * * *"
   concurrencyPolicy: Allow
@@ -641,6 +643,8 @@ spec:
           annotations:
             cron-summary: "Job {{ $labels.job }} failed"
             platform.example/cron-pod: "default"
+            platform.example/release: "t"
+            shadow-test: "t-common"
         spec:
           serviceAccountName: t-full
           automountServiceAccountToken: true
@@ -967,6 +971,8 @@ metadata:
     app.kubernetes.io/managed-by: Helm
   annotations:
     platform.example/pm-owner: "t-pm"
+    platform.example/release: "t"
+    shadow-test: "t-common"
 spec:
   podMetricsEndpoints:
     - port: "http"
@@ -996,8 +1002,10 @@ metadata:
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/managed-by: Helm
   annotations:
+    platform.example/release: "t"
     platform.example/rule-owner: "t-rules"
     runbook-note: "Alert {{ $labels.alertname }} firing"
+    shadow-test: "t-common"
 spec:
   groups:
     - name: app.rules
@@ -1024,7 +1032,9 @@ metadata:
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/managed-by: Helm
   annotations:
+    platform.example/release: "t"
     platform.example/sm-owner: "t-sm"
+    shadow-test: "monitor-wins"
 spec:
   selector:
     matchLabels:

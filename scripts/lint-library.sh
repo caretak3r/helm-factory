@@ -1185,6 +1185,88 @@ else
   echo "  FAIL: render failed for full fixture while checking the CronJob/monitor-CRD leak scope"; echo "$out" | tail -3; fail=1
 fi
 
+# commonAnnotations merges into CronJob + monitor-CRD annotations
+# (helm-factory-0ou.12): these five sites (CronJob metadata, CronJob pod
+# template, PodMonitor, PrometheusRule, ServiceMonitor) used to emit ONLY
+# their own resource-specific annotations map; they now merge
+# commonAnnotations in front of it, specific-beats-common, matching every
+# other generated object (_helpers.tpl:131-144). Four separate presence
+# assertions (not one combined check) so a regression names its own site.
+if out=$("$RENDER" full 2>&1); then
+  cron_doc=$(doc_of CronJob t-full-cron <<<"$out")
+  pm_doc=$(doc_of PodMonitor t-full <<<"$out")
+  rule_doc=$(doc_of PrometheusRule t-full <<<"$out")
+  sm_doc=$(doc_of ServiceMonitor t-full <<<"$out")
+
+  if grep -q 'platform.example/release: "t"' <<<"$cron_doc"; then
+    echo "  OK: commonAnnotations merges into the CronJob document"
+  else
+    echo "  FAIL: commonAnnotations missing from the CronJob document"; fail=1
+  fi
+  if grep -q 'platform.example/release: "t"' <<<"$pm_doc"; then
+    echo "  OK: commonAnnotations merges into the PodMonitor document"
+  else
+    echo "  FAIL: commonAnnotations missing from the PodMonitor document"; fail=1
+  fi
+  if grep -q 'platform.example/release: "t"' <<<"$rule_doc"; then
+    echo "  OK: commonAnnotations merges into the PrometheusRule document"
+  else
+    echo "  FAIL: commonAnnotations missing from the PrometheusRule document"; fail=1
+  fi
+  if grep -q 'platform.example/release: "t"' <<<"$sm_doc"; then
+    echo "  OK: commonAnnotations merges into the ServiceMonitor document"
+  else
+    echo "  FAIL: commonAnnotations missing from the ServiceMonitor document"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for full fixture while checking commonAnnotations merge presence"; echo "$out" | tail -3; fail=1
+fi
+
+# commonAnnotations merge, CronJob both-sites check: the sentinel must land
+# on BOTH the CronJob's own metadata.annotations AND its pod-template
+# annotations — count rather than a bare substring grep so a regression at
+# either site is distinguishable from the other still passing.
+if out=$("$RENDER" full 2>&1); then
+  cron_doc=$(doc_of CronJob t-full-cron <<<"$out")
+  cron_count=$(grep -c 'platform.example/release: "t"' <<<"$cron_doc" || true)
+  if [ "$cron_count" = "2" ]; then
+    echo "  OK: commonAnnotations merges into both CronJob annotation sites (metadata and pod template)"
+  else
+    echo "  FAIL: commonAnnotations landed on $cron_count of 2 CronJob annotation sites"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for full fixture while checking the CronJob both-sites merge"; echo "$out" | tail -3; fail=1
+fi
+
+# commonAnnotations merge, specific-beats-common precedence at the shadowed
+# key: the full fixture's serviceMonitor.annotations carries its own
+# shadow-test literal, so the ServiceMonitor document must show the literal,
+# never the commonAnnotations sentinel — AND must still show the
+# non-shadowed platform.example/release key, proving the merge actually
+# happened rather than the specific map simply being emitted alone (a
+# reverted merge and a working-but-shadowed merge both leave shadow-test at
+# "monitor-wins"; the release key is what tells them apart). PodMonitor
+# carries no competing key, so it's the control proving commonAnnotations
+# legitimately flows through where nothing shadows it.
+if out=$("$RENDER" full 2>&1); then
+  pm_doc=$(doc_of PodMonitor t-full <<<"$out")
+  sm_doc=$(doc_of ServiceMonitor t-full <<<"$out")
+  if grep -q 'platform.example/release: "t"' <<<"$sm_doc" \
+    && grep -q 'shadow-test: "monitor-wins"' <<<"$sm_doc" \
+    && ! grep -q 'shadow-test: "t-common"' <<<"$sm_doc"; then
+    echo "  OK: serviceMonitor.annotations' shadow-test literal wins over the commonAnnotations sentinel, and the merge itself is present"
+  else
+    echo "  FAIL: specific-beats-common broken at the ServiceMonitor's shadow-test key"; fail=1
+  fi
+  if grep -q 'shadow-test: "t-common"' <<<"$pm_doc"; then
+    echo "  OK: commonAnnotations' shadow-test sentinel flows through PodMonitor where nothing shadows it"
+  else
+    echo "  FAIL: commonAnnotations' shadow-test sentinel did not reach PodMonitor"; fail=1
+  fi
+else
+  echo "  FAIL: render failed for full fixture while checking commonAnnotations precedence at the monitor-CRD sites"; echo "$out" | tail -3; fail=1
+fi
+
 # secret.existingSecret conflicts with inline material.
 if out=$("$RENDER" stateful --set secret.existingSecret=preexisting 2>&1); then
   echo "  FAIL: render succeeded with secret.existingSecret + secret.stringData"; fail=1

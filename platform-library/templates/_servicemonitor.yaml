@@ -10,9 +10,16 @@ metadata:
     {{- range $k, $v := .Values.serviceMonitor.labels }}
     {{ $k }}: {{ $v | quote }}
     {{- end }}
-  {{- if .Values.serviceMonitor.annotations }}
+  {{- if or .Values.commonAnnotations .Values.serviceMonitor.annotations }}
   annotations:
+    {{- $annotations := dict -}}
+    {{- range $k, $v := .Values.commonAnnotations }}
+    {{- $_ := set $annotations $k $v -}}
+    {{- end }}
     {{- range $k, $v := .Values.serviceMonitor.annotations }}
+    {{- $_ := set $annotations $k $v -}}
+    {{- end }}
+    {{- range $k, $v := $annotations }}
     {{ $k }}: {{ include "platform.tplValue" (dict "ctx" $ "value" $v) | quote }}
     {{- end }}
   {{- end }}

@@ -261,11 +261,13 @@ webhooks:
 
 # tpl: value-prefix expansion (helm-factory-0ou.11): pins the three
 # monitor-CRD annotations sites, the remaining tplValue call sites the 0ou.10
-# sweep left uncovered.
+# sweep left uncovered. shadow-test (helm-factory-0ou.12) pins
+# specific-beats-common now that commonAnnotations merges into this Kind too.
 serviceMonitor:
   enabled: true
   annotations:
     platform.example/sm-owner: 'tpl:{{ .Release.Name }}-sm'
+    shadow-test: 'monitor-wins'
 
 podMonitor:
   enabled: true
