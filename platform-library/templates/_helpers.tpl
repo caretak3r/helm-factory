@@ -22,12 +22,28 @@ Create a default fully qualified app name.
 {{- end }}
 
 {{/*
+Emit a generated object name, failing the render if it exceeds the Kubernetes
+name limit for that object (63 for label-safe names; callers may pass "max"
+253 for cluster-scoped subdomain names). Blind truncation is never correct
+here: it collides names and breaks cross-references.
+Usage: include "platform.boundedName" (dict "name" $n "kind" "Service")
+*/}}
+{{- define "platform.boundedName" -}}
+{{- $name := .name -}}
+{{- $max := .max | default 63 -}}
+{{- if gt (len $name) $max -}}
+{{- fail (printf "platform: generated %s name %q is %d characters; the Kubernetes limit is %d. Shorten the release name or set fullnameOverride." .kind $name (len $name) $max) -}}
+{{- end -}}
+{{- $name -}}
+{{- end }}
+
+{{/*
 Name of the release-managed TLS Secret. Single source of truth shared by the
 writers (_tls-selfsigned.yaml, _certificate.yaml's secretName default) and the
 reader (_ingress.yaml's spec.tls default) so they can never disagree.
 */}}
 {{- define "platform.tlsSecretName" -}}
-{{- printf "%s-tls" (include "platform.fullname" .) -}}
+{{- include "platform.boundedName" (dict "name" (printf "%s-tls" (include "platform.fullname" .)) "kind" "Secret") -}}
 {{- end }}
 
 {{/*
@@ -419,16 +435,16 @@ much as the main container does.
   {{- range $ctx.Values.tlsSelfSigned.mtls.clients }}
     {{- $clientName := .name -}}
     {{- $mtlsMounts = append $mtlsMounts (dict "name" (printf "mtls-client-%s" $clientName) "mountPath" (printf "%s/client-%s" $basePath $clientName) "readOnly" true) -}}
-    {{- $mtlsVolumes = append $mtlsVolumes (dict "name" (printf "mtls-client-%s" $clientName) "secret" (dict "secretName" (printf "%s-mtls-client-%s" (include "platform.fullname" $ctx) $clientName) "defaultMode" 0400)) -}}
+    {{- $mtlsVolumes = append $mtlsVolumes (dict "name" (printf "mtls-client-%s" $clientName) "secret" (dict "secretName" (include "platform.boundedName" (dict "name" (printf "%s-mtls-client-%s" (include "platform.fullname" $ctx) $clientName) "kind" "Secret")) "defaultMode" 0400)) -}}
   {{- end }}
   {{- if $ctx.Values.tlsSelfSigned.mtls.trustBundle.enabled }}
     {{- $mtlsMounts = append $mtlsMounts (dict "name" "mtls-ca-bundle" "mountPath" (printf "%s/ca" $basePath) "readOnly" true) -}}
-    {{- $mtlsVolumes = append $mtlsVolumes (dict "name" "mtls-ca-bundle" "configMap" (dict "name" (printf "%s-ca-bundle" (include "platform.fullname" $ctx)) "defaultMode" 0444)) -}}
+    {{- $mtlsVolumes = append $mtlsVolumes (dict "name" "mtls-ca-bundle" "configMap" (dict "name" (include "platform.boundedName" (dict "name" (printf "%s-ca-bundle" (include "platform.fullname" $ctx)) "kind" "ConfigMap")) "defaultMode" 0444)) -}}
   {{- end }}
 {{- end -}}
 {{- if $ctx.Values.webhooks.enabled }}
   {{- $mtlsMounts = append $mtlsMounts (dict "name" "webhook-tls" "mountPath" $ctx.Values.webhooks.certMountPath "readOnly" true) -}}
-  {{- $mtlsVolumes = append $mtlsVolumes (dict "name" "webhook-tls" "secret" (dict "secretName" (printf "%s-webhook-cert" (include "platform.fullname" $ctx)) "defaultMode" 0400)) -}}
+  {{- $mtlsVolumes = append $mtlsVolumes (dict "name" "webhook-tls" "secret" (dict "secretName" (include "platform.boundedName" (dict "name" (printf "%s-webhook-cert" (include "platform.fullname" $ctx)) "kind" "Secret")) "defaultMode" 0400)) -}}
 {{- end -}}
 metadata:
   labels:
@@ -557,10 +573,13 @@ spec:
     {{- end }}
   {{- $volumes := list -}}
   {{- if $ctx.Values.configMap.enabled }}
-    {{- $volumes = append $volumes (dict "name" "config" "configMap" (dict "name" (printf "%s-config" (include "platform.fullname" $ctx)))) -}}
+    {{- $volumes = append $volumes (dict "name" "config" "configMap" (dict "name" (include "platform.boundedName" (dict "name" (printf "%s-config" (include "platform.fullname" $ctx)) "kind" "ConfigMap")))) -}}
   {{- end }}
   {{- if $ctx.Values.persistence.enabled }}
-    {{- $claimName := default (printf "%s-data" (include "platform.fullname" $ctx)) $ctx.Values.persistence.existingClaim -}}
+    {{- $claimName := $ctx.Values.persistence.existingClaim -}}
+    {{- if not $claimName -}}
+      {{- $claimName = include "platform.boundedName" (dict "name" (printf "%s-data" (include "platform.fullname" $ctx)) "kind" "PersistentVolumeClaim") -}}
+    {{- end -}}
     {{- $volumes = append $volumes (dict "name" "data" "persistentVolumeClaim" (dict "claimName" $claimName)) -}}
   {{- end }}
   {{- if $ctx.Values.extraVolumes }}
@@ -711,7 +730,7 @@ Usage: include "platform.hookServiceAccountName" (list $ctx "preinstall")
 {{- $ctx := index . 0 -}}
 {{- $type := index . 1 -}}
 {{- if and (eq $type "preinstall") $ctx.Values.serviceAccount.create -}}
-{{- printf "%s-preinstall" (include "platform.fullname" $ctx) | trunc 63 | trimSuffix "-" -}}
+{{- include "platform.boundedName" (dict "name" (printf "%s-preinstall" (include "platform.fullname" $ctx)) "kind" "hook ServiceAccount") -}}
 {{- else -}}
 {{- include "platform.serviceAccountName" $ctx -}}
 {{- end -}}
@@ -808,7 +827,7 @@ spec:
 Name of the library-managed headless Service that governs a StatefulSet.
 */}}
 {{- define "platform.headlessServiceName" -}}
-{{- printf "%s-headless" (include "platform.fullname" .) -}}
+{{- include "platform.boundedName" (dict "name" (printf "%s-headless" (include "platform.fullname" .)) "kind" "Service") -}}
 {{- end }}
 
 {{/*
@@ -975,7 +994,7 @@ inherits the main tag only.
 {{- end }}
 {{- if $useScript }}
   {{- $volumeMounts = append $volumeMounts (dict "name" "job-script" "mountPath" "/scripts" "readOnly" true) -}}
-  {{- $volumes = append $volumes (dict "name" "job-script" "configMap" (dict "name" (printf "%s-%s-script" (include "platform.fullname" $ctx) $type) "defaultMode" 0555)) -}}
+  {{- $volumes = append $volumes (dict "name" "job-script" "configMap" (dict "name" (include "platform.boundedName" (dict "name" (printf "%s-%s-script" (include "platform.fullname" $ctx) $type) "kind" "ConfigMap")) "defaultMode" 0555)) -}}
 {{- end }}
 {{- $initContainers := list -}}
 {{- if and $defaults.initContainers $defaults.initContainers.enabled $defaults.initContainers.containers }}
@@ -1027,7 +1046,7 @@ inherits the main tag only.
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ printf "%s-%s" (include "platform.fullname" $ctx) $type }}
+  name: {{ include "platform.boundedName" (dict "name" (printf "%s-%s" (include "platform.fullname" $ctx) $type) "kind" "Job") }}
   namespace: {{ $ctx.Release.Namespace }}
   labels:
     {{- include "platform.labelsFor" (dict "ctx" $ctx "component" $type) | nindent 4 }}

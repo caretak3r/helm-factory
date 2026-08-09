@@ -35,7 +35,7 @@ spec:
 apiVersion: {{ $authzApi }}
 kind: AuthorizationPolicy
 metadata:
-  name: {{ include "platform.fullname" . }}-authz
+  name: {{ include "platform.boundedName" (dict "name" (printf "%s-authz" (include "platform.fullname" .)) "kind" "AuthorizationPolicy") }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "platform.labels" . | nindent 4 }}

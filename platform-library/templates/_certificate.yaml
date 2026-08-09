@@ -26,7 +26,7 @@
 apiVersion: {{ include "platform.capabilities.apiVersionForOrDefault" (list . "Certificate") }}
 kind: Certificate
 metadata:
-  name: {{ include "platform.fullname" . }}-tls
+  name: {{ include "platform.boundedName" (dict "name" (printf "%s-tls" (include "platform.fullname" .)) "kind" "Certificate") }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "platform.labels" . | nindent 4 }}

@@ -3,7 +3,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "platform.fullname" . }}-config
+  name: {{ include "platform.boundedName" (dict "name" (printf "%s-config" (include "platform.fullname" .)) "kind" "ConfigMap") }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "platform.labels" . | nindent 4 }}

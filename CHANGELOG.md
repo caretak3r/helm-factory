@@ -25,6 +25,37 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
   `prometheusRule.annotations`, `serviceMonitor.annotations`) still win on
   key collision, unchanged.
 
+### Fixed — derived object names now fail closed past the 63-character Kubernetes limit
+
+- `platform.fullname` truncs its own output to 63 characters, but the ~20
+  object names derived from it append a suffix afterward (`-tls`, `-config`,
+  `-preinstall-script`, etc.) with no re-check — a long release name or
+  `fullnameOverride` could push a derived name past 63 characters and produce
+  an object that dies at apply time. Every derived-name site now routes
+  through a new `platform.boundedName` helper that fails the render closed
+  with a named error instead of emitting the invalid name
+  (`helm-factory-hgl`).
+- `platform.hookServiceAccountName` used to blind-truncate `<fullname>-preinstall`
+  to 63 characters. A truncation collision with the release ServiceAccount's
+  own name is dangerous: `before-hook-creation` on a same-named hook
+  ServiceAccount would delete the LIVE ServiceAccount on every upgrade,
+  invalidating running pods' tokens. It now fails closed the same way as
+  every other derived name instead of truncating.
+- The webhook configuration object name (cluster-scoped, namespace-prefixed)
+  is bounded at 253 characters, the Kubernetes subdomain limit for
+  cluster-scoped names, not 63.
+- An explicitly supplied `gatewayApi.httpRoute.name` / `gatewayApi.grpcRoute.name`
+  is bounded the same way, replacing the silent `trunc 63` those two names
+  used to apply. A whole-name override that the library only passes through —
+  `fullnameOverride`, `rbac.name`, `persistence.existingClaim` — keeps its
+  existing behavior and is not newly validated here.
+- **Migration note:** valid configurations render byte-identical to before —
+  no golden output changed. Only configurations that were already producing a
+  silently truncated name (an existing, undetected correctness bug) now fail
+  at template time with a named error instead: a release name or
+  `fullnameOverride` long enough to overflow a derived suffix, or an over-long
+  explicit Gateway API route name. Shorten the offending name to fix.
+
 ## [2.2.0] - 2026-08-08
 
 Feature batch since 2.1.0. New additive values features: admission `webhooks`,
