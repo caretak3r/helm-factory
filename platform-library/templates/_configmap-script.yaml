@@ -17,7 +17,7 @@ ConfigMap needs none of this: post-install hooks run after the normal resources.
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "platform.fullname" $root }}-{{ $job.type }}-script
+  name: {{ include "platform.boundedName" (dict "name" (printf "%s-%s-script" (include "platform.fullname" $root) $job.type) "kind" "ConfigMap") }}
   namespace: {{ $root.Release.Namespace }}
   labels:
     {{- include "platform.labelsFor" (dict "ctx" $root "component" (printf "job-%s-script" $job.type)) | nindent 4 }}

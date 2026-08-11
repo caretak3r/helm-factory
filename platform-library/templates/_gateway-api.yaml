@@ -29,7 +29,7 @@
 {{- $http := $gw.httpRoute | default (dict) -}}
 {{- if $http.enabled -}}
 {{- $httpName := default (printf "%s-http" $fullName) $http.name -}}
-{{- $httpName = $httpName | trunc 63 | trimSuffix "-" -}}
+{{- $httpName = include "platform.boundedName" (dict "name" $httpName "kind" "HTTPRoute") -}}
 {{- $httpApiVersion := default $apiVersion $http.apiVersion -}}
 {{- $parentRefs := $http.parentRefs | default (list) -}}
 {{- if not (gt (len $parentRefs) 0) }}
@@ -115,7 +115,7 @@ spec:
 {{- $grpc := $gw.grpcRoute | default (dict) -}}
 {{- if $grpc.enabled -}}
 {{- $grpcName := default (printf "%s-grpc" $fullName) $grpc.name -}}
-{{- $grpcName = $grpcName | trunc 63 | trimSuffix "-" -}}
+{{- $grpcName = include "platform.boundedName" (dict "name" $grpcName "kind" "GRPCRoute") -}}
 {{- /* Explicit apiVersion overrides force emission; otherwise negotiate
        GRPCRoute's own API (HTTPRoute availability does not prove GRPCRoute —
        they are separate CRDs). This per-Kind skip IS the mechanism behind

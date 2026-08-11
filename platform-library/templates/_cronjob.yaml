@@ -3,7 +3,7 @@
 apiVersion: {{ include "platform.capabilities.apiVersionForOrDefault" (list . "CronJob") }}
 kind: CronJob
 metadata:
-  name: {{ include "platform.fullname" . }}-cron
+  name: {{ include "platform.boundedName" (dict "name" (printf "%s-cron" (include "platform.fullname" .)) "kind" "CronJob") }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "platform.labelsFor" (dict "ctx" . "component" "cronjob") | nindent 4 }}

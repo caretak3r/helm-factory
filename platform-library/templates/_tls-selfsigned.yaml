@@ -48,7 +48,7 @@ new ones). On reuse the signer is reconstructed from the looked-up base64
 material via buildCustomCert so freshly (re)signed server/client certs keep
 chaining to the same CA.
 */ -}}
-{{- $caSecretName := printf "%s-ca" (include "platform.fullname" .) -}}
+{{- $caSecretName := include "platform.boundedName" (dict "name" (printf "%s-ca" (include "platform.fullname" .)) "kind" "Secret") -}}
 {{- $caCrtB64 := "" -}}
 {{- $caKeyB64 := "" -}}
 {{- $caNotAfter := "" -}}
@@ -157,7 +157,7 @@ data:
   tls.key: {{ $caKeyB64 }}
 {{- range $i, $client := .Values.tlsSelfSigned.mtls.clients }}
 {{- $clientName := $client.name -}}
-{{- $clientSecretName := printf "%s-mtls-client-%s" (include "platform.fullname" $top) $clientName -}}
+{{- $clientSecretName := include "platform.boundedName" (dict "name" (printf "%s-mtls-client-%s" (include "platform.fullname" $top) $clientName) "kind" "Secret") -}}
 {{- $clientExisting := lookup "v1" "Secret" $top.Release.Namespace $clientSecretName -}}
 {{- $clientHasData := and $clientExisting $clientExisting.data (index $clientExisting.data "tls.crt") (index $clientExisting.data "tls.key") (index $clientExisting.data "ca.crt") -}}
 {{- $clientExistingNotAfter := "" -}}
@@ -217,7 +217,7 @@ data:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ printf "%s-ca-bundle" (include "platform.fullname" .) }}
+  name: {{ include "platform.boundedName" (dict "name" (printf "%s-ca-bundle" (include "platform.fullname" .)) "kind" "ConfigMap") }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "platform.labels" . | nindent 4 }}

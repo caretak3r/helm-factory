@@ -150,7 +150,7 @@ nameOverride: ""          # Override chart name portion
 fullnameOverride: ""      # Override entire resource name (max 63 chars)
 ```
 
-Resource names follow the pattern `<release>-<chart>` unless overridden. Names are truncated to 63 characters per Kubernetes limits.
+Resource names follow the pattern `<release>-<chart>` unless overridden. The base name is truncated to 63 characters per Kubernetes limits, but the ~20 derived object names built from it (e.g. `<fullname>-tls`, `<fullname>-config`, `<fullname>-preinstall-script`) are NOT silently truncated — if a suffix would push one past 63 characters, rendering fails with a named error instead of emitting a colliding or invalid name. Keep `fullnameOverride` short enough to leave room for the longest suffix your enabled features add.
 
 ### Global Settings
 

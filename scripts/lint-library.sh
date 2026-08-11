@@ -1267,6 +1267,65 @@ else
   echo "  FAIL: render failed for full fixture while checking commonAnnotations precedence at the monitor-CRD sites"; echo "$out" | tail -3; fail=1
 fi
 
+# boundedName (helm-factory-hgl): platform.fullname truncs its own output to
+# 63, but ~20 derived names append a suffix AFTER that with no re-check,
+# producing >63-char names that die at apply time. platform.boundedName fails
+# the render closed instead. Three checks: a negative render proves the guard
+# fires, a positive control proves valid configs are unaffected, and a static
+# drift guard catches a reintroduced unbounded site without needing a render.
+echo "==> boundedName: negative render, fullnameOverride pushes derived names past 63 chars"
+override_63=$(printf 'a%.0s' {1..63})
+if out=$("$RENDER" full --kube-version "$GOLDEN_KUBE_VERSION" --set fullnameOverride="$override_63" 2>&1); then
+  echo "  FAIL: render succeeded with a 63-char fullnameOverride; a derived name should have exceeded 63 and failed closed"; fail=1
+elif grep -q "characters; the Kubernetes limit is" <<<"$out"; then
+  echo "  OK: over-length derived name rejected with the boundedName error"
+else
+  echo "  FAIL: render failed but not with the boundedName error"; echo "$out" | tail -5; fail=1
+fi
+
+echo "==> boundedName: positive control, short override keeps every derived name in bounds"
+# The full fixture's longest fullname-derived suffix is "-preinstall-script"
+# (18 chars: jobs.preInstall.enabled + serviceAccount.create together name
+# the hook script ConfigMap "<fullname>-preinstall-script"). 63 - 18 = 45 is
+# the longest fullnameOverride that still keeps every derived name <= 63; an
+# 8-char override leaves wide margin (8 + 18 = 26 <= 63).
+if out=$("$RENDER" full --kube-version "$GOLDEN_KUBE_VERSION" --set fullnameOverride="hgl-ctrl" 2>&1); then
+  echo "  OK: short fullnameOverride renders cleanly, every derived name in bounds"
+else
+  echo "  FAIL: short fullnameOverride unexpectedly failed"; echo "$out" | tail -10; fail=1
+fi
+
+echo "==> boundedName: static drift guard, no derived-name site bypasses the helper"
+# Three literal signatures of the removed code this fix eliminates: (1) a
+# direct include+concat that never reaches boundedName, (2)/(3) a printf that
+# builds "<fullname>-suffix" (either the include call or a $fullname/$fullName
+# local) without the result ever passing through boundedName within the next
+# line, (4) the blind-trunc idiom this fix removed from
+# platform.hookServiceAccountName. genCA Common Name arguments
+# (_tls-selfsigned.yaml's CA/mTLS-client CN, _webhooks.yaml's CA CN) are
+# explicitly out of scope per the spec's site inventory -- x509 CN carries no
+# Kubernetes object-name limit -- so a hit on a genCA(...) line is exempt.
+drift=""
+# shellcheck disable=SC2016  # literal $fullname below is the template variable name being matched, not a shell expansion
+while IFS=: read -r df dl _rest; do
+  window=$(sed -n "${dl},$((dl + 1))p" "$df")
+  if ! grep -q 'boundedName' <<<"$window" && ! grep -q 'genCA' <<<"$window"; then
+    drift="${drift}$(sed -n "${dl}p" "$df" | sed "s#^#${df}:${dl}: #")"$'\n'
+  fi
+done < <(grep -RnE 'printf "%s-[^"]*"[[:space:]]*(\(include "platform\.fullname"|\$full[Nn]ame\b)' "$LIB/templates" 2>/dev/null || true)
+if out=$(grep -RnE 'include "platform\.fullname"[^}]*\}\}-' "$LIB/templates" 2>/dev/null); then
+  drift="${drift}${out}"$'\n'
+fi
+if out=$(grep -RnE -- '-preinstall.*trunc' "$LIB/templates" 2>/dev/null); then
+  drift="${drift}${out}"$'\n'
+fi
+drift="$(echo "$drift" | sed '/^$/d')"
+if [ -n "$drift" ]; then
+  echo "  FAIL: derived-name site(s) bypass platform.boundedName"; echo "$drift"; fail=1
+else
+  echo "  OK: no derived-name site bypasses platform.boundedName"
+fi
+
 # secret.existingSecret conflicts with inline material.
 if out=$("$RENDER" stateful --set secret.existingSecret=preexisting 2>&1); then
   echo "  FAIL: render succeeded with secret.existingSecret + secret.stringData"; fail=1

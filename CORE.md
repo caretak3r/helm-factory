@@ -340,7 +340,7 @@ Without a cluster, Helm's API discovery is minimal, so Certificates, HTTPRoutes,
 `values.schema.json` rejects anything outside `Deployment`/`StatefulSet`/`DaemonSet` (case-sensitive). Consumers rendering without the schema fail in-template with the same allowed list — there is no silent Deployment fallback. Unset/empty `workload.type` still defaults to Deployment.
 
 ### 5. fullnameOverride length
-K8s names are limited to 63 characters; keep `fullnameOverride` ≤ 30 chars to leave room for suffixes.
+K8s names are limited to 63 characters; keep `fullnameOverride` ≤ 30 chars to leave room for suffixes. Derived object names (`<fullname>-tls`, `<fullname>-preinstall-script`, etc.) fail the render closed with a named error if a suffix pushes them past 63 — they are never silently truncated.
 
 ### 6. Changing Service selector labels
 `commonLabels` are included in the Service selector, and selectors are immutable — changing them orphans the Service. Keep `commonLabels` stable or recreate the Service.
