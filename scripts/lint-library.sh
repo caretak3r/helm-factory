@@ -1326,6 +1326,29 @@ else
   echo "  OK: no derived-name site bypasses platform.boundedName"
 fi
 
+# boundedName (helm-factory-bhy): the length check above says nothing about
+# shape. Two negative renders: an uppercase fullnameOverride proves every
+# derived name is now checked for DNS-1123 label shape, and an explicit
+# Gateway API route name ending in "-" proves the narrow fail-open hgl left
+# behind (a trimSuffix that used to normalize it silently) is now closed.
+echo "==> boundedName: negative render, uppercase fullnameOverride yields DNS-1123-invalid derived names"
+if out=$("$RENDER" full --kube-version "$GOLDEN_KUBE_VERSION" --set fullnameOverride="MyApp" 2>&1); then
+  echo "  FAIL: render succeeded with an uppercase fullnameOverride; derived names are not valid DNS-1123 labels"; fail=1
+elif grep -q "is not a valid DNS-1123" <<<"$out"; then
+  echo "  OK: DNS-1123-invalid derived name rejected with the boundedName error"
+else
+  echo "  FAIL: render failed but not with the boundedName shape error"; echo "$out" | tail -5; fail=1
+fi
+
+echo "==> boundedName: negative render, explicit Gateway API route name ending in '-' is rejected"
+if out=$("$RENDER" full --kube-version "$GOLDEN_KUBE_VERSION" --set gatewayApi.httpRoute.name="my-route-" 2>&1); then
+  echo "  FAIL: render succeeded with an explicit HTTPRoute name ending in '-'"; fail=1
+elif grep -q "is not a valid DNS-1123" <<<"$out"; then
+  echo "  OK: trailing-dash route name rejected with the boundedName error"
+else
+  echo "  FAIL: render failed but not with the boundedName shape error"; echo "$out" | tail -5; fail=1
+fi
+
 # secret.existingSecret conflicts with inline material.
 if out=$("$RENDER" stateful --set secret.existingSecret=preexisting 2>&1); then
   echo "  FAIL: render succeeded with secret.existingSecret + secret.stringData"; fail=1

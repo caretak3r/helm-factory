@@ -56,6 +56,27 @@ releases are tagged `vX.Y.Z` and published to `oci://ghcr.io/caretak3r/charts`.
   `fullnameOverride` long enough to overflow a derived suffix, or an over-long
   explicit Gateway API route name. Shorten the offending name to fix.
 
+### Fixed — derived object names now fail closed on invalid DNS-1123 shape, not just length
+
+- `platform.boundedName` now validates DNS-1123 shape in addition to length;
+  every derived object name is checked, not only ones long enough to
+  overflow (`helm-factory-bhy`).
+- Closes the narrow fail-open `helm-factory-hgl` introduced: an explicit
+  `gatewayApi.httpRoute.name` / `gatewayApi.grpcRoute.name` ending in `-`
+  used to be silently normalized by a `trimSuffix` that hgl removed; it now
+  fails at template time instead of rendering an object the API server would
+  reject.
+- The cluster-scoped webhook configuration name is validated as a DNS-1123
+  subdomain (dots allowed between labels); every other derived name is
+  validated as a DNS-1123 label.
+- **Migration note:** valid configurations render byte-identical to before —
+  no golden output changed. Only names that were already invalid (uppercase,
+  underscores, or leading/trailing `-`) now fail closed with a named error
+  instead of rendering an object that would be rejected at apply time.
+- Whole-name passthroughs (`fullnameOverride`, `rbac.name`,
+  `persistence.existingClaim`) keep their existing behavior and are still not
+  validated here.
+
 ## [2.2.0] - 2026-08-08
 
 Feature batch since 2.1.0. New additive values features: admission `webhooks`,
