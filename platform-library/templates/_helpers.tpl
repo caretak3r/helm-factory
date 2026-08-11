@@ -24,15 +24,26 @@ Create a default fully qualified app name.
 {{/*
 Emit a generated object name, failing the render if it exceeds the Kubernetes
 name limit for that object (63 for label-safe names; callers may pass "max"
-253 for cluster-scoped subdomain names). Blind truncation is never correct
-here: it collides names and breaks cross-references.
+253 for cluster-scoped subdomain names) or is not valid DNS-1123 shape for it
+("shape": "label" default, "subdomain" for cluster-scoped names with dots).
+Blind truncation/normalization is never correct here: it collides names,
+breaks cross-references, or silently rewrites a user-supplied name.
 Usage: include "platform.boundedName" (dict "name" $n "kind" "Service")
 */}}
 {{- define "platform.boundedName" -}}
 {{- $name := .name -}}
 {{- $max := .max | default 63 -}}
+{{- $shape := .shape | default "label" -}}
 {{- if gt (len $name) $max -}}
 {{- fail (printf "platform: generated %s name %q is %d characters; the Kubernetes limit is %d. Shorten the release name or set fullnameOverride." .kind $name (len $name) $max) -}}
+{{- end -}}
+{{- $label := "[a-z0-9]([-a-z0-9]*[a-z0-9])?" -}}
+{{- $pattern := printf "^%s$" $label -}}
+{{- if eq $shape "subdomain" -}}
+{{- $pattern = printf "^%s(\\.%s)*$" $label $label -}}
+{{- end -}}
+{{- if not (regexMatch $pattern $name) -}}
+{{- fail (printf "platform: generated %s name %q is not a valid DNS-1123 %s (lowercase letters, digits and '-', starting and ending with an alphanumeric). Adjust the release name, fullnameOverride, or this object's explicit name." .kind $name $shape) -}}
 {{- end -}}
 {{- $name -}}
 {{- end }}

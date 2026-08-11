@@ -4,7 +4,7 @@
 {{- $fullname := include "platform.fullname" . -}}
 {{- $svcName := $fullname -}}
 {{- $secretName := include "platform.boundedName" (dict "name" (printf "%s-webhook-cert" $fullname) "kind" "Secret") -}}
-{{- $objName := include "platform.boundedName" (dict "name" (printf "%s-%s" .Release.Namespace $fullname) "max" 253 "kind" "webhook configuration") -}}
+{{- $objName := include "platform.boundedName" (dict "name" (printf "%s-%s" .Release.Namespace $fullname) "max" 253 "shape" "subdomain" "kind" "webhook configuration") -}}
 {{- $dnsNames := list (printf "%s.%s.svc" $svcName .Release.Namespace) (printf "%s.%s.svc.cluster.local" $svcName .Release.Namespace) -}}
 {{- /*
 Whole-Secret lookup/reuse, same idiom as tlsSelfSigned: the CA and the
